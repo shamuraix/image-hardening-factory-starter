@@ -1,0 +1,37 @@
+apiVersion: factory.platform.example/v1alpha1
+kind: HardenedImage
+metadata:
+  name: ubi9-minimal
+  track: release
+  description: Hardened internal UBI 9 base for Atlassian images.
+source:
+  upstream: https://repo1.dso.mil/dsop/redhat/ubi/9.x/ubi9-minimal.git
+  mirrorPath: mirrors/repo1/redhat/ubi9-minimal
+  revision: ae0ab69ce2e3b5935ff43fb65456856bab591176
+  containerfile: Dockerfile
+  hardeningManifest: hardening_manifest.yaml
+  overlay: overlays/ubi9-minimal/patches
+product:
+  name: Red Hat Universal Base Image Minimal
+  version: "9.8"
+  vendor: Red Hat
+  license: Red Hat Universal Base Image EULA
+build:
+  platforms: [linux/amd64]
+  network: internal-only
+  base:
+    kind: upstream
+    lockKey: redhat-ubi9-minimal
+  testProfile: base
+policy:
+  profile: rhel9-container-stig
+  maximumDatabaseAgeHours: 72
+  block:
+    knownExploited: true
+    critical: true
+    fixableHigh: true
+    newHigh: true
+publication:
+  quarantineRepository: oci-base-quarantine-local
+  releaseRepository: oci-release-local
+  imagePath: bases/ubi9-minimal

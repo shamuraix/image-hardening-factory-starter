@@ -1,0 +1,40 @@
+apiVersion: factory.platform.example/v1alpha1
+kind: HardenedImage
+metadata:
+  name: jira-lts
+  track: release
+  description: Hardened Jira and Jira Service Management Data Center LTS image.
+source:
+  upstream: https://repo1.dso.mil/dsop/atlassian/jira-data-center/jira-lts.git
+  mirrorPath: mirrors/repo1/atlassian/jira-lts
+  revision: 2f40abe1b329296b96d4ac02a6d774d079e23b88
+  containerfile: Dockerfile
+  hardeningManifest: hardening_manifest.yaml
+  overlay: overlays/jira-lts/patches
+product:
+  name: Jira Data Center LTS
+  version: 11.3.10
+  vendor: Atlassian
+  license: proprietary
+build:
+  platforms: [linux/amd64]
+  network: internal-only
+  base:
+    kind: catalog
+    image: ubi9-minimal
+  testProfile: jira
+  buildArgs:
+    JIRA_VERSION: 11.3.10
+    JSM_VERSION: 11.3.10
+policy:
+  profile: atlassian-rhel9-container
+  maximumDatabaseAgeHours: 72
+  block:
+    knownExploited: true
+    critical: true
+    fixableHigh: true
+    newHigh: true
+publication:
+  quarantineRepository: oci-app-quarantine-local
+  releaseRepository: oci-release-local
+  imagePath: atlassian/jira-lts

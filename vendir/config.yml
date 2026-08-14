@@ -1,0 +1,25 @@
+apiVersion: vendir.k14s.io/v1alpha1
+kind: Config
+directories:
+  - path: vendor/repo1
+    contents:
+      - path: bitbucket-lts
+        git:
+          url: https://repo1.dso.mil/dsop/atlassian/bitbucket-data-center/bitbucket-lts.git
+          ref: 0accb8f319027a0de3a020e53c14efaf0de8568c
+      - path: confluence-lts
+        git:
+          url: https://repo1.dso.mil/dsop/atlassian/confluence-data-center/confluence-lts.git
+          ref: 235fbd55719a89a6128ff5819e023935724ae9ed
+      - path: jira-lts
+        git:
+          url: https://repo1.dso.mil/dsop/atlassian/jira-data-center/jira-lts.git
+          ref: 2f40abe1b329296b96d4ac02a6d774d079e23b88
+      - path: ubi9-minimal
+        git:
+          url: https://repo1.dso.mil/dsop/redhat/ubi/9.x/ubi9-minimal.git
+          ref: ae0ab69ce2e3b5935ff43fb65456856bab591176
+      - path: ubi10-minimal
+        git:
+          url: https://repo1.dso.mil/dsop/redhat/ubi/10.x/ubi10-minimal.git
+          ref: 3cd1849717122c8092a62a789269db71845363dd

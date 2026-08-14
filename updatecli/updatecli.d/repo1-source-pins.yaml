@@ -1,0 +1,109 @@
+name: Update Repo One source pins
+pipelineid: repo1-source-pins
+actions:
+  default:
+    kind: gitlab/mergerequest
+    scmid: factory
+    spec:
+      title: "chore(sources): update Repo One source pins"
+scms:
+  factory:
+    kind: gitlab
+    spec:
+      url: "{{ requiredEnv `CI_SERVER_URL` }}"
+      owner: "{{ requiredEnv `CI_PROJECT_NAMESPACE` }}"
+      repository: "{{ requiredEnv `CI_PROJECT_NAME` }}"
+      branch: "{{ requiredEnv `CI_DEFAULT_BRANCH` }}"
+      token: "{{ requiredEnv `UPDATECLI_GITLAB_TOKEN` }}"
+sources:
+  bitbucketRevision:
+    kind: shell
+    spec:
+      command: git ls-remote https://repo1.dso.mil/dsop/atlassian/bitbucket-data-center/bitbucket-lts.git refs/heads/development | cut -f1
+  confluenceRevision:
+    kind: shell
+    spec:
+      command: git ls-remote https://repo1.dso.mil/dsop/atlassian/confluence-data-center/confluence-lts.git refs/heads/development | cut -f1
+  jiraRevision:
+    kind: shell
+    spec:
+      command: git ls-remote https://repo1.dso.mil/dsop/atlassian/jira-data-center/jira-lts.git refs/heads/development | cut -f1
+  ubi9Revision:
+    kind: shell
+    spec:
+      command: git ls-remote https://repo1.dso.mil/dsop/redhat/ubi/9.x/ubi9-minimal.git refs/heads/development | cut -f1
+  ubi10Revision:
+    kind: shell
+    spec:
+      command: git ls-remote https://repo1.dso.mil/dsop/redhat/ubi/10.x/ubi10-minimal.git refs/heads/development | cut -f1
+targets:
+  bitbucketCatalog:
+    kind: yaml
+    sourceid: bitbucketRevision
+    scmid: factory
+    spec:
+      file: catalog/images/bitbucket-lts.yaml
+      key: $.source.revision
+  vendirBitbucket:
+    kind: yaml
+    sourceid: bitbucketRevision
+    scmid: factory
+    spec:
+      file: vendir/config.yml
+      key: $.directories[0].contents[0].git.ref
+  confluenceCatalog:
+    kind: yaml
+    sourceid: confluenceRevision
+    scmid: factory
+    spec:
+      file: catalog/images/confluence-lts.yaml
+      key: $.source.revision
+  vendirConfluence:
+    kind: yaml
+    sourceid: confluenceRevision
+    scmid: factory
+    spec:
+      file: vendir/config.yml
+      key: $.directories[0].contents[1].git.ref
+  jiraCatalog:
+    kind: yaml
+    sourceid: jiraRevision
+    scmid: factory
+    spec:
+      file: catalog/images/jira-lts.yaml
+      key: $.source.revision
+  vendirJira:
+    kind: yaml
+    sourceid: jiraRevision
+    scmid: factory
+    spec:
+      file: vendir/config.yml
+      key: $.directories[0].contents[2].git.ref
+  ubi9Catalog:
+    kind: yaml
+    sourceid: ubi9Revision
+    scmid: factory
+    spec:
+      file: catalog/images/ubi9-minimal.yaml
+      key: $.source.revision
+  vendirUbi9:
+    kind: yaml
+    sourceid: ubi9Revision
+    scmid: factory
+    spec:
+      file: vendir/config.yml
+      key: $.directories[0].contents[3].git.ref
+  ubi10Catalog:
+    kind: yaml
+    sourceid: ubi10Revision
+    scmid: factory
+    spec:
+      file: catalog/images/ubi10-minimal.yaml
+      key: $.source.revision
+  vendirUbi10:
+    kind: yaml
+    sourceid: ubi10Revision
+    scmid: factory
+    spec:
+      file: vendir/config.yml
+      key: $.directories[0].contents[4].git.ref

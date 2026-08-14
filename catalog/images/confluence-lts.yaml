@@ -1,0 +1,39 @@
+apiVersion: factory.platform.example/v1alpha1
+kind: HardenedImage
+metadata:
+  name: confluence-lts
+  track: release
+  description: Hardened Confluence Data Center LTS image.
+source:
+  upstream: https://repo1.dso.mil/dsop/atlassian/confluence-data-center/confluence-lts.git
+  mirrorPath: mirrors/repo1/atlassian/confluence-lts
+  revision: 235fbd55719a89a6128ff5819e023935724ae9ed
+  containerfile: Dockerfile
+  hardeningManifest: hardening_manifest.yaml
+  overlay: overlays/confluence-lts/patches
+product:
+  name: Confluence Data Center LTS
+  version: 10.2.15
+  vendor: Atlassian
+  license: proprietary
+build:
+  platforms: [linux/amd64]
+  network: internal-only
+  base:
+    kind: catalog
+    image: ubi9-minimal
+  testProfile: confluence
+  buildArgs:
+    CONFLUENCE_VERSION: 10.2.15
+policy:
+  profile: atlassian-rhel9-container
+  maximumDatabaseAgeHours: 72
+  block:
+    knownExploited: true
+    critical: true
+    fixableHigh: true
+    newHigh: true
+publication:
+  quarantineRepository: oci-app-quarantine-local
+  releaseRepository: oci-release-local
+  imagePath: atlassian/confluence-lts

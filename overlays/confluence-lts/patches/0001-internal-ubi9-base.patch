@@ -1,0 +1,28 @@
+diff --git a/Dockerfile b/Dockerfile
+index 24c2b12..119c9d8 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,8 +1,5 @@
+-ARG BASE_REGISTRY=registry1.dso.mil
+-ARG BASE_IMAGE=ironbank/redhat/ubi/ubi9-minimal
+-ARG BASE_TAG=9.7
+-
+-FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
++ARG BASE_REF
++FROM ${BASE_REF}
+
+ ARG CONFLUENCE_VERSION=10.2.15
+
+diff --git a/hardening_manifest.yaml b/hardening_manifest.yaml
+index d8d59ec..d99e1b5 100644
+--- a/hardening_manifest.yaml
++++ b/hardening_manifest.yaml
+@@ -14,7 +14,7 @@ tags:
+ # Build args passed to Dockerfile ARGs
+ args:
+   BASE_IMAGE: "redhat/ubi/ubi9-minimal"
+-  BASE_TAG: "9.7"
++  BASE_TAG: "9.8"
+
+ # Docker image labels
+ labels:

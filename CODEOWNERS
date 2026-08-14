@@ -1,0 +1,10 @@
+# Replace these placeholder groups with real protected GitLab groups.
+/policies/                         @platform-security
+/compliance/                       @platform-security
+/catalog/schema/                   @platform-security @platform-engineering
+/components/                       @platform-engineering @platform-security
+/scripts/sign_and_attest.sh        @platform-security
+/scripts/promote_image.sh          @platform-security
+/scripts/import_image.sh           @platform-security
+/scripts/create_remediation_mr.sh  @platform-security
+/agents/                           @ai-governance @platform-security

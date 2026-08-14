@@ -1,0 +1,34 @@
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "pipeline"
+
+stages: [plan, execute]
+
+variables:
+  FACTORY_TOOLCHAIN_VERSION: "0.1.0"
+  FCS_CLI_VERSION: "4.0.0"
+  FACTORY_CATALOG_DIR: "catalog/images"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+render-child-pipeline:
+  stage: plan
+  image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-python:${FACTORY_TOOLCHAIN_VERSION}
+  script:
+    - scripts/render_child_pipeline.sh generated-child.yml
+  artifacts:
+    paths: [generated-child.yml]
+    expire_in: 7 days
+
+execute-child-pipeline:
+  stage: execute
+  needs: [render-child-pipeline]
+  trigger:
+    include:
+      - artifact: generated-child.yml
+        job: render-child-pipeline
+    strategy: depend
+    forward:
+      pipeline_variables: true

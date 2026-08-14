@@ -1,0 +1,32 @@
+diff --git a/Dockerfile b/Dockerfile
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -2,6 +2,7 @@ ARG BASE_REF
+ FROM ${BASE_REF}
+
+ ARG BITBUCKET_VERSION=10.2.6
++ARG BASE_MAJOR=9
+
+ ENV APP_NAME=bitbucket
+ ENV RUN_USER=bitbucket
+@@ -62,12 +63,14 @@ RUN microdnf -y update && microdnf -y upgrade \
+     && microdnf clean all \
+     && microdnf -y remove tar \
+     #Package Removal
+-    && rpm -e --nodeps freetype libpng avahi-libs cups-libs \
+-    && (! rpm -q ncurses-base >/dev/null 2>&1) || rpm -e --nodeps ncurses-base \
+-    && (! rpm -q ncurses >/dev/null 2>&1) || rpm -e --nodeps ncurses \
+-    && (! rpm -q emacs-filesystem >/dev/null 2>&1) || rpm -e --nodeps emacs-filesystem \
+-    && (! rpm -q openssh >/dev/null 2>&1) || rpm -e --nodeps openssh \
+-    && (! rpm -q openssh-clients >/dev/null 2>&1) || rpm -e --nodeps openssh-clients
++    && if [ "${BASE_MAJOR}" = "9" ]; then \
++         rpm -e --nodeps freetype libpng avahi-libs cups-libs \
++         && { ! rpm -q ncurses-base >/dev/null 2>&1 || rpm -e --nodeps ncurses-base; } \
++         && { ! rpm -q ncurses >/dev/null 2>&1 || rpm -e --nodeps ncurses; } \
++         && { ! rpm -q emacs-filesystem >/dev/null 2>&1 || rpm -e --nodeps emacs-filesystem; } \
++         && { ! rpm -q openssh >/dev/null 2>&1 || rpm -e --nodeps openssh; } \
++         && { ! rpm -q openssh-clients >/dev/null 2>&1 || rpm -e --nodeps openssh-clients; }; \
++       fi
+
+ # Must be declared after setting perms
+ VOLUME ["${BITBUCKET_HOME}"]

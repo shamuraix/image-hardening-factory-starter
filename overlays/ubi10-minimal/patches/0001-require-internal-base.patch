@@ -1,0 +1,11 @@
+diff --git a/Dockerfile b/Dockerfile
+index 27b02b0..96e4bcc 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,4 +1,5 @@
+-FROM registry.access.redhat.com/ubi10/ubi-minimal:10.2
++ARG BASE_REF
++FROM ${BASE_REF}
+
+ COPY scripts /dsop-fix/
+ COPY banner/issue /etc/

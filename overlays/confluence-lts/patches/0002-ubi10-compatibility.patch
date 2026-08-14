@@ -1,0 +1,19 @@
+diff --git a/Dockerfile b/Dockerfile
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -2,6 +2,7 @@ ARG BASE_REF
+ FROM ${BASE_REF}
+
+ ARG CONFLUENCE_VERSION=10.2.15
++ARG BASE_MAJOR=9
+
+ ENV APP_NAME=confluence
+ ENV RUN_USER=confluence
+@@ -47,6 +48,6 @@ RUN microdnf -y update && microdnf -y upgrade \
+     && chown -R ${RUN_USER}:${RUN_GROUP} /opt/ /entrypoint.py /entrypoint_helpers.py \
+     && chmod 0750 ${CONFLUENCE_HOME} \
+     && microdnf remove -y tar gzip \
+-    && rpm -e --nodeps avahi-libs cups-libs \
++    && if [ "${BASE_MAJOR}" = "9" ]; then rpm -e --nodeps avahi-libs cups-libs; fi \
+     && microdnf clean all \
+     && rm -rf /opt/atlassian-confluence-${CONFLUENCE_VERSION}.tar.gz

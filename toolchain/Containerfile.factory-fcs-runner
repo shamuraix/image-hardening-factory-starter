@@ -1,0 +1,17 @@
+ARG FACTORY_RUNNER_REF
+FROM ${FACTORY_RUNNER_REF}
+
+ARG FCS_VERSION
+LABEL org.opencontainers.image.title="Image Hardening Factory FCS runner" \
+      org.opencontainers.image.version="${FCS_VERSION}"
+
+# The proprietary CLI is downloaded from the Falcon API and checksum-verified
+# by the trusted toolchain bootstrap process before this build. It is never
+# fetched dynamically by an image pipeline job.
+USER 0
+COPY --chmod=0555 dist/fcs/fcs /usr/local/bin/fcs
+RUN fcs --help >/dev/null
+
+USER 10001
+ENTRYPOINT []
+CMD ["/bin/bash"]

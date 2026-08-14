@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "summary", "actions", "blocked", "confidence"],
+  "properties": {
+    "image": {"type": "string"},
+    "summary": {"type": "string"},
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["finding", "component", "action", "evidence", "verification"],
+        "properties": {
+          "finding": {"type": "string"},
+          "component": {"type": "string"},
+          "action": {"type": "string"},
+          "candidateVersion": {"type": ["string", "null"]},
+          "evidence": {"type": "array", "items": {"type": "string"}},
+          "verification": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "blocked": {"type": "array", "items": {"type": "string"}},
+    "confidence": {"enum": ["high", "medium", "low"]}
+  }
+}

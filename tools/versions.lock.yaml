@@ -1,0 +1,50 @@
+schemaVersion: "1.0"
+tools:
+  buildah:
+    project: https://github.com/containers/buildah
+    license: Apache-2.0
+    version: 1.41.4
+  skopeo:
+    project: https://github.com/containers/skopeo
+    license: Apache-2.0
+    version: 1.20.0
+  oras:
+    project: https://github.com/oras-project/oras
+    license: Apache-2.0
+    version: 1.3.0
+  cosign:
+    project: https://github.com/sigstore/cosign
+    license: Apache-2.0
+    version: 2.6.0
+  fcs:
+    project: https://github.com/CrowdStrike/fcs-action
+    license: Proprietary CrowdStrike CLI; validate entitlement before packaging
+    version: 4.0.0
+  syft:
+    project: https://github.com/anchore/syft
+    license: Apache-2.0
+    version: 1.30.0
+  grype:
+    project: https://github.com/anchore/grype
+    license: Apache-2.0
+    version: 0.95.0
+  trivy:
+    project: https://github.com/aquasecurity/trivy
+    license: Apache-2.0
+    version: 0.66.0
+  osv-scanner:
+    project: https://github.com/google/osv-scanner
+    license: Apache-2.0
+    version: 2.2.3
+  opa:
+    project: https://github.com/open-policy-agent/opa
+    license: Apache-2.0
+    version: 1.7.1
+  openscap:
+    project: https://github.com/OpenSCAP/openscap
+    license: LGPL-2.1-or-later
+    version: 1.4.2
+  compliance-as-code:
+    project: https://github.com/ComplianceAsCode/content
+    license: BSD-3-Clause
+    version: 0.1.77

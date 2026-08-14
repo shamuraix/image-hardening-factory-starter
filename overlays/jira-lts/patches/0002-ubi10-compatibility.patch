@@ -1,0 +1,20 @@
+diff --git a/Dockerfile b/Dockerfile
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -3,6 +3,7 @@ FROM ${BASE_REF}
+
+ ARG JIRA_VERSION=11.3.10
+ ARG JSM_VERSION=11.3.10
++ARG BASE_MAJOR=9
+ ARG ARTEFACT_NAME=atlassian-jira-software
+
+ ENV APP_NAME=jira
+@@ -51,7 +52,7 @@ RUN microdnf -y update && microdnf -y upgrade \
+     && rm -rf /opt/jira-servicedesk-application-${JSM_VERSION}.obr \
+     && rm -rf /opt/jsm/ \
+     && microdnf -y remove unzip gzip tar \
+-    && rpm -e --nodeps avahi-libs cups-libs
++    && if [ "${BASE_MAJOR}" = "9" ]; then rpm -e --nodeps avahi-libs cups-libs; fi
+
+ # Must be declared after setting perms
+ VOLUME ["${JIRA_HOME}"]

@@ -1,0 +1,39 @@
+diff --git a/Dockerfile b/Dockerfile
+index da9d360..bbd1b33 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,8 +1,5 @@
+-ARG BASE_REGISTRY=registry1.dso.mil
+-ARG BASE_IMAGE=ironbank/redhat/ubi/ubi9-minimal
+-ARG BASE_TAG=9.7
+-
+-FROM ${BASE_REGISTRY}/${BASE_IMAGE}:${BASE_TAG}
++ARG BASE_REF
++FROM ${BASE_REF}
+
+ ARG JIRA_VERSION=11.3.10
+ ARG JSM_VERSION=11.3.10
+@@ -50,8 +48,8 @@ RUN microdnf -y update && microdnf -y upgrade \
+     && chmod +x /usr/bin/tini \
+     && microdnf clean all \
+     && rm -rf /opt/${ARTEFACT_NAME}-${JIRA_VERSION}.tar.gz \
+-    rm -rf /opt/jira-servicedesk-application-{$JSM_VERSION}.obr \
+-    && rm -rf /opt/jsm \
++    && rm -rf /opt/jira-servicedesk-application-${JSM_VERSION}.obr \
++    && rm -rf /opt/jsm/ \
+     && microdnf -y remove unzip gzip tar \
+     && rpm -e --nodeps avahi-libs cups-libs
+
+diff --git a/hardening_manifest.yaml b/hardening_manifest.yaml
+index 45c5292..ddcb8b6 100644
+--- a/hardening_manifest.yaml
++++ b/hardening_manifest.yaml
+@@ -14,7 +14,7 @@ tags:
+ # Build args passed to Dockerfile ARGs
+ args:
+   BASE_IMAGE: "redhat/ubi/ubi9-minimal"
+-  BASE_TAG: "9.7"
++  BASE_TAG: "9.8"
+
+ # Docker image labels
+ labels:

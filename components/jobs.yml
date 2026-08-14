@@ -1,0 +1,186 @@
+.factory-default:
+  image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-runner:${FACTORY_TOOLCHAIN_VERSION}
+  tags: [factory-offline]
+  interruptible: true
+  variables:
+    FACTORY_WORK_DIR: work/${FACTORY_IMAGE}
+  before_script:
+    - mkdir -p "${FACTORY_WORK_DIR}"
+
+.factory-validate:
+  extends: .factory-default
+  stage: validate
+  script:
+    - factory validate --catalog catalog/images
+    - scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
+  artifacts:
+    when: always
+    paths: ["work/${FACTORY_IMAGE}/validation.json"]
+
+.factory-prepare:
+  extends: .factory-default
+  stage: prepare
+  id_tokens:
+    ARTIFACTORY_ID_TOKEN:
+      aud: ${ARTIFACTORY_OIDC_AUDIENCE}
+  script:
+    - scripts/prepare_context.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    paths: ["work/${FACTORY_IMAGE}/context", "work/${FACTORY_IMAGE}/resource-lock.json", "work/${FACTORY_IMAGE}/resource-lock.sig", "work/${FACTORY_IMAGE}/build.env", "work/${FACTORY_IMAGE}/base.oci.tar"]
+    expire_in: 7 days
+
+.factory-build:
+  extends: .factory-default
+  stage: build
+  tags: [factory-buildah-ephemeral]
+  script:
+    - scripts/build_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    paths: ["work/${FACTORY_IMAGE}/image.oci.tar", "work/${FACTORY_IMAGE}/image-metadata.json", "work/${FACTORY_IMAGE}/build.env"]
+    expire_in: 7 days
+
+.factory-sbom:
+  extends: .factory-default
+  stage: analyze
+  script:
+    - scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
+  artifacts:
+    paths: ["work/${FACTORY_IMAGE}/evidence/sbom.*"]
+    expire_in: 30 days
+
+.factory-scan:
+  extends: .factory-default
+  stage: analyze
+  script:
+    - scripts/scan_image.sh "${FACTORY_WORK_DIR}"
+  allow_failure: true
+  artifacts:
+    when: always
+    paths: ["work/${FACTORY_IMAGE}/evidence/scans", "work/${FACTORY_IMAGE}/evidence/findings.json", "work/${FACTORY_IMAGE}/evidence/database-status.json"]
+    expire_in: 30 days
+
+.factory-fcs:
+  extends: .factory-default
+  image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-fcs-runner:${FCS_CLI_VERSION}
+  stage: analyze
+  tags: [factory-fcs-connected]
+  environment:
+    name: fcs/${FACTORY_RELEASE_ENV}
+  script:
+    - scripts/fcs_scan_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    when: always
+    paths:
+      - "work/${FACTORY_IMAGE}/evidence/scans/fcs"
+    expire_in: 90 days
+
+.factory-compliance:
+  extends: .factory-default
+  stage: compliance
+  tags: [factory-fips-ephemeral]
+  script:
+    - scripts/compliance_scan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    when: always
+    paths: ["work/${FACTORY_IMAGE}/evidence/compliance"]
+    expire_in: 30 days
+
+.factory-test:
+  extends: .factory-default
+  stage: test
+  tags: [factory-test-ephemeral]
+  script:
+    - scripts/run_tests.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    when: always
+    paths: ["work/${FACTORY_IMAGE}/evidence/tests"]
+    expire_in: 30 days
+
+.factory-gate:
+  extends: .factory-default
+  stage: policy
+  script:
+    - scripts/evaluate_gate.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    when: always
+    paths:
+      - "work/${FACTORY_IMAGE}/evidence/gate-input.json"
+      - "work/${FACTORY_IMAGE}/evidence/gate-result.json"
+      - "work/${FACTORY_IMAGE}/evidence/findings.json"
+      - "work/${FACTORY_IMAGE}/evidence/database-status.json"
+    reports:
+      dotenv: "work/${FACTORY_IMAGE}/gate.env"
+    expire_in: 90 days
+
+.factory-remediate:
+  extends: .factory-default
+  stage: policy
+  tags: [factory-ai-untrusted]
+  allow_failure: true
+  when: manual
+  script:
+    - scripts/ai_remediation.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    when: always
+    paths: ["work/${FACTORY_IMAGE}/evidence/remediation"]
+    expire_in: 30 days
+
+.factory-remediation-mr:
+  extends: .factory-default
+  stage: policy
+  tags: [factory-remediation-broker]
+  allow_failure: true
+  when: manual
+  script:
+    - scripts/create_remediation_mr.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+.factory-import:
+  extends: .factory-default
+  stage: import
+  tags: [factory-protected-importer]
+  resource_group: import-${FACTORY_IMAGE}
+  id_tokens:
+    ARTIFACTORY_ID_TOKEN:
+      aud: ${ARTIFACTORY_OIDC_AUDIENCE}
+  script:
+    - scripts/import_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    paths:
+      - "work/${FACTORY_IMAGE}/import-result.json"
+      - "work/${FACTORY_IMAGE}/image.oci.tar"
+      - "work/${FACTORY_IMAGE}/image-metadata.json"
+      - "work/${FACTORY_IMAGE}/resource-lock.json"
+    reports:
+      dotenv: "work/${FACTORY_IMAGE}/import.env"
+    expire_in: 30 days
+
+.factory-attest:
+  extends: .factory-default
+  stage: attest
+  tags: [factory-protected-signing]
+  environment:
+    name: signing/${FACTORY_RELEASE_ENV}
+  id_tokens:
+    ARTIFACTORY_ID_TOKEN:
+      aud: ${ARTIFACTORY_OIDC_AUDIENCE}
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
+  script:
+    - scripts/sign_and_attest.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+  artifacts:
+    paths: ["work/${FACTORY_IMAGE}/evidence/signing-result.json"]
+    expire_in: 1 year
+
+.factory-promote:
+  extends: .factory-default
+  stage: promote
+  tags: [factory-protected-promotion]
+  resource_group: promote-${FACTORY_RELEASE_ENV}-${FACTORY_IMAGE}
+  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      when: manual
+    - when: never
+  script:
+    - scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"

@@ -1,0 +1,39 @@
+apiVersion: factory.platform.example/v1alpha1
+kind: HardenedImage
+metadata:
+  name: bitbucket-lts
+  track: release
+  description: Hardened Bitbucket Data Center LTS image.
+source:
+  upstream: https://repo1.dso.mil/dsop/atlassian/bitbucket-data-center/bitbucket-lts.git
+  mirrorPath: mirrors/repo1/atlassian/bitbucket-lts
+  revision: 0accb8f319027a0de3a020e53c14efaf0de8568c
+  containerfile: Dockerfile
+  hardeningManifest: hardening_manifest.yaml
+  overlay: overlays/bitbucket-lts/patches
+product:
+  name: Bitbucket Data Center LTS
+  version: 10.2.6
+  vendor: Atlassian
+  license: proprietary
+build:
+  platforms: [linux/amd64]
+  network: internal-only
+  base:
+    kind: catalog
+    image: ubi9-minimal
+  testProfile: bitbucket
+  buildArgs:
+    BITBUCKET_VERSION: 10.2.6
+policy:
+  profile: atlassian-rhel9-container
+  maximumDatabaseAgeHours: 72
+  block:
+    knownExploited: true
+    critical: true
+    fixableHigh: true
+    newHigh: true
+publication:
+  quarantineRepository: oci-app-quarantine-local
+  releaseRepository: oci-release-local
+  imagePath: atlassian/bitbucket-lts

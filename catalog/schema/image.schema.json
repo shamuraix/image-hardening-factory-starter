@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://factory.example/schema/hardened-image-v1alpha1.json",
+  "title": "HardenedImage",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "metadata", "source", "product", "build", "policy", "publication"],
+  "properties": {
+    "apiVersion": {"const": "factory.platform.example/v1alpha1"},
+    "kind": {"const": "HardenedImage"},
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "track"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$"},
+        "track": {"enum": ["release", "canary"]},
+        "description": {"type": "string"}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upstream", "mirrorPath", "revision", "containerfile", "hardeningManifest"],
+      "properties": {
+        "upstream": {"type": "string", "format": "uri"},
+        "mirrorPath": {"type": "string", "pattern": "^[a-z0-9_./-]+$"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "containerfile": {"type": "string"},
+        "hardeningManifest": {"type": "string"},
+        "overlay": {"type": "string"}
+      }
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "vendor", "license"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "vendor": {"type": "string"},
+        "license": {"type": "string"}
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platforms", "network", "base", "testProfile"],
+      "properties": {
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"enum": ["linux/amd64", "linux/arm64"]}
+        },
+        "network": {"const": "internal-only"},
+        "base": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "lockKey"],
+              "properties": {
+                "kind": {"const": "upstream"},
+                "lockKey": {"type": "string"}
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "image"],
+              "properties": {
+                "kind": {"const": "catalog"},
+                "image": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$"}
+              }
+            }
+          ]
+        },
+        "testProfile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]+$"},
+        "buildArgs": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "maximumDatabaseAgeHours", "block"],
+      "properties": {
+        "profile": {"type": "string"},
+        "maximumDatabaseAgeHours": {"type": "integer", "minimum": 1},
+        "block": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["knownExploited", "critical", "fixableHigh", "newHigh"],
+          "properties": {
+            "knownExploited": {"type": "boolean"},
+            "critical": {"type": "boolean"},
+            "fixableHigh": {"type": "boolean"},
+            "newHigh": {"type": "boolean"}
+          }
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quarantineRepository", "releaseRepository", "imagePath"],
+      "properties": {
+        "quarantineRepository": {"type": "string"},
+        "releaseRepository": {"type": "string"},
+        "imagePath": {"type": "string"}
+      }
+    }
+  }
+}

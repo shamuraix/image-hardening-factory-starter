@@ -1,0 +1,37 @@
+apiVersion: factory.platform.example/v1alpha1
+kind: HardenedImage
+metadata:
+  name: ubi10-minimal
+  track: canary
+  description: UBI 10 compatibility canary; not an Atlassian production base.
+source:
+  upstream: https://repo1.dso.mil/dsop/redhat/ubi/10.x/ubi10-minimal.git
+  mirrorPath: mirrors/repo1/redhat/ubi10-minimal
+  revision: 3cd1849717122c8092a62a789269db71845363dd
+  containerfile: Dockerfile
+  hardeningManifest: hardening_manifest.yaml
+  overlay: overlays/ubi10-minimal/patches
+product:
+  name: Red Hat Universal Base Image Minimal
+  version: "10.2"
+  vendor: Red Hat
+  license: Red Hat Universal Base Image EULA
+build:
+  platforms: [linux/amd64]
+  network: internal-only
+  base:
+    kind: upstream
+    lockKey: redhat-ubi10-minimal
+  testProfile: base
+policy:
+  profile: rhel10-container-stig-canary
+  maximumDatabaseAgeHours: 72
+  block:
+    knownExploited: true
+    critical: true
+    fixableHigh: true
+    newHigh: true
+publication:
+  quarantineRepository: oci-base-quarantine-local
+  releaseRepository: oci-canary-local
+  imagePath: bases/ubi10-minimal
