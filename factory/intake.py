@@ -128,8 +128,10 @@ def resolve_manifest(
             locked, key=lambda item: (item["kind"], item.get("filename", item.get("tag", "")))
         ),
     }
+    output_path = Path(output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     canonical = json.dumps(lock, indent=2, sort_keys=True) + "\n"
-    Path(output).write_text(canonical, encoding="utf-8")
+    output_path.write_text(canonical, encoding="utf-8")
     return lock
 
 

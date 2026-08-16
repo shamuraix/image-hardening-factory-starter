@@ -76,6 +76,43 @@ class IntakeTests(unittest.TestCase):
                     cache,
                 )
 
+    def test_http_resource_creates_parent_directories_for_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, cache = root / "source", root / "cache"
+            source.mkdir()
+            payload = b"known-resource\n"
+            import hashlib
+
+            digest = hashlib.sha512(payload).hexdigest()
+            manifest = {
+                "resources": [
+                    {
+                        "filename": "resource.bin",
+                        "url": "https://upstream.example/resource.bin",
+                        "validation": {"type": "sha512", "value": digest},
+                    }
+                ]
+            }
+            (source / "hardening_manifest.yaml").write_text(
+                yaml.safe_dump(manifest), encoding="utf-8"
+            )
+
+            output = root / "nested" / "locks" / "resource-lock.json"
+            with patch.object(intake, "download_file", return_value=None) as fake_download:
+                fake_download.side_effect = lambda _url, destination: destination.write_bytes(payload)
+                intake.resolve_manifest(
+                    source,
+                    "hardening_manifest.yaml",
+                    "a" * 40,
+                    output,
+                    cache,
+                    generated_at=datetime(2026, 1, 1, tzinfo=UTC),
+                )
+
+            self.assertTrue(output.exists())
+            self.assertEqual(output.parent.exists(), True)
+
     def test_oci_resource_rejects_manifest_digest_mismatch(self) -> None:
         resource = {
             "url": f"docker://registry.example/image@sha256:{'0' * 64}",
