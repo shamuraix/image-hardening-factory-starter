@@ -8,6 +8,8 @@ image=$(yq -r '.metadata.name' "${catalog}")
 mirror_path=$(yq -r '.source.mirrorPath' "${catalog}")
 revision=$(yq -r '.source.revision' "${catalog}")
 overlay=$(yq -r '.source.overlay // ""' "${catalog}")
+source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
+local_image_namespace=${LOCAL_IMAGE_NAMESPACE:-localhost/factory}
 
 : "${INTERNAL_GIT_BASE_URL:?INTERNAL_GIT_BASE_URL is required}"
 : "${ARTIFACTORY_URL:?ARTIFACTORY_URL is required}"
@@ -27,7 +29,7 @@ if [[ -n "${overlay}" ]]; then
 fi
 scripts/validate_context.py "${catalog}" "${context}"
 
-lock_url="${ARTIFACTORY_URL%/}/artifactory/generic-source-local/locks/${image}/${revision}/resource-lock.json"
+lock_url="${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/resource-lock.json"
 curl --fail --silent --show-error --location \
   --header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}" \
   --output "${work_dir}/resource-lock.json" "${lock_url}"
@@ -49,7 +51,7 @@ while IFS=$'\t' read -r filename path digest; do
   curl --fail --silent --show-error --location \
     --header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}" \
     --output "${context}/${filename}" \
-    "${ARTIFACTORY_URL%/}/artifactory/generic-source-local/${path}"
+    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/${path}"
   printf '%s  %s\n' "${digest#sha256:}" "${context}/${filename}" | sha256sum --check --status
 done < <(jq -r '.resources[] | select(.kind == "file") | [.filename,.artifactoryPath,.contentDigest] | @tsv' "${work_dir}/resource-lock.json")
 
@@ -58,10 +60,10 @@ if [[ "${base_kind}" == catalog ]]; then
   base=$(yq -r '.build.base.image' "${catalog}")
   if [[ -f "work/${base}/image.oci.tar" ]]; then
     cp "work/${base}/image.oci.tar" "${work_dir}/base.oci.tar"
-    base_ref="localhost/factory/${base}:dependency"
+    base_ref="${local_image_namespace}/${base}:dependency"
     base_digest=$(jq -er '.digest' "work/${base}/image-metadata.json")
   else
-    release_lock="${ARTIFACTORY_URL%/}/artifactory/generic-source-local/releases/${base}/current.json"
+    release_lock="${ARTIFACTORY_URL%/}/artifactory/${source_repository}/releases/${base}/current.json"
     base_ref=$(curl --fail --silent --show-error \
       --header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}" "${release_lock}" | jq -er '.imageRef')
     base_digest=${base_ref##*@}

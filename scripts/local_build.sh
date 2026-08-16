@@ -23,7 +23,10 @@ done
 
 local_root=${LOCAL_FACTORY_ROOT:-.local-factory}
 registry=${LOCAL_REGISTRY:-127.0.0.1:5000}
+registry_image=${LOCAL_REGISTRY_IMAGE:-docker.io/library/registry:2}
 registry_container=${LOCAL_REGISTRY_CONTAINER:-factory-local-registry}
+registry_namespace=${LOCAL_REGISTRY_NAMESPACE:-factory}
+local_image_namespace=${LOCAL_IMAGE_NAMESPACE:-localhost/factory}
 rpm_port=${LOCAL_RPM_PORT:-18080}
 work_dir="work/${image}"
 context="${work_dir}/context"
@@ -73,7 +76,7 @@ fi
 started_registry=false
 if ! curl --fail --silent "http://${registry}/v2/" >/dev/null 2>&1; then
   podman run --detach --rm --name "${registry_container}" \
-    --publish "127.0.0.1:${registry##*:}:5000" docker.io/library/registry:2 >/dev/null
+    --publish "127.0.0.1:${registry##*:}:5000" "${registry_image}" >/dev/null
   started_registry=true
 fi
 
@@ -153,19 +156,19 @@ done < <(jq -r '.resources[] | select(.kind == "file") | [.filename] | @tsv' "${
 
 repomd_digest="sha256:$(sha256sum "${repomd_file}" | awk '{print $1}')"
 if [[ ${base_kind} == catalog ]]; then
-  base_ref="localhost/factory/${base_image}:local"
+ base_ref="${local_image_namespace}/${base_image}:local"
   cp "work/${base_image}/image.oci.tar" "${work_dir}/base.oci.tar"
   base_digest=$(jq -er '.digest' "work/${base_image}/image-metadata.json")
 else
   base_source=$(jq -er '.resources[] | select(.kind == "oci") | .source' \
     "${work_dir}/resource-lock.json" | head -n1)
-  base_ref="localhost/factory/${image}-upstream:local"
-  skopeo copy --all "${base_source}" "docker://${registry}/factory/${image}-upstream:local" \
+  base_ref="${local_image_namespace}/${image}-upstream:local"
+  skopeo copy --all "${base_source}" "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
     --dest-tls-verify=false
-  skopeo copy --all "docker://${registry}/factory/${image}-upstream:local" \
+  skopeo copy --all "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
     "oci-archive:${work_dir}/base.oci.tar:${base_ref}" --src-tls-verify=false
   base_digest=$(skopeo inspect --tls-verify=false \
-    "docker://${registry}/factory/${image}-upstream:local" | jq -er '.Digest')
+    "docker://${registry}/${registry_namespace}/${image}-upstream:local" | jq -er '.Digest')
 fi
 
 jq --arg snapshot "${snapshot_id}" --arg repomdDigest "${repomd_digest}" \
@@ -209,7 +212,7 @@ export RPM_SNAPSHOT_UBI10_ID="${snapshot_id}"
 
 scripts/build_image.sh "${catalog}" "${work_dir}"
 skopeo copy "oci-archive:${work_dir}/image.oci.tar" \
-  "docker://${registry}/factory/${image}:local" --dest-tls-verify=false
+  "docker://${registry}/${registry_namespace}/${image}:local" --dest-tls-verify=false
 
-printf 'Built %s\nOCI archive: %s/image.oci.tar\nLocal registry: %s/factory/%s:local\nDevelopment lock: %s/resource-lock.json\n' \
-  "${image}" "${work_dir}" "${registry}" "${image}" "${work_dir}"
+printf 'Built %s\nOCI archive: %s/image.oci.tar\nLocal registry: %s/%s/%s:local\nDevelopment lock: %s/resource-lock.json\n' \
+  "${image}" "${work_dir}" "${registry}" "${registry_namespace}" "${image}" "${work_dir}"

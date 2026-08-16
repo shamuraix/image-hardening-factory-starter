@@ -5,6 +5,7 @@ source_repo=${1:?source .repo file is required}
 repository=${2:?Artifactory repository is required}
 output=${3:?output directory is required}
 repo_id=${4:?source repository id is required}
+source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
 : "${ARTIFACTORY_URL:?}"
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
 : "${COSIGN_INTAKE_KEY_REF:?}"
@@ -37,6 +38,6 @@ for file in snapshot.json snapshot.sig; do
   curl --fail --silent --show-error --request PUT \
     --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --upload-file "${output}/${file}" \
-    "${ARTIFACTORY_URL%/}/artifactory/generic-source-local/rpm-snapshots/${snapshot_id}/${file}"
+    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/rpm-snapshots/${snapshot_id}/${file}"
 done
 printf '%s\n' "${snapshot_id}"
