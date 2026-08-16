@@ -5,6 +5,7 @@ image=${1:?image name is required}
 catalog="catalog/images/${image}.yaml"
 revision=$(yq -r '.source.revision' "${catalog}")
 work="work/${image}"
+source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
 : "${ARTIFACTORY_URL:?}"
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
 : "${COSIGN_INTAKE_KEY_REF:?}"
@@ -15,7 +16,7 @@ for file in snapshot.json snapshot.sig; do
   curl --fail --silent --show-error \
     --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --output "${work}/${file}" \
-    "${ARTIFACTORY_URL%/}/artifactory/generic-source-local/rpm-snapshots/${snapshot_id}/${file}"
+    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/rpm-snapshots/${snapshot_id}/${file}"
 done
 cosign verify-blob --key "${COSIGN_INTAKE_PUBLIC_KEY}" \
   --insecure-ignore-tlog --signature "${work}/snapshot.sig" "${work}/snapshot.json" >/dev/null
@@ -31,7 +32,7 @@ while IFS=$'\t' read -r filename path digest; do
     --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --header "X-Checksum-Sha256: ${digest#sha256:}" \
     --upload-file "${work}/cache/${filename}" \
-    "${ARTIFACTORY_URL%/}/artifactory/generic-source-local/${path}"
+    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/${path}"
 done < <(jq -r '.resources[] | select(.kind == "file") | [.filename,.artifactoryPath,.contentDigest] | @tsv' "${work}/resource-lock.json")
 
 cosign sign-blob --yes --tlog-upload=false --key "${COSIGN_INTAKE_KEY_REF}" \
@@ -40,7 +41,7 @@ for file in resource-lock.json resource-lock.sig; do
   curl --fail --silent --show-error --request PUT \
     --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --upload-file "${work}/${file}" \
-    "${ARTIFACTORY_URL%/}/artifactory/generic-source-local/locks/${image}/${revision}/${file}"
+    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/${file}"
 done
 
 # OCI archives are imported by digest with Skopeo. The destination name is

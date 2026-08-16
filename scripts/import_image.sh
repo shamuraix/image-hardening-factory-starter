@@ -19,8 +19,8 @@ fi
 
 : "${ARTIFACTORY_REGISTRY:?}"
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
-repository=$(yq -r '.publication.quarantineRepository' "${catalog}")
-path=$(yq -r '.publication.imagePath' "${catalog}")
+repository=${FACTORY_QUARANTINE_REPOSITORY:-$(yq -r '.publication.quarantineRepository' "${catalog}")}
+path=${FACTORY_IMAGE_PATH:-$(yq -r '.publication.imagePath' "${catalog}")}
 version=$(yq -r '.product.version' "${catalog}")
 destination="${ARTIFACTORY_REGISTRY}/${repository}/${path}:${version}-${CI_PIPELINE_ID:-local}"
 candidate_digest=$(jq -er '.digest' "${work_dir}/image-metadata.json")

@@ -10,7 +10,7 @@ snapshot-ubi9-rpms:
   image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-intake:${FACTORY_TOOLCHAIN_VERSION}
   tags: [factory-connected-intake]
   script:
-    - snapshot_id=$(scripts/snapshot_rpm_repo.sh "${UBI9_SOURCE_REPO_FILE}" rpm-ubi9-snapshot-local work/rpm-ubi9 "${UBI9_SOURCE_REPO_ID}" | tail -n1)
+    - snapshot_id=$(scripts/snapshot_rpm_repo.sh "${UBI9_SOURCE_REPO_FILE}" "${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY:-rpm-ubi9-snapshot-local}" work/rpm-ubi9 "${UBI9_SOURCE_REPO_ID}" | tail -n1)
     - printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" >ubi9-snapshot.env
   artifacts:
     reports:
@@ -21,7 +21,7 @@ snapshot-ubi10-rpms:
   image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-intake:${FACTORY_TOOLCHAIN_VERSION}
   tags: [factory-connected-intake]
   script:
-    - snapshot_id=$(scripts/snapshot_rpm_repo.sh "${UBI10_SOURCE_REPO_FILE}" rpm-ubi10-snapshot-local work/rpm-ubi10 "${UBI10_SOURCE_REPO_ID}" | tail -n1)
+    - snapshot_id=$(scripts/snapshot_rpm_repo.sh "${UBI10_SOURCE_REPO_FILE}" "${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY:-rpm-ubi10-snapshot-local}" work/rpm-ubi10 "${UBI10_SOURCE_REPO_ID}" | tail -n1)
     - printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" >ubi10-snapshot.env
   artifacts:
     reports:

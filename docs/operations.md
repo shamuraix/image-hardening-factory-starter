@@ -6,10 +6,10 @@ Create these local repositories and enable immutability on release repositories:
 
 | Repository | Type | Writer |
 |---|---|---|
-| `generic-source-local` | Generic | Connected intake only |
+| `FACTORY_SOURCE_REPOSITORY` (default `generic-source-local`) | Generic | Connected intake only |
 | `oci-upstream-cache-local` | OCI | Connected intake only |
-| `oci-base-quarantine-local` | OCI | Protected importer |
-| `oci-app-quarantine-local` | OCI | Protected importer |
+| `FACTORY_QUARANTINE_REPOSITORY` or catalog override (`oci-base-quarantine-local`) | OCI | Protected importer |
+| `FACTORY_QUARANTINE_REPOSITORY` or catalog override (`oci-app-quarantine-local`) | OCI | Protected importer |
 | `oci-release-local` | OCI | Protected promotion broker |
 | `oci-canary-local` | OCI | Protected canary broker |
 | `rpm-ubi9-snapshot-local` | RPM | Repository snapshot job |

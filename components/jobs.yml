@@ -1,5 +1,5 @@
 .factory-default:
-  image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-runner:${FACTORY_TOOLCHAIN_VERSION}
+  image: ${FACTORY_TOOLCHAIN_REGISTRY}/${FACTORY_RUNNER_IMAGE}:${FACTORY_TOOLCHAIN_VERSION}
   tags: [factory-offline]
   interruptible: true
   variables:
@@ -10,6 +10,10 @@
 .factory-validate:
   extends: .factory-default
   stage: validate
+  rules:
+    - if: '$FACTORY_ENABLE_VALIDATE == "false" || $FACTORY_ENABLE_VALIDATE == "0" || $FACTORY_ENABLE_VALIDATE == "off"'
+      when: never
+    - when: on_success
   script:
     - factory validate --catalog catalog/images
     - scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
@@ -20,6 +24,10 @@
 .factory-prepare:
   extends: .factory-default
   stage: prepare
+  rules:
+    - if: '$FACTORY_ENABLE_PREPARE == "false" || $FACTORY_ENABLE_PREPARE == "0" || $FACTORY_ENABLE_PREPARE == "off"'
+      when: never
+    - when: on_success
   id_tokens:
     ARTIFACTORY_ID_TOKEN:
       aud: ${ARTIFACTORY_OIDC_AUDIENCE}
@@ -32,6 +40,10 @@
 .factory-build:
   extends: .factory-default
   stage: build
+  rules:
+    - if: '$FACTORY_ENABLE_BUILD == "false" || $FACTORY_ENABLE_BUILD == "0" || $FACTORY_ENABLE_BUILD == "off"'
+      when: never
+    - when: on_success
   tags: [factory-buildah-ephemeral]
   script:
     - scripts/build_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
@@ -42,6 +54,10 @@
 .factory-sbom:
   extends: .factory-default
   stage: analyze
+  rules:
+    - if: '$FACTORY_ENABLE_SBOM == "false" || $FACTORY_ENABLE_SBOM == "0" || $FACTORY_ENABLE_SBOM == "off"'
+      when: never
+    - when: on_success
   script:
     - scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
   artifacts:
@@ -51,6 +67,10 @@
 .factory-scan:
   extends: .factory-default
   stage: analyze
+  rules:
+    - if: '$FACTORY_ENABLE_SCAN == "false" || $FACTORY_ENABLE_SCAN == "0" || $FACTORY_ENABLE_SCAN == "off"'
+      when: never
+    - when: on_success
   script:
     - scripts/scan_image.sh "${FACTORY_WORK_DIR}"
   allow_failure: true
@@ -59,10 +79,15 @@
     paths: ["work/${FACTORY_IMAGE}/evidence/scans", "work/${FACTORY_IMAGE}/evidence/findings.json", "work/${FACTORY_IMAGE}/evidence/database-status.json"]
     expire_in: 30 days
 
+# Default FCS runner image is factory-fcs-runner:${FCS_CLI_VERSION}; override via FACTORY_FCS_RUNNER_IMAGE.
 .factory-fcs:
   extends: .factory-default
-  image: ${FACTORY_TOOLCHAIN_REGISTRY}/factory-fcs-runner:${FCS_CLI_VERSION}
+  image: ${FACTORY_TOOLCHAIN_REGISTRY}/${FACTORY_FCS_RUNNER_IMAGE}:${FCS_CLI_VERSION}
   stage: analyze
+  rules:
+    - if: '$FACTORY_ENABLE_FCS == "false" || $FACTORY_ENABLE_FCS == "0" || $FACTORY_ENABLE_FCS == "off"'
+      when: never
+    - when: on_success
   tags: [factory-fcs-connected]
   environment:
     name: fcs/${FACTORY_RELEASE_ENV}
@@ -77,6 +102,10 @@
 .factory-compliance:
   extends: .factory-default
   stage: compliance
+  rules:
+    - if: '$FACTORY_ENABLE_COMPLIANCE == "false" || $FACTORY_ENABLE_COMPLIANCE == "0" || $FACTORY_ENABLE_COMPLIANCE == "off"'
+      when: never
+    - when: on_success
   tags: [factory-fips-ephemeral]
   script:
     - scripts/compliance_scan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
@@ -88,6 +117,10 @@
 .factory-test:
   extends: .factory-default
   stage: test
+  rules:
+    - if: '$FACTORY_ENABLE_TEST == "false" || $FACTORY_ENABLE_TEST == "0" || $FACTORY_ENABLE_TEST == "off"'
+      when: never
+    - when: on_success
   tags: [factory-test-ephemeral]
   script:
     - scripts/run_tests.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
@@ -99,6 +132,10 @@
 .factory-gate:
   extends: .factory-default
   stage: policy
+  rules:
+    - if: '$FACTORY_ENABLE_GATE == "false" || $FACTORY_ENABLE_GATE == "0" || $FACTORY_ENABLE_GATE == "off"'
+      when: never
+    - when: on_success
   script:
     - scripts/evaluate_gate.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
   artifacts:
@@ -115,9 +152,12 @@
 .factory-remediate:
   extends: .factory-default
   stage: policy
+  rules:
+    - if: '$FACTORY_ENABLE_REMEDIATE == "false" || $FACTORY_ENABLE_REMEDIATE == "0" || $FACTORY_ENABLE_REMEDIATE == "off"'
+      when: never
+    - when: manual
   tags: [factory-ai-untrusted]
   allow_failure: true
-  when: manual
   script:
     - scripts/ai_remediation.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
   artifacts:
@@ -128,15 +168,22 @@
 .factory-remediation-mr:
   extends: .factory-default
   stage: policy
+  rules:
+    - if: '$FACTORY_ENABLE_REMEDIATE == "false" || $FACTORY_ENABLE_REMEDIATE == "0" || $FACTORY_ENABLE_REMEDIATE == "off"'
+      when: never
+    - when: manual
   tags: [factory-remediation-broker]
   allow_failure: true
-  when: manual
   script:
     - scripts/create_remediation_mr.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
 
 .factory-import:
   extends: .factory-default
   stage: import
+  rules:
+    - if: '$FACTORY_ENABLE_IMPORT == "false" || $FACTORY_ENABLE_IMPORT == "0" || $FACTORY_ENABLE_IMPORT == "off"'
+      when: never
+    - when: on_success
   tags: [factory-protected-importer]
   resource_group: import-${FACTORY_IMAGE}
   id_tokens:
@@ -157,15 +204,17 @@
 .factory-attest:
   extends: .factory-default
   stage: attest
+  rules:
+    - if: '$FACTORY_ENABLE_ATTEST == "false" || $FACTORY_ENABLE_ATTEST == "0" || $FACTORY_ENABLE_ATTEST == "off"'
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - when: never
   tags: [factory-protected-signing]
   environment:
     name: signing/${FACTORY_RELEASE_ENV}
   id_tokens:
     ARTIFACTORY_ID_TOKEN:
       aud: ${ARTIFACTORY_OIDC_AUDIENCE}
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - when: never
   script:
     - scripts/sign_and_attest.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
   artifacts:
@@ -175,12 +224,13 @@
 .factory-promote:
   extends: .factory-default
   stage: promote
-  tags: [factory-protected-promotion]
-  resource_group: promote-${FACTORY_RELEASE_ENV}-${FACTORY_IMAGE}
-  when: manual
   rules:
+    - if: '$FACTORY_ENABLE_PROMOTE == "false" || $FACTORY_ENABLE_PROMOTE == "0" || $FACTORY_ENABLE_PROMOTE == "off"'
+      when: never
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
       when: manual
     - when: never
+  tags: [factory-protected-promotion]
+  resource_group: promote-${FACTORY_RELEASE_ENV}-${FACTORY_IMAGE}
   script:
     - scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
