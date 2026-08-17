@@ -24,23 +24,32 @@ resource lock. The build records the snapshot ID in provenance.
 
 ## Runner classes
 
-| Tag | Network | Credential scope | Lifecycle |
+| Tag | Network | Credential scope | Kubernetes placement |
 |---|---|---|---|
-| `factory-connected-intake` | Approved upstream + internal | Intake-only writes | Ephemeral VM |
-| `factory-offline` | Internal only | Artifact read | Ephemeral container/VM |
-| `factory-buildah-ephemeral` | Internal mirrors only | Artifact read | Destroy after job |
-| `factory-fips-ephemeral` | Internal only | Artifact read | FIPS host, destroy after job |
-| `factory-test-ephemeral` | Internal only | Test registry read | Destroy after job |
-| `factory-fcs-connected` | Falcon API + local candidate | Falcon image-assessment credentials only | Ephemeral, protected |
-| `factory-ai-untrusted` | AI endpoint + evidence read | No Git/registry write | Destroy after job |
-| `factory-remediation-broker` | Internal GitLab | Create branch/MR only | Protected |
-| `factory-protected-importer` | Artifactory quarantine | Quarantine write | Protected |
-| `factory-protected-signing` | Artifactory only | Write OCI signature/attestation referrers | Protected |
-| `factory-protected-promotion` | Source/target Artifactory | Release copy | Protected |
+| `factory-connected-intake` | Approved upstream + internal | Intake-only writes | Connected pool |
+| `factory-offline` | Internal only | Artifact read | Offline pool |
+| `factory-buildah-ephemeral` | Internal mirrors only | Artifact read | Rootless build pool |
+| `factory-fips-ephemeral` | Internal only | Artifact read | FIPS-node pool |
+| `factory-test-ephemeral` | Internal only | Test registry read | Rootless test pool |
+| `factory-fcs-connected` | Falcon API + local candidate | Falcon image-assessment credentials only | Connected protected pool |
+| `factory-ai-untrusted` | AI endpoint + evidence read | No Git/registry write | Untrusted network pool |
+| `factory-remediation-broker` | Internal GitLab | Create branch/MR only | Protected broker pool |
+| `factory-protected-importer` | Artifactory quarantine | Quarantine write | Protected importer pool |
+| `factory-protected-signing` | Artifactory only | Write OCI signature/attestation referrers | Protected signing pool |
+| `factory-protected-promotion` | Source/target Artifactory | Release copy | Protected promotion pool |
 
-Use rootful Buildah with chroot isolation on a single-use VM. Do not mount a
-Docker socket and do not run privileged build pods on reusable Kubernetes
-runners.
+Configure every pool with the GitLab Kubernetes executor and
+`privileged = false`. Do not add Linux capabilities or mount host paths,
+container-engine sockets, or host devices. The runner image uses UID 10001,
+rootless Buildah and Podman, VFS storage, and job-local ephemeral paths. Nodes
+must allow unprivileged user namespaces, and `/tmp` and `/home/factory` must be
+writable. FIPS jobs additionally require scheduling on FIPS-enabled nodes.
+Rootless nested containers disable their own cgroups; the outer pod remains
+subject to its Kubernetes resource limits.
+
+Buildah uses rootless isolation. ClamAV and OpenSCAP consume a rootless Umoci
+unpack instead of `podman mount`. The FCS socket is created inside the job
+filesystem by rootless Podman and is never shared with the node.
 
 ## Bootstrap sequence
 

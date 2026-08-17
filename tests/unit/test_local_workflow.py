@@ -31,6 +31,50 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertIn("/factory.repo:/etc/yum.repos.d/factory.repo:ro", build)
         self.assertNotIn("repo_dir}:/etc/yum.repos.d:ro", build)
 
+    def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:
+        component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")
+        build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
+        runner = (ROOT / "toolchain/Containerfile.factory-runner").read_text(encoding="utf-8")
+        storage = (ROOT / "toolchain/storage.conf").read_text(encoding="utf-8")
+
+        self.assertIn("BUILDAH_ISOLATION: rootless", component)
+        self.assertIn("STORAGE_DRIVER: vfs", component)
+        self.assertIn('--isolation "${isolation}"', build)
+        self.assertNotIn("--isolation chroot", build)
+        self.assertIn("USER ${FACTORY_UID}", runner)
+        self.assertIn("/etc/subuid", runner)
+        self.assertIn('driver = "vfs"', storage)
+
+    def test_rootfs_scans_do_not_mount_container_storage(self) -> None:
+        unpack = (ROOT / "scripts/unpack_image.sh").read_text(encoding="utf-8")
+        scan = (ROOT / "scripts/scan_image.sh").read_text(encoding="utf-8")
+        compliance = (ROOT / "scripts/compliance_scan.sh").read_text(encoding="utf-8")
+
+        self.assertIn("umoci unpack --rootless", unpack)
+        self.assertIn("scripts/unpack_image.sh", scan)
+        self.assertIn("scripts/unpack_image.sh", compliance)
+        self.assertNotIn("podman mount", scan)
+        self.assertNotIn("podman mount", compliance)
+
+    def test_nested_runtimes_delegate_cgroups_to_kubernetes(self) -> None:
+        local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
+        verifier = (ROOT / "scripts/assert_rpm_integrity.sh").read_text(encoding="utf-8")
+
+        self.assertIn("--cgroups=disabled", local_build)
+        self.assertIn("--cgroups=disabled", verifier)
+        for profile in ("base", "bitbucket", "confluence", "jira"):
+            test_script = (ROOT / "tests" / "profiles" / profile / "test.sh").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("--cgroups=disabled", test_script)
+
+    def test_rpm_snapshot_uses_workspace_local_dnf_state(self) -> None:
+        snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
+
+        self.assertIn('cachedir=${output}/dnf-cache', snapshot)
+        self.assertIn('persistdir=${output}/dnf-persist', snapshot)
+        self.assertIn('logdir=${output}/dnf-log', snapshot)
+
     def test_archive_and_test_runner_use_exact_image_reference(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
         test_runner = (ROOT / "scripts/run_tests.sh").read_text(encoding="utf-8")

@@ -13,7 +13,8 @@ trap 'rm -f "${raw}"' EXIT
 # integrity signals. Root inside rootless Podman maps to the unprivileged
 # factory user on the Kubernetes node.
 scripts/require_rootless.sh podman
-podman run --rm --user 0 --entrypoint /bin/bash "${image}" -c 'rpm -Va --nomtime || true' >"${raw}"
+podman run --rm --cgroups=disabled --user 0 --entrypoint /bin/bash "${image}" \
+  -c 'rpm -Va --nomtime || true' >"${raw}"
 cp "${raw}" "${output}"
 
 if [[ ! -s "${raw}" ]]; then

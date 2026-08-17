@@ -77,7 +77,7 @@ fi
 
 started_registry=false
 if ! curl --fail --silent "http://${registry}/v2/" >/dev/null 2>&1; then
-  podman run --detach --rm --name "${registry_container}" \
+  podman run --detach --rm --cgroups=disabled --name "${registry_container}" \
     --publish "127.0.0.1:${registry##*:}:5000" "${registry_image}" >/dev/null
   started_registry=true
 fi

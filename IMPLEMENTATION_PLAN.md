@@ -86,7 +86,7 @@ Deliverables:
 Acceptance criteria:
 
 - The exact OCI archive produced by the build is assessed by FCS through an
-  isolated local Podman API socket.
+  isolated, rootless, job-local Podman API socket.
 - The Falcon image assessment policy is the sole vulnerability-scanner release
   authority; a nonzero exit or invalid/missing FCS evidence denies release.
 - Findings from Grype, Trivy, OSV and ClamAV remain visible and signed but
