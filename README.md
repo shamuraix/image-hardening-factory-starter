@@ -18,9 +18,10 @@ The initial catalog contains:
    upstream endpoints.
 2. It mirrors Git commits, downloads checksum-pinned resources, imports OCI
    bases by digest, and publishes an immutable resource lock.
-3. Build runners have access only to internal Git, immutable Artifactory
-   repositories, and the GitLab coordinator.
-4. Build jobs emit OCI layouts and do not hold release credentials.
+3. Rootless build runners have access only to internal Git, immutable
+   Artifactory repositories, and the GitLab coordinator.
+4. Build jobs emit OCI layouts and do not hold release credentials or use
+   privileged pods.
 5. A protected FCS runner performs the authoritative image-security assessment
    against the exact local OCI candidate; other vulnerability scanners are
    informational.
@@ -80,18 +81,19 @@ The `factory` entry point exposes five subcommands:
 
 ## Local image builds
 
-The local development workflow uses a temporary loopback OCI registry and a
-loopback HTTP server for an existing RPM repository snapshot. It applies the
-catalog overlay, downloads and checksum-verifies manifest resources, generates
-a clearly marked development resource lock, builds with Buildah, and publishes
-the result to both an OCI archive and the local registry. Catalog base images
-are built automatically before an application image.
+The local development workflow uses rootless Podman and Buildah with a temporary
+loopback OCI registry and a loopback HTTP server for an existing RPM repository
+snapshot. It applies the catalog overlay, downloads and checksum-verifies
+manifest resources, generates a clearly marked development resource lock, and
+publishes the result to both an OCI archive and the local registry. Catalog base
+images are built automatically before an application image.
 
 Prerequisites are Python 3.11+, Git, Curl, Podman, Buildah, Skopeo, `yq`, and
-`jq`. For snapshot-based testing, `LOCAL_RPM_REPO_DIR` must point to a complete
-RPM repository containing `repodata/repomd.xml`. Signature checking remains
-enabled by default, so the repository must also contain valid RPM and
-repository signatures trusted by the source image.
+`jq`. Umoci is also required for malware and compliance scans. Podman and
+Buildah must run rootless. For snapshot-based testing, `LOCAL_RPM_REPO_DIR` must
+point to a complete RPM repository containing `repodata/repomd.xml`. Signature
+checking remains enabled by default, so the repository must also contain valid
+RPM and repository signatures trusted by the source image.
 
 ```bash
 make local-build \
@@ -148,6 +150,7 @@ the source Dockerfile's default-disabled repository configuration for local
 development only. Only the generated `factory.repo` file is mounted read-only;
 the containing `/etc/yum.repos.d` directory remains writable because Red Hat's
 repository tooling may generate `redhat.repo` while `microdnf` initializes.
+The bind mount exists only inside Buildah's rootless user namespace.
 
 Set exactly one of `LOCAL_USE_UPSTREAM_UBI_REPOS=true` and
 `LOCAL_RPM_REPO_DIR`. The upstream mode is mutable and connected, so its output
@@ -183,6 +186,25 @@ verification ignores timestamp-only changes caused by reproducible layer
 timestamps, combines the application allowlist with the base allowlist, and
 adds the reviewed UBI 10 hardening deviations from
 `tests/profiles/base/rpm-verify.ubi10.allow`.
+
+## Unprivileged Kubernetes runners
+
+All CI job templates are compatible with the GitLab Kubernetes executor with
+`privileged = false`. The runner pods do not need host paths, container-engine
+sockets, host devices, or added Linux capabilities. The factory runner executes
+as UID 10001, uses subordinate IDs for rootless Buildah and Podman, uses VFS
+container storage instead of `/dev/fuse`, and disables nested runtime cgroups
+because the outer Kubernetes pod enforces resource limits.
+
+Runner nodes must allow unprivileged user namespaces, and the job filesystem
+must provide writable ephemeral space under `/tmp` and `/home/factory`. The
+container runtime's seccomp profile must permit the user-namespace operations
+used by rootless Buildah and Podman. The specialized runner tags in
+`components/jobs.yml` select network, credential, FIPS-node, and protection
+boundaries; they do not imply privileged execution. ClamAV and OpenSCAP inspect
+an ownership-preserving Umoci unpack created and read inside Podman's rootless
+user namespace rather than mounting container storage. FCS uses a job-local
+rootless Podman API socket; no host socket is mounted.
 
 ## Required GitLab variables
 
@@ -228,11 +250,11 @@ repository.
 ## CrowdStrike FCS assessment
 
 CrowdStrike FCS CLI 4.x is the authoritative image-security assessment. It runs
-on the protected `factory-fcs-connected` runner against the exact candidate
-loaded from `image.oci.tar`. The CLI uses the image assessment policy configured
-in the environment's Falcon console: exit code zero passes, while any nonzero
-exit, malformed report, missing report, or invalid FCS SBOM fails closed in the
-OPA gate.
+on the protected `factory-fcs-connected` Kubernetes runner against the exact
+candidate loaded from `image.oci.tar` into rootless Podman. The CLI uses the
+image assessment policy configured in the environment's Falcon console: exit
+code zero passes, while any nonzero exit, malformed report, missing report, or
+invalid FCS SBOM fails closed in the OPA gate.
 
 FCS produces its native JSON assessment and a CycloneDX JSON SBOM. CrowdStrike's
 public FCS image-scan interface does not support SPDX output; the existing Syft
@@ -324,7 +346,7 @@ default to `false`.
 |---|---|---|
 | `FACTORY_ENABLE_VALIDATE` | `true` | Schema and context validation |
 | `FACTORY_ENABLE_PREPARE` | `true` | Resource-lock resolution and build context assembly |
-| `FACTORY_ENABLE_BUILD` | `true` | Buildah OCI build |
+| `FACTORY_ENABLE_BUILD` | `true` | Rootless Buildah OCI build |
 | `FACTORY_ENABLE_SBOM` | `true` | Syft SBOM generation |
 | `FACTORY_ENABLE_SCAN` | `true` | Grype/Trivy/OSV/ClamAV informational scans |
 | `FACTORY_ENABLE_FCS` | `false` | CrowdStrike FCS authoritative assessment |
@@ -360,10 +382,10 @@ The `UPDATECLI_GITLAB_TOKEN` variable must be in scope when the pipeline runs.
 ## Toolchain pinning
 
 `tools/versions.lock.yaml` records the pinned version and upstream project URL
-for every tool embedded in the factory runner images (Buildah, Skopeo, ORAS,
-Cosign, Syft, Grype, Trivy, OSV Scanner, OPA, OpenSCAP, ComplianceAsCode, and
-the FCS CLI). Update this file when bumping a tool version and rebuild and
-re-sign both toolchain images.
+for every tool embedded in the factory runner images (Buildah, Skopeo, Umoci,
+ORAS, Cosign, Syft, Grype, Trivy, OSV Scanner, OPA, OpenSCAP,
+ComplianceAsCode, and the FCS CLI). Update this file when bumping a tool version
+and rebuild and re-sign both toolchain images.
 
 ## Exception management
 

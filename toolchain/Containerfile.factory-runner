@@ -2,6 +2,7 @@ ARG BASE_REF
 FROM ${BASE_REF}
 
 ARG FACTORY_UID=10001
+ARG FACTORY_GID=10001
 COPY dist/tools/ /usr/local/bin/
 COPY dist/security-data/ /opt/security-data/
 COPY dist/factory-wheel/ /tmp/wheels/
@@ -9,10 +10,29 @@ COPY dist/factory-wheel/ /tmp/wheels/
 RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman buildah skopeo openscap-scanner \
     && python3.12 -m pip install --no-index --find-links /tmp/wheels image-hardening-factory \
     && chmod 0555 /usr/local/bin/* \
+    && test -x /usr/local/bin/umoci \
     && test -s /opt/security-data/generated-at \
+    && printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
+    && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
+      "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \
+    && printf 'factory:100000:65536\n' >>/etc/subuid \
+    && printf 'factory:100000:65536\n' >>/etc/subgid \
+    && test -u /usr/bin/newuidmap \
+    && test -u /usr/bin/newgidmap \
+    && test -x /usr/bin/slirp4netns \
+    && install -d -m 0700 -o "${FACTORY_UID}" -g "${FACTORY_GID}" \
+      /home/factory /home/factory/.config /home/factory/.config/containers \
+      /home/factory/.local/share/containers /tmp/factory-runtime \
     && microdnf clean all \
     && rm -rf /tmp/wheels /var/cache/dnf
 
+COPY --chown=${FACTORY_UID}:${FACTORY_GID} toolchain/storage.conf /home/factory/.config/containers/storage.conf
+
+ENV HOME=/home/factory \
+    XDG_RUNTIME_DIR=/tmp/factory-runtime \
+    CONTAINERS_STORAGE_CONF=/home/factory/.config/containers/storage.conf \
+    STORAGE_DRIVER=vfs \
+    BUILDAH_ISOLATION=rootless
 USER ${FACTORY_UID}
 ENTRYPOINT []
 CMD ["/bin/bash"]

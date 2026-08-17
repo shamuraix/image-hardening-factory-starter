@@ -14,6 +14,7 @@ case "${FALCON_REGION}" in
   *) echo "unsupported FALCON_REGION: ${FALCON_REGION}" >&2; exit 2 ;;
 esac
 command -v fcs >/dev/null || { echo "fcs CLI is not installed" >&2; exit 2; }
+scripts/require_rootless.sh podman
 
 platform=$(yq -r '.build.platforms[0]' "${catalog}")
 # shellcheck disable=SC1090,SC1091

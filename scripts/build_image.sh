@@ -5,11 +5,17 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 # shellcheck disable=SC1090,SC1091
 source "${work_dir}/build.env"
+scripts/require_rootless.sh buildah
 
 containerfile=$(yq -r '.source.containerfile' "${catalog}")
 platform=$(yq -r '.build.platforms[0]' "${catalog}")
 created=$(git -C "${work_dir}/context" show -s --format=%cI "${SOURCE_REVISION}")
 local_ref="localhost/factory/${FACTORY_IMAGE}:${CI_PIPELINE_ID:-local}"
+isolation=${BUILDAH_ISOLATION:-rootless}
+[[ "${isolation}" == rootless ]] || {
+  echo "BUILDAH_ISOLATION must be rootless" >&2
+  exit 2
+}
 
 if [[ -f "${work_dir}/base.oci.tar" ]]; then
   skopeo copy "oci-archive:${work_dir}/base.oci.tar" "containers-storage:${BASE_REF}"
@@ -18,7 +24,7 @@ fi
 args=(
   --file "${work_dir}/context/${containerfile}"
   --tag "${local_ref}"
-  --isolation chroot
+  --isolation "${isolation}"
   --network "${FACTORY_BUILD_NETWORK:-slirp4netns}"
   --pull=never
   --platform "${platform}"

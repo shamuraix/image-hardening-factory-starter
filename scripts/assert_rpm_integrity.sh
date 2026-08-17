@@ -10,8 +10,11 @@ raw=$(mktemp)
 trap 'rm -f "${raw}"' EXIT
 
 # Timestamps are normalized for reproducible OCI layers and are not content
-# integrity signals. Keep all other RPM verification checks enabled.
-podman run --rm --user 0 --entrypoint /bin/bash "${image}" -c 'rpm -Va --nomtime || true' >"${raw}"
+# integrity signals. Root inside rootless Podman maps to the unprivileged
+# factory user on the Kubernetes node.
+scripts/require_rootless.sh podman
+podman run --rm --cgroups=disabled --user 0 --entrypoint /bin/bash "${image}" \
+  -c 'rpm -Va --nomtime || true' >"${raw}"
 cp "${raw}" "${output}"
 
 if [[ ! -s "${raw}" ]]; then

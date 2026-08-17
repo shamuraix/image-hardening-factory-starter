@@ -20,19 +20,11 @@ case "${profile}" in
 esac
 
 [[ -s "${datastream}" ]]
-name="factory-compliance-${CI_JOB_ID:-local}"
-podman load -i "${work_dir}/image.oci.tar" >/dev/null
-# shellcheck disable=SC1090,SC1091
-source "${work_dir}/build.env"
-: "${LOCAL_IMAGE_REF:?LOCAL_IMAGE_REF is missing from build.env}"
-podman image exists "${LOCAL_IMAGE_REF}"
-image=${LOCAL_IMAGE_REF}
-container=$(podman create --name "${name}" "${image}")
-rootfs=$(podman mount "${container}")
+bundle="${work_dir}/compliance-rootfs"
+rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${bundle}")
 
 cleanup() {
-  podman unmount "${container}" >/dev/null 2>&1 || true
-  podman rm --force "${container}" >/dev/null 2>&1 || true
+  podman unshare rm -rf "${bundle}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -41,7 +33,7 @@ if [[ -s "compliance/tailoring/${profile}.xml" ]]; then
   tailoring_args=(--tailoring-file "compliance/tailoring/${profile}.xml")
 fi
 set +e
-oscap-chroot "${rootfs}" xccdf eval \
+podman unshare oscap-chroot "${rootfs}" xccdf eval \
   --profile "${xccdf_profile}" \
   "${tailoring_args[@]}" \
   --results-arf "${output}/results-arf.xml" \
