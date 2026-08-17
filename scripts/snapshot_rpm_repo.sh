@@ -10,8 +10,11 @@ source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
 : "${COSIGN_INTAKE_KEY_REF:?}"
 
-mkdir -p "${output}/content"
+mkdir -p "${output}"/{content,dnf-cache,dnf-persist,dnf-log}
 dnf reposync --config "${source_repo}" --repoid "${repo_id}" --download-metadata --download-path "${output}/content" \
+  --setopt="cachedir=${output}/dnf-cache" \
+  --setopt="persistdir=${output}/dnf-persist" \
+  --setopt="logdir=${output}/dnf-log" \
   --arch x86_64 --arch noarch --newest-only --delete
 createrepo_c --update "${output}/content"
 repomd=$(find "${output}/content" -path '*/repodata/repomd.xml' -print -quit)

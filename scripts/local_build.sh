@@ -20,6 +20,8 @@ fi
 for command in git curl python3 podman buildah skopeo yq jq; do
   command -v "${command}" >/dev/null || { echo "required command is missing: ${command}" >&2; exit 2; }
 done
+scripts/require_rootless.sh podman
+scripts/require_rootless.sh buildah
 
 local_root=${LOCAL_FACTORY_ROOT:-.local-factory}
 registry=${LOCAL_REGISTRY:-127.0.0.1:5000}
