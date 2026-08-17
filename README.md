@@ -53,6 +53,31 @@ PYTHONPATH=. python3 -m factory.cli pipeline \
   --output generated-child.yml
 ```
 
+Common Makefile targets:
+
+| Target | Description |
+|---|---|
+| `make validate` | Run `factory validate` against the catalog |
+| `make pipeline` | Render the full child pipeline to `generated-child.yml` |
+| `make test` | Run unit tests |
+| `make lint` | Run `ruff` linter and format check |
+| `make local-build IMAGE=<name> ...` | Build an image locally |
+| `make local-test IMAGE=<name> ...` | Build and run baseline tests locally |
+| `make local-fcs IMAGE=<name> ...` | Build and run a local FCS assessment |
+| `make package` | Create a `git archive` tarball of the repository |
+
+## CLI subcommands
+
+The `factory` entry point exposes five subcommands:
+
+| Subcommand | Description |
+|---|---|
+| `factory validate --catalog <dir>` | Validate all catalog YAML files against the schema and print the image list |
+| `factory pipeline --catalog <dir> (--all \| --changed <name...>) --output <file>` | Render a dependency-aware child pipeline YAML |
+| `factory intake --image <catalog.yaml> --source-dir <dir> --cache-dir <dir> --output <file> [--upload-url <url>]` | Resolve and checksum-verify a hardening manifest; optionally upload locked files to Artifactory |
+| `factory gate-input --image <name> --image-digest <digest> --sbom <file> --findings <file> --compliance <file> --tests <file> --database-status <file> --fcs-status <file> --output <file>` | Assemble the OPA gate input document from evidence artifacts |
+| `factory normalize-findings --grype <file> --trivy <file> [--osv <file>] [--kev <file>] [--baseline <file>] --output <file>` | Normalize Grype, Trivy, and OSV scanner results into a unified finding document, annotated with KEV and new/baseline flags |
+
 ## Local image builds
 
 The local development workflow uses a temporary loopback OCI registry and a
@@ -192,6 +217,8 @@ adds the reviewed UBI 10 hardening deviations from
 | `FALCON_CLIENT_SECRET` | FCS scanner only | Protected and masked Falcon API client secret |
 | `FALCON_REGION` | FCS scanner only | `us-1`, `us-2`, `eu-1`, `us-gov-1`, or `us-gov-2` |
 | `FCS_CLI_VERSION` | FCS runner | Pinned CLI/runner tag; defaults to `4.0.0` |
+| `FACTORY_CHANGED_IMAGES` | root pipeline | Comma-separated list of catalog image names to build; omit to build all |
+| `UPDATECLI_GITLAB_TOKEN` | updatecli schedule | Token with MR create permission used by `updatecli/updatecli.d/repo1-source-pins.yaml` to open source-pin update MRs |
 
 Use GitLab OIDC ID tokens to obtain short-lived Artifactory tokens. Store the
 encrypted Cosign private key as a protected, environment-scoped GitLab file
@@ -284,6 +311,77 @@ Cosign artifacts for a signed candidate:
 ```bash
 oras discover "${ARTIFACTORY_REGISTRY}/${QUARANTINE_REPOSITORY}/${IMAGE_PATH}@${IMAGE_DIGEST}"
 ```
+
+## Pipeline stage toggles
+
+Each pipeline stage can be disabled by setting the corresponding
+`FACTORY_ENABLE_*` variable to `false`, `0`, or `off`. All stages default to
+enabled (`true`) except for `FCS`, `COMPLIANCE`, `REMEDIATE`, `IMPORT`,
+`ATTEST`, and `PROMOTE`, which require protected runners or credentials and
+default to `false`.
+
+| Variable | Default | Stage controlled |
+|---|---|---|
+| `FACTORY_ENABLE_VALIDATE` | `true` | Schema and context validation |
+| `FACTORY_ENABLE_PREPARE` | `true` | Resource-lock resolution and build context assembly |
+| `FACTORY_ENABLE_BUILD` | `true` | Buildah OCI build |
+| `FACTORY_ENABLE_SBOM` | `true` | Syft SBOM generation |
+| `FACTORY_ENABLE_SCAN` | `true` | Grype/Trivy/OSV/ClamAV informational scans |
+| `FACTORY_ENABLE_FCS` | `false` | CrowdStrike FCS authoritative assessment |
+| `FACTORY_ENABLE_COMPLIANCE` | `false` | OpenSCAP compliance scan |
+| `FACTORY_ENABLE_TEST` | `true` | Product integration tests |
+| `FACTORY_ENABLE_GATE` | `true` | OPA policy gate |
+| `FACTORY_ENABLE_REMEDIATE` | `false` | AI read-only remediation summary and patch-MR broker |
+| `FACTORY_ENABLE_IMPORT` | `false` | Protected quarantine import |
+| `FACTORY_ENABLE_ATTEST` | `false` | Cosign signing and attestation |
+| `FACTORY_ENABLE_PROMOTE` | `false` | Pull-based release promotion |
+
+## Source-pin management
+
+Two tools keep catalog source revisions synchronized with upstream Repo One
+development branches.
+
+**vendir** (`vendir/config.yml`) declares the five Repo One Git sources and
+their pinned commit references. Run `vendir sync` to update the checked-out
+content under `vendor/repo1/`.
+
+**updatecli** (`updatecli/updatecli.d/repo1-source-pins.yaml`) queries each
+repository's current `development` branch tip with `git ls-remote` and opens a
+GitLab merge request updating both the catalog `source.revision` fields and the
+matching `vendir/config.yml` `ref` values. Run it on a schedule from a
+connected runner:
+
+```bash
+updatecli apply --config updatecli/updatecli.d/repo1-source-pins.yaml
+```
+
+The `UPDATECLI_GITLAB_TOKEN` variable must be in scope when the pipeline runs.
+
+## Toolchain pinning
+
+`tools/versions.lock.yaml` records the pinned version and upstream project URL
+for every tool embedded in the factory runner images (Buildah, Skopeo, ORAS,
+Cosign, Syft, Grype, Trivy, OSV Scanner, OPA, OpenSCAP, ComplianceAsCode, and
+the FCS CLI). Update this file when bumping a tool version and rebuild and
+re-sign both toolchain images.
+
+## Exception management
+
+`policies/exceptions/approved.json` holds the OPA-visible approved exception
+set. The current schema is:
+
+```json
+{
+  "factory": {
+    "exceptions": {
+      "approved": {}
+    }
+  }
+}
+```
+
+Add per-finding exception records under the `approved` object. The OPA bundle
+includes this file; changes require a policy-controlled review and rebuild.
 
 ## Repository operation
 

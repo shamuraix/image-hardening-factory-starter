@@ -93,3 +93,54 @@ The `helm/` content in the three Repo One source repositories is excluded from
 this image pipeline. Build a separate OCI Helm pipeline from Atlassian's
 supported chart, with digest-pinned images, Gateway API overlays, Kyverno/OPA
 validation, and independent signing and promotion.
+
+## Intake pipeline additional variables
+
+The `.gitlab/intake.yml` pipeline and its supporting scripts accept a number of
+variables beyond the core set listed in the main README:
+
+| Variable | Script | Purpose |
+|---|---|---|
+| `UBI9_SOURCE_REPO_FILE` | `snapshot_rpm_repo.sh` | Path to the `.repo` file describing the UBI 9 source repository to snapshot |
+| `UBI9_SOURCE_REPO_ID` | `snapshot_rpm_repo.sh` | Repository ID within the `.repo` file used by `dnf reposync` |
+| `UBI10_SOURCE_REPO_FILE` | `snapshot_rpm_repo.sh` | Path to the `.repo` file describing the UBI 10 source repository to snapshot |
+| `UBI10_SOURCE_REPO_ID` | `snapshot_rpm_repo.sh` | Repository ID within the `.repo` file used by `dnf reposync` |
+| `FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY` | `snapshot_rpm_repo.sh` | Artifactory repository for UBI 9 RPM snapshots; defaults to `rpm-ubi9-snapshot-local` |
+| `FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY` | `snapshot_rpm_repo.sh` | Artifactory repository for UBI 10 RPM snapshots; defaults to `rpm-ubi10-snapshot-local` |
+| `FACTORY_SOURCE_REPOSITORY` | `publish_intake.sh` / `snapshot_rpm_repo.sh` | Artifactory generic repository for resource locks, snapshot metadata, and OCI imports; defaults to `generic-source-local` |
+| `AI_REPOSITORY_CANDIDATES` | `ai_remediation.py` | Path to the pre-built repository-candidates JSON file; defaults to `/opt/security-data/repository-candidates.json` |
+
+## Build pipeline repo-config variables
+
+`scripts/write_repo_config.sh` selects an RPM repository configuration for the
+build. Two optional variables enable use cases outside the default Artifactory
+snapshot path:
+
+| Variable | Purpose |
+|---|---|
+| `FACTORY_UPSTREAM_UBI_VERSION` | Set to `9` or `10` to write a configuration pointing directly at Red Hat's public CDN for connected builds. Sets both BaseOS and AppStream repositories. |
+| `FACTORY_RPM_BASE_URL` | Override the Artifactory snapshot URL with an arbitrary base URL (e.g., a local HTTP mirror). Incompatible with `FACTORY_UPSTREAM_UBI_VERSION`. |
+| `FACTORY_RPM_GPGCHECK` | RPM package signature check (`1` or `0`); defaults to `1`. |
+| `FACTORY_RPM_REPO_GPGCHECK` | Repository metadata signature check (`1` or `0`); defaults to `1`. |
+| `FACTORY_RPM_SSLVERIFY` | TLS verification for the RPM repository (`1` or `0`); defaults to `1`. |
+
+## Automated source-pin maintenance
+
+`updatecli/updatecli.d/repo1-source-pins.yaml` describes an updatecli pipeline
+that queries each Repo One repository's `development` branch tip and opens a
+GitLab merge request updating both the catalog `source.revision` fields and the
+matching `vendir/config.yml` `ref` values. Run it on a scheduled GitLab
+pipeline from a connected intake runner:
+
+```bash
+updatecli apply --config updatecli/updatecli.d/repo1-source-pins.yaml
+```
+
+The `UPDATECLI_GITLAB_TOKEN` GitLab variable must be present and have MR-create
+permission. Review and merge the resulting MR before triggering the intake
+pipeline so that the new revision is mirrored and locked before the build uses
+it.
+
+`vendir/config.yml` provides a complementary `vendir sync` workflow for
+developers who want to inspect the upstream source content locally without
+running the full intake pipeline.
