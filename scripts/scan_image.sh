@@ -34,17 +34,10 @@ baseline="/opt/security-data/baselines/${FACTORY_IMAGE}.json"
 [[ -s "${baseline}" ]] && normalize_args+=(--baseline "${baseline}")
 factory normalize-findings "${normalize_args[@]}"
 
-podman load -i "${work_dir}/image.oci.tar" >/dev/null
-# shellcheck disable=SC1090,SC1091
-source "${work_dir}/build.env"
-: "${LOCAL_IMAGE_REF:?LOCAL_IMAGE_REF is missing from build.env}"
-podman image exists "${LOCAL_IMAGE_REF}"
-malware_image=${LOCAL_IMAGE_REF}
-malware_container=$(podman create "${malware_image}")
-malware_rootfs=$(podman mount "${malware_container}")
+malware_bundle="${work_dir}/malware-rootfs"
+malware_rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${malware_bundle}")
 cleanup_malware() {
-  podman unmount "${malware_container}" >/dev/null 2>&1 || true
-  podman rm --force "${malware_container}" >/dev/null 2>&1 || true
+  rm -rf "${malware_bundle}"
 }
 trap cleanup_malware EXIT
 clamscan --database=/opt/security-data/clamav --recursive --infected "${malware_rootfs}" \

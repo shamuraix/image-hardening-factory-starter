@@ -8,6 +8,10 @@ tools:
     project: https://github.com/containers/skopeo
     license: Apache-2.0
     version: 1.20.0
+  umoci:
+    project: https://github.com/opencontainers/umoci
+    license: Apache-2.0
+    version: 0.6.0
   oras:
     project: https://github.com/oras-project/oras
     license: Apache-2.0
