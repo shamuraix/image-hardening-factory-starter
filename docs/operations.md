@@ -43,13 +43,16 @@ Configure every pool with the GitLab Kubernetes executor and
 container-engine sockets, or host devices. The runner image uses UID 10001,
 rootless Buildah and Podman, VFS storage, and job-local ephemeral paths. Nodes
 must allow unprivileged user namespaces, and `/tmp` and `/home/factory` must be
-writable. FIPS jobs additionally require scheduling on FIPS-enabled nodes.
-Rootless nested containers disable their own cgroups; the outer pod remains
-subject to its Kubernetes resource limits.
+writable. The container runtime's seccomp profile must permit the
+user-namespace operations used by rootless Buildah and Podman. FIPS jobs
+additionally require scheduling on FIPS-enabled nodes. Rootless nested
+containers disable their own cgroups; the outer pod remains subject to its
+Kubernetes resource limits.
 
-Buildah uses rootless isolation. ClamAV and OpenSCAP consume a rootless Umoci
-unpack instead of `podman mount`. The FCS socket is created inside the job
-filesystem by rootless Podman and is never shared with the node.
+Buildah uses rootless isolation. ClamAV and OpenSCAP consume an
+ownership-preserving Umoci unpack inside Podman's rootless user namespace
+instead of `podman mount`. The FCS socket is created inside the job filesystem
+by rootless Podman and is never shared with the node.
 
 ## Bootstrap sequence
 

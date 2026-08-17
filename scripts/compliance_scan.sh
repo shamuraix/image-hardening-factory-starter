@@ -24,7 +24,7 @@ bundle="${work_dir}/compliance-rootfs"
 rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${bundle}")
 
 cleanup() {
-  rm -rf "${bundle}"
+  podman unshare rm -rf "${bundle}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -33,7 +33,7 @@ if [[ -s "compliance/tailoring/${profile}.xml" ]]; then
   tailoring_args=(--tailoring-file "compliance/tailoring/${profile}.xml")
 fi
 set +e
-oscap-chroot "${rootfs}" xccdf eval \
+podman unshare oscap-chroot "${rootfs}" xccdf eval \
   --profile "${xccdf_profile}" \
   "${tailoring_args[@]}" \
   --results-arf "${output}/results-arf.xml" \

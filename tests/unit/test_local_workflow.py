@@ -50,9 +50,11 @@ class LocalWorkflowTests(unittest.TestCase):
         scan = (ROOT / "scripts/scan_image.sh").read_text(encoding="utf-8")
         compliance = (ROOT / "scripts/compliance_scan.sh").read_text(encoding="utf-8")
 
-        self.assertIn("umoci unpack --rootless", unpack)
+        self.assertIn("podman unshare umoci unpack", unpack)
         self.assertIn("scripts/unpack_image.sh", scan)
         self.assertIn("scripts/unpack_image.sh", compliance)
+        self.assertIn("podman unshare clamscan", scan)
+        self.assertIn("podman unshare oscap-chroot", compliance)
         self.assertNotIn("podman mount", scan)
         self.assertNotIn("podman mount", compliance)
 

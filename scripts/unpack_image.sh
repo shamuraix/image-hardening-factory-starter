@@ -11,14 +11,23 @@ bundle=${2:?bundle output directory is required}
   echo "refusing unsafe bundle output directory: ${bundle}" >&2
   exit 2
 }
+scripts/require_rootless.sh podman
 
 layout=$(mktemp -d)
-trap 'rm -rf "${layout}"' EXIT
-rm -rf "${bundle}"
+unpacked=false
+cleanup() {
+  rm -rf "${layout}"
+  if [[ "${unpacked}" != true ]]; then
+    podman unshare rm -rf "${bundle}" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup EXIT
+podman unshare rm -rf "${bundle}"
 skopeo copy "oci-archive:${archive}" "oci:${layout}:candidate" >/dev/null
-umoci unpack --rootless --image "${layout}:candidate" "${bundle}"
+podman unshare umoci unpack --image "${layout}:candidate" "${bundle}"
 [[ -d "${bundle}/rootfs" ]] || {
   echo "unpacked image rootfs is missing" >&2
   exit 1
 }
+unpacked=true
 printf '%s\n' "${bundle}/rootfs"

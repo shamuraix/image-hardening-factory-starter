@@ -198,11 +198,13 @@ because the outer Kubernetes pod enforces resource limits.
 
 Runner nodes must allow unprivileged user namespaces, and the job filesystem
 must provide writable ephemeral space under `/tmp` and `/home/factory`. The
-specialized runner tags in `components/jobs.yml` select network, credential,
-FIPS-node, and protection boundaries; they do not imply privileged execution.
-ClamAV and OpenSCAP inspect an Umoci rootless unpack of the OCI archive rather
-than mounting container storage. FCS uses a job-local rootless Podman API socket;
-no host socket is mounted.
+container runtime's seccomp profile must permit the user-namespace operations
+used by rootless Buildah and Podman. The specialized runner tags in
+`components/jobs.yml` select network, credential, FIPS-node, and protection
+boundaries; they do not imply privileged execution. ClamAV and OpenSCAP inspect
+an ownership-preserving Umoci unpack created and read inside Podman's rootless
+user namespace rather than mounting container storage. FCS uses a job-local
+rootless Podman API socket; no host socket is mounted.
 
 ## Required GitLab variables
 

@@ -37,10 +37,11 @@ factory normalize-findings "${normalize_args[@]}"
 malware_bundle="${work_dir}/malware-rootfs"
 malware_rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${malware_bundle}")
 cleanup_malware() {
-  rm -rf "${malware_bundle}"
+  podman unshare rm -rf "${malware_bundle}" >/dev/null 2>&1 || true
 }
 trap cleanup_malware EXIT
-clamscan --database=/opt/security-data/clamav --recursive --infected "${malware_rootfs}" \
+podman unshare clamscan \
+  --database=/opt/security-data/clamav --recursive --infected "${malware_rootfs}" \
   >"${scans}/clamav.txt"
 
 jq -n \

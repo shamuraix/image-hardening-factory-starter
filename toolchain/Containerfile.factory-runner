@@ -10,6 +10,7 @@ COPY dist/factory-wheel/ /tmp/wheels/
 RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman buildah skopeo openscap-scanner \
     && python3.12 -m pip install --no-index --find-links /tmp/wheels image-hardening-factory \
     && chmod 0555 /usr/local/bin/* \
+    && test -x /usr/local/bin/umoci \
     && test -s /opt/security-data/generated-at \
     && printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
@@ -18,6 +19,7 @@ RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman builda
     && printf 'factory:100000:65536\n' >>/etc/subgid \
     && test -u /usr/bin/newuidmap \
     && test -u /usr/bin/newgidmap \
+    && test -x /usr/bin/slirp4netns \
     && install -d -m 0700 -o "${FACTORY_UID}" -g "${FACTORY_GID}" \
       /home/factory /home/factory/.config /home/factory/.config/containers \
       /home/factory/.local/share/containers /tmp/factory-runtime \
