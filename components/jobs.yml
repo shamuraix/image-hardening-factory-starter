@@ -4,8 +4,14 @@
   interruptible: true
   variables:
     FACTORY_WORK_DIR: work/${FACTORY_IMAGE}
+    HOME: /home/factory
+    XDG_RUNTIME_DIR: /tmp/factory-runtime
+    CONTAINERS_STORAGE_CONF: /home/factory/.config/containers/storage.conf
+    STORAGE_DRIVER: vfs
+    BUILDAH_ISOLATION: rootless
   before_script:
-    - mkdir -p "${FACTORY_WORK_DIR}"
+    - mkdir -p "${FACTORY_WORK_DIR}" "${XDG_RUNTIME_DIR}"
+    - chmod 0700 "${XDG_RUNTIME_DIR}"
 
 .factory-validate:
   extends: .factory-default
