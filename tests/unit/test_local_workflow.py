@@ -71,9 +71,9 @@ class LocalWorkflowTests(unittest.TestCase):
     def test_rpm_snapshot_uses_workspace_local_dnf_state(self) -> None:
         snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
 
-        self.assertIn('cachedir=${output}/dnf-cache', snapshot)
-        self.assertIn('persistdir=${output}/dnf-persist', snapshot)
-        self.assertIn('logdir=${output}/dnf-log', snapshot)
+        self.assertIn("cachedir=${output}/dnf-cache", snapshot)
+        self.assertIn("persistdir=${output}/dnf-persist", snapshot)
+        self.assertIn("logdir=${output}/dnf-log", snapshot)
 
     def test_archive_and_test_runner_use_exact_image_reference(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
