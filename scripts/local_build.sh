@@ -5,12 +5,8 @@ image=${1:?usage: scripts/local_build.sh IMAGE}
 catalog="catalog/images/${image}.yaml"
 [[ -f "${catalog}" ]] || { echo "unknown image: ${image}" >&2; exit 2; }
 
-if [[ -n ${LOCAL_RPM_REPO_DIR:-} && ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
-  echo "set LOCAL_RPM_REPO_DIR or LOCAL_USE_UPSTREAM_UBI_REPOS=true, not both" >&2
-  exit 2
-fi
-if [[ -z ${LOCAL_RPM_REPO_DIR:-} && ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} != true ]]; then
-  echo "LOCAL_RPM_REPO_DIR or LOCAL_USE_UPSTREAM_UBI_REPOS=true is required" >&2
+if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
+  echo "LOCAL_USE_UPSTREAM_UBI_REPOS is no longer supported; use the internal Artifactory UBI cache" >&2
   exit 2
 fi
 if [[ -n ${LOCAL_RPM_REPO_DIR:-} && ! -d ${LOCAL_RPM_REPO_DIR}/repodata ]]; then
@@ -109,20 +105,34 @@ if [[ -n ${LOCAL_CA_BUNDLE:-} ]]; then
   }
   curl_args+=(--cacert "${LOCAL_CA_BUNDLE}")
 fi
-if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
+if [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
+  : "${ARTIFACTORY_URL:?ARTIFACTORY_URL is required when LOCAL_RPM_REPO_DIR is not set}"
+  : "${ARTIFACTORY_READ_TOKEN:?ARTIFACTORY_READ_TOKEN is required when LOCAL_RPM_REPO_DIR is not set}"
   major=${rpm_major}
   arch=$(yq -r '.build.platforms[0] | split("/")[1]' "${catalog}")
   [[ ${arch} == amd64 ]] && rpm_arch=x86_64 || rpm_arch=${arch}
-  upstream_prefix="https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi${major}/${major}/${rpm_arch}"
-  repomd_file="${local_root}/${image}-upstream-repomd.sha256"
+  rpm_cache_repository=${LOCAL_RPM_CACHE_REPOSITORY:-rpm-ubi-remote}
+  [[ ${rpm_cache_repository} =~ ^[A-Za-z0-9._-]+$ ]] || {
+    echo "LOCAL_RPM_CACHE_REPOSITORY must be an Artifactory repository name" >&2
+    exit 2
+  }
+  artifactory_repository_url="${ARTIFACTORY_URL%/}/artifactory/${rpm_cache_repository}"
+  rpm_cache_ubi_root_url=${LOCAL_RPM_CACHE_UBI_ROOT_URL:-${artifactory_repository_url}/content/public/ubi}
+  case "${rpm_cache_ubi_root_url}" in
+    "${ARTIFACTORY_URL%/}/artifactory/"*) ;;
+    *) echo "LOCAL_RPM_CACHE_UBI_ROOT_URL must point inside ARTIFACTORY_URL" >&2; exit 2 ;;
+  esac
+  rpm_cache_prefix="${rpm_cache_ubi_root_url%/}/dist/ubi${major}/${major}/${rpm_arch}"
+  curl_args+=(--header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}")
+  repomd_file="${local_root}/${image}-cache-repomd.sha256"
   : >"${repomd_file}"
   for channel in baseos appstream; do
     metadata="${local_root}/${image}-${channel}-repomd.xml"
     curl "${curl_args[@]}" --output "${metadata}" \
-      "${upstream_prefix}/${channel}/os/repodata/repomd.xml"
+      "${rpm_cache_prefix}/${channel}/os/repodata/repomd.xml"
     sha256sum "${metadata}" >>"${repomd_file}"
   done
-  rpm_source="redhat-ubi-public:${major}:${rpm_arch}"
+  rpm_source="artifactory:${rpm_cache_repository}:ubi${major}:${rpm_arch}"
 else
   repomd_file="${local_root}/${image}-repomd.xml"
   for _ in $(seq 1 30); do
@@ -211,11 +221,12 @@ EOF
 
 export FACTORY_IMAGE="${image}"
 export FACTORY_RPM_BASE_URL="${rpm_base_url}"
-if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
-  export FACTORY_UPSTREAM_UBI_VERSION="${major}"
-  export FACTORY_UPSTREAM_UBI_ARCH="${rpm_arch}"
+if [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
+  export FACTORY_UBI_REPO_PREFIX="${rpm_cache_prefix}"
+  export FACTORY_RPM_REPO_USERNAME=${LOCAL_ARTIFACTORY_USERNAME:-oidc}
+  export FACTORY_RPM_REPO_PASSWORD="${ARTIFACTORY_READ_TOKEN}"
 else
-  unset FACTORY_UPSTREAM_UBI_VERSION FACTORY_UPSTREAM_UBI_ARCH
+  unset FACTORY_UBI_REPO_PREFIX FACTORY_RPM_REPO_USERNAME FACTORY_RPM_REPO_PASSWORD
 fi
 export FACTORY_BUILD_NETWORK=host
 export FACTORY_BASE_MAJOR="${rpm_major}"

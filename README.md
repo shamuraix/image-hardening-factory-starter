@@ -82,30 +82,51 @@ The `factory` entry point exposes five subcommands:
 ## Local image builds
 
 The local development workflow uses rootless Podman and Buildah with a temporary
-loopback OCI registry and a loopback HTTP server for an existing RPM repository
-snapshot. It applies the catalog overlay, downloads and checksum-verifies
-manifest resources, generates a clearly marked development resource lock, and
-publishes the result to both an OCI archive and the local registry. Catalog base
-images are built automatically before an application image.
+loopback OCI registry. By default, RPMs are read through an internal Artifactory
+pull-through cache; an existing local RPM snapshot can be served from a loopback
+HTTP server instead. The workflow applies the catalog overlay, downloads and
+checksum-verifies manifest resources, generates a clearly marked development
+resource lock, and publishes the result to both an OCI archive and the local
+registry. Catalog base images are built automatically before an application
+image.
 
 Prerequisites are Python 3.11+, Git, Curl, Podman, Buildah, Skopeo, `yq`, and
 `jq`. Umoci is also required for malware and compliance scans. Podman and
-Buildah must run rootless. For snapshot-based testing, `LOCAL_RPM_REPO_DIR` must
-point to a complete RPM repository containing `repodata/repomd.xml`. Signature
-checking remains enabled by default, so the repository must also contain valid
-RPM and repository signatures trusted by the source image.
+Buildah must run rootless. The default connected path requires `ARTIFACTORY_URL`
+and `ARTIFACTORY_READ_TOKEN`. For snapshot-based testing,
+`LOCAL_RPM_REPO_DIR` must point to a complete RPM repository containing
+`repodata/repomd.xml`. Signature checking remains enabled by default, so the
+repository must also contain valid RPM and repository signatures trusted by
+the source image.
+
+```bash
+export ARTIFACTORY_URL=https://artifactory.example.com
+export ARTIFACTORY_READ_TOKEN=replace-with-read-token
+
+make local-build IMAGE=ubi9-minimal
+```
+
+The default Artifactory remote-repository key is `rpm-ubi-remote`. Override it
+when the internal repository uses a different key. The default assumes that
+remote repository points to `https://cdn-ubi.redhat.com`, so Artifactory retains
+the upstream `content/public/ubi` path:
 
 ```bash
 make local-build \
   IMAGE=ubi9-minimal \
-  LOCAL_RPM_REPO_DIR=/absolute/path/to/ubi9-snapshot
+  LOCAL_RPM_CACHE_REPOSITORY=ubi-rpm-remote
 ```
 
 To build an Atlassian image and its UBI dependency:
 
 ```bash
-make local-build \
-  IMAGE=jira-lts \
+make local-build IMAGE=jira-lts
+```
+
+To build from a complete local snapshot instead of Artifactory:
+
+```bash
+make local-build IMAGE=ubi9-minimal \
   LOCAL_RPM_REPO_DIR=/absolute/path/to/ubi9-snapshot
 ```
 
@@ -124,13 +145,15 @@ after building with:
 
 ```bash
 make local-test \
-  IMAGE=ubi9-minimal \
-  LOCAL_RPM_REPO_DIR=/absolute/path/to/ubi9-snapshot
+  IMAGE=ubi9-minimal
 ```
 
 Useful overrides include `LOCAL_REGISTRY` (loopback only, default
 `127.0.0.1:5000`), `LOCAL_RPM_PORT` (default `18080`), and
-`LOCAL_KEEP_REGISTRY=true`. Setting `LOCAL_RPM_GPGCHECK=0` or
+`LOCAL_KEEP_REGISTRY=true`. The internal cache defaults to the URL
+`${ARTIFACTORY_URL}/artifactory/${LOCAL_RPM_CACHE_REPOSITORY}/content/public/ubi`.
+Set `LOCAL_RPM_CACHE_UBI_ROOT_URL` when the Artifactory remote repository maps
+the upstream path at a different root. Setting `LOCAL_RPM_GPGCHECK=0` or
 `LOCAL_RPM_REPO_GPGCHECK=0` is available only for disposable development data
 and weakens parity with the production build. `LOCAL_RPM_SSLVERIFY=0` also
 disables repository TLS verification and should be used only as a last-resort
@@ -150,7 +173,6 @@ copied into the development context and activated before the first RPM access:
 ```bash
 make local-build \
   IMAGE=ubi9-minimal \
-  LOCAL_USE_UPSTREAM_UBI_REPOS=true \
   LOCAL_CA_CERT=/absolute/path/to/corporate-ca.crt
 ```
 
@@ -167,35 +189,29 @@ the first RPM access:
 ```bash
 make local-build \
   IMAGE=ubi9-minimal \
-  LOCAL_USE_UPSTREAM_UBI_REPOS=true \
   LOCAL_CA_BUNDLE=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 ```
 
 When both variables are set, `LOCAL_CA_BUNDLE` configures host Curl and
 `LOCAL_CA_CERT` is the certificate installed in the image.
 
-For the simplest connected development build, use Red Hat's public UBI BaseOS
-and AppStream repositories directly:
+For the simplest connected development build, set the two Artifactory
+credentials and run the target directly:
 
 ```bash
-make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
+make local-build IMAGE=ubi9-minimal
 ```
 
-The workflow selects UBI 9 or UBI 10 from the catalog dependency, downloads and
-hashes the BaseOS and AppStream `repomd.xml` documents, and records a composite
-metadata digest in the local development lock. It writes a temporary repo file
-with both repositories explicitly set to `enabled=1` and bind-mounts that file
-over `/etc/yum.repos.d` during the Buildah build. This intentionally overrides
-the source Dockerfile's default-disabled repository configuration for local
-development only. Only the generated `factory.repo` file is mounted read-only;
-the containing `/etc/yum.repos.d` directory remains writable because Red Hat's
-repository tooling may generate `redhat.repo` while `microdnf` initializes.
-The bind mount exists only inside Buildah's rootless user namespace.
-
-Set exactly one of `LOCAL_USE_UPSTREAM_UBI_REPOS=true` and
-`LOCAL_RPM_REPO_DIR`. The upstream mode is mutable and connected, so its output
-cannot demonstrate production reproducibility. Its development lock remains
-ineligible for quarantine import or promotion.
+The workflow selects UBI 9 or UBI 10 from the catalog dependency and requests
+BaseOS and AppStream only from the authenticated internal cache. It downloads
+and hashes both `repomd.xml` documents and records a composite metadata digest
+in the local development lock. The generated repo file enables both channels
+and is bind-mounted over `/etc/yum.repos.d/factory.repo` during the Buildah
+build. The source Dockerfile's default-disabled repository configuration is
+therefore overridden for local development only. Direct access to Red Hat's CDN
+is not supported by `local_build.sh`; `LOCAL_USE_UPSTREAM_UBI_REPOS=true` now
+fails with migration guidance. Because pull-through metadata can change, these
+development locks remain ineligible for quarantine import or promotion.
 
 To evaluate an application against the UBI 10 canary without changing its
 production catalog dependency, set the local base override:
@@ -203,13 +219,11 @@ production catalog dependency, set the local base override:
 ```bash
 make local-build \
   IMAGE=jira-lts \
-  LOCAL_BASE_IMAGE_OVERRIDE=ubi10-minimal \
-  LOCAL_USE_UPSTREAM_UBI_REPOS=true
+  LOCAL_BASE_IMAGE_OVERRIDE=ubi10-minimal
 
 make local-test \
   IMAGE=jira-lts \
-  LOCAL_BASE_IMAGE_OVERRIDE=ubi10-minimal \
-  LOCAL_USE_UPSTREAM_UBI_REPOS=true
+  LOCAL_BASE_IMAGE_OVERRIDE=ubi10-minimal
 ```
 
 The override is accepted only for application images and must name a catalog
@@ -328,7 +342,7 @@ For a connected local assessment after building an image:
 export FALCON_CLIENT_ID=...
 export FALCON_CLIENT_SECRET=...
 export FALCON_REGION=us-1
-make local-fcs IMAGE=jira-lts LOCAL_USE_UPSTREAM_UBI_REPOS=true
+make local-fcs IMAGE=jira-lts
 ```
 
 The assessment, FCS CycloneDX SBOM, logs, and fail-closed status document are

@@ -14,7 +14,7 @@ pipeline:
 	PYTHONPATH=. python3 -m factory.cli pipeline --catalog catalog/images --all --output generated-child.yml
 
 local-build:
-	@test -n "$(IMAGE)" || { echo "usage: make local-build IMAGE=ubi9-minimal LOCAL_RPM_REPO_DIR=/path/to/snapshot" >&2; exit 2; }
+	@test -n "$(IMAGE)" || { echo "usage: make local-build IMAGE=ubi9-minimal [LOCAL_RPM_REPO_DIR=/path/to/snapshot]" >&2; exit 2; }
 	scripts/local_build.sh "$(IMAGE)"
 
 local-test: local-build

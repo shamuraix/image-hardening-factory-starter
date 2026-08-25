@@ -18,12 +18,14 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertIn("--bind 127.0.0.1", local_build)
         self.assertIn('--publish "127.0.0.1:', local_build)
 
-    def test_upstream_ubi_repositories_remain_local_only(self) -> None:
+    def test_internal_ubi_cache_remains_local_only(self) -> None:
         local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
         production_prepare = (ROOT / "scripts/prepare_context.sh").read_text(encoding="utf-8")
 
-        self.assertIn("LOCAL_USE_UPSTREAM_UBI_REPOS", local_build)
-        self.assertNotIn("LOCAL_USE_UPSTREAM_UBI_REPOS", production_prepare)
+        self.assertIn("LOCAL_RPM_CACHE_REPOSITORY", local_build)
+        self.assertIn("FACTORY_UBI_REPO_PREFIX", local_build)
+        self.assertNotIn("FACTORY_UBI_REPO_PREFIX", production_prepare)
+        self.assertNotIn("cdn-ubi.redhat.com", local_build)
 
     def test_repo_mount_does_not_make_yum_directory_read_only(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
@@ -58,12 +60,17 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertIn("factory-local-ca.crt", local_build)
         self.assertLess(patch.index("+RUN update-ca-trust"), patch.index("microdnf repolist"))
 
-    def test_upstream_ubi_tls_verification_honors_local_override(self) -> None:
+    def test_internal_ubi_cache_uses_auth_and_honors_tls_override(self) -> None:
         repo_config = (ROOT / "scripts/write_repo_config.sh").read_text(encoding="utf-8")
-        upstream_config = repo_config.split("if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]", maxsplit=1)[0]
+        cache_config = repo_config.split("if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]", maxsplit=1)[0]
 
-        self.assertEqual(upstream_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2)
-        self.assertNotIn("sslverify=1", upstream_config)
+        self.assertEqual(
+            cache_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2
+        )
+        self.assertEqual(
+            cache_config.count("password=${FACTORY_RPM_REPO_PASSWORD}"), 2
+        )
+        self.assertNotIn("cdn-ubi.redhat.com", cache_config)
 
     def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:
         component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")

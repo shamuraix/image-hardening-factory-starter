@@ -21,29 +21,29 @@ else
 fi
 snapshot_id=$(scripts/rpm_snapshot_id.sh "${catalog}")
 
-if [[ -n ${FACTORY_UPSTREAM_UBI_VERSION:-} ]]; then
-  case "${FACTORY_UPSTREAM_UBI_VERSION}" in
-    9|10) ;;
-    *) echo "FACTORY_UPSTREAM_UBI_VERSION must be 9 or 10" >&2; exit 2 ;;
-  esac
-  arch=${FACTORY_UPSTREAM_UBI_ARCH:-x86_64}
-  prefix="https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi${FACTORY_UPSTREAM_UBI_VERSION}/${FACTORY_UPSTREAM_UBI_VERSION}/${arch}"
+if [[ -n ${FACTORY_UBI_REPO_PREFIX:-} ]]; then
+  : "${FACTORY_RPM_REPO_USERNAME:?FACTORY_RPM_REPO_USERNAME is required for the UBI cache}"
+  : "${FACTORY_RPM_REPO_PASSWORD:?FACTORY_RPM_REPO_PASSWORD is required for the UBI cache}"
   cat >"${output}" <<EOF
-[ubi-${FACTORY_UPSTREAM_UBI_VERSION}-baseos-rpms]
-name=Red Hat UBI ${FACTORY_UPSTREAM_UBI_VERSION} BaseOS (local development)
-baseurl=${prefix}/baseos/os/
+[factory-ubi-baseos]
+name=Factory internal UBI BaseOS cache
+baseurl=${FACTORY_UBI_REPO_PREFIX%/}/baseos/os/
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
+username=${FACTORY_RPM_REPO_USERNAME}
+password=${FACTORY_RPM_REPO_PASSWORD}
 
-[ubi-${FACTORY_UPSTREAM_UBI_VERSION}-appstream-rpms]
-name=Red Hat UBI ${FACTORY_UPSTREAM_UBI_VERSION} AppStream (local development)
-baseurl=${prefix}/appstream/os/
+[factory-ubi-appstream]
+name=Factory internal UBI AppStream cache
+baseurl=${FACTORY_UBI_REPO_PREFIX%/}/appstream/os/
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
+username=${FACTORY_RPM_REPO_USERNAME}
+password=${FACTORY_RPM_REPO_PASSWORD}
 EOF
   chmod 0600 "${output}"
   printf '%s\n' "${snapshot_id}"

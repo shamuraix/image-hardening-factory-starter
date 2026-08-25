@@ -12,15 +12,18 @@ Create these local repositories and enable immutability on release repositories:
 | `FACTORY_QUARANTINE_REPOSITORY` or catalog override (`oci-app-quarantine-local`) | OCI | Protected importer |
 | `oci-release-local` | OCI | Protected promotion broker |
 | `oci-canary-local` | OCI | Protected canary broker |
+| `rpm-ubi-remote` | RPM remote (`https://cdn-ubi.redhat.com`) | Local development read-through only |
 | `rpm-ubi9-snapshot-local` | RPM | Repository snapshot job |
 | `rpm-ubi10-snapshot-local` | RPM | Repository snapshot job |
 | `security-data-local` | Generic/OCI | Security-data intake job |
 | `oci-toolchain-local` | OCI | Toolchain bootstrap job |
 
-Do not point build containers at an Artifactory remote repository whose RPM
-metadata changes in place. Use `scripts/snapshot_rpm_repo.sh`, set the resulting
-immutable ID as `RPM_SNAPSHOT_ID`, and include the `repomd.xml` SHA-256 in the
-resource lock. The build records the snapshot ID in provenance.
+Do not point production build containers at an Artifactory remote repository
+whose RPM metadata changes in place. Use `scripts/snapshot_rpm_repo.sh`, set the
+resulting immutable ID as `RPM_SNAPSHOT_ID`, and include the `repomd.xml`
+SHA-256 in the resource lock. The build records the snapshot ID in provenance.
+The local workflow may use the internal pull-through cache, but marks the lock
+as development-only and prevents that build from entering import or promotion.
 
 ## Runner classes
 
@@ -130,8 +133,9 @@ snapshot path:
 
 | Variable | Purpose |
 |---|---|
-| `FACTORY_UPSTREAM_UBI_VERSION` | Set to `9` or `10` to write a configuration pointing directly at Red Hat's public CDN for connected builds. Sets both BaseOS and AppStream repositories. |
-| `FACTORY_RPM_BASE_URL` | Override the Artifactory snapshot URL with an arbitrary base URL (e.g., a local HTTP mirror). Incompatible with `FACTORY_UPSTREAM_UBI_VERSION`. |
+| `FACTORY_UBI_REPO_PREFIX` | Internal UBI cache URL through the architecture segment. Local builds derive this from Artifactory; direct Red Hat CDN URLs are not supported. |
+| `FACTORY_RPM_REPO_USERNAME` / `FACTORY_RPM_REPO_PASSWORD` | Read-only credentials embedded in the temporary cache repository file. |
+| `FACTORY_RPM_BASE_URL` | Override the Artifactory snapshot URL with an arbitrary base URL (for example, the loopback HTTP server used with `LOCAL_RPM_REPO_DIR`). Incompatible with `FACTORY_UBI_REPO_PREFIX`. |
 | `FACTORY_RPM_GPGCHECK` | RPM package signature check (`1` or `0`); defaults to `1`. |
 | `FACTORY_RPM_REPO_GPGCHECK` | Repository metadata signature check (`1` or `0`); defaults to `1`. |
 | `FACTORY_RPM_SSLVERIFY` | TLS verification for the RPM repository (`1` or `0`); defaults to `1`. |
