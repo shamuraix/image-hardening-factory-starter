@@ -158,7 +158,7 @@ fi
 local_ca_cert=${LOCAL_CA_CERT:-${LOCAL_CA_BUNDLE:-}}
 if [[ -n ${local_ca_cert} && ${image} == ubi9-minimal ]]; then
   [[ -r ${local_ca_cert} ]] || {
-    echo "LOCAL_CA_CERT is not readable: ${local_ca_cert}" >&2
+    echo "local CA file is not readable: ${local_ca_cert}" >&2
     exit 2
   }
   install -m 0644 "${local_ca_cert}" "${context}/certs/factory-local-ca.crt"
