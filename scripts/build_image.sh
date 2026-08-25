@@ -16,9 +16,14 @@ isolation=${BUILDAH_ISOLATION:-rootless}
   echo "BUILDAH_ISOLATION must be rootless" >&2
   exit 2
 }
+skopeo_copy_args=(--retry-times 5)
+if [[ ${FACTORY_REMOVE_TRANSPORT_SIGNATURES:-false} == true ]]; then
+  skopeo_copy_args+=(--remove-signatures)
+fi
 
 if [[ -f "${work_dir}/base.oci.tar" ]]; then
-  skopeo copy "oci-archive:${work_dir}/base.oci.tar" "containers-storage:${BASE_REF}"
+  skopeo copy "${skopeo_copy_args[@]}" \
+    "oci-archive:${work_dir}/base.oci.tar" "containers-storage:${BASE_REF}"
 fi
 
 args=(
@@ -52,7 +57,7 @@ export RPM_SNAPSHOT_ID
 # Mount only the factory repository file. Mounting the whole directory
 # read-only prevents librhsm from creating its generated redhat.repo file and
 # causes microdnf to fail before it can use the explicitly enabled UBI repos.
-args+=(--volume "${repo_dir}/factory.repo:/etc/yum.repos.d/factory.repo:ro")
+args+=(--volume "${repo_dir}/factory.repo:/etc/yum.repos.d/factory.repo:ro,Z")
 
 while IFS=$'\t' read -r key value; do
   args+=(--build-arg "${key}=${value}")
@@ -62,7 +67,8 @@ buildah bud "${args[@]}" "${work_dir}/context"
 # Preserve the exact local reference in the archive so downstream jobs can
 # load and select this image deterministically, even when unrelated or dangling
 # images exist in container storage.
-skopeo copy "containers-storage:${local_ref}" "oci-archive:${work_dir}/image.oci.tar:${local_ref}"
+skopeo copy "${skopeo_copy_args[@]}" \
+  "containers-storage:${local_ref}" "oci-archive:${work_dir}/image.oci.tar:${local_ref}"
 # The archive is the candidate handed to every scanner and importer, so record
 # its manifest digest rather than assuming a storage-to-archive copy preserved
 # the source manifest byte-for-byte.

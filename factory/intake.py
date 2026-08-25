@@ -75,7 +75,18 @@ def _lock_oci(resource: dict[str, Any], cache_dir: Path) -> dict[str, Any]:
         raise IntakeError(f"OCI resource requires a local tag: {source}")
     expected = source.rsplit("@", 1)[1]
     output = cache_dir / (tag.replace("/", "-").replace(":", "-") + ".oci.tar")
-    subprocess.run(["skopeo", "copy", source, f"oci-archive:{output}:{tag}"], check=True)
+    subprocess.run(
+        [
+            "skopeo",
+            "copy",
+            "--retry-times",
+            "5",
+            "--remove-signatures",
+            source,
+            f"oci-archive:{output}:{tag}",
+        ],
+        check=True,
+    )
     raw = subprocess.check_output(["skopeo", "inspect", "--raw", source])
     observed = "sha256:" + hashlib.sha256(raw).hexdigest()
     if observed != expected:

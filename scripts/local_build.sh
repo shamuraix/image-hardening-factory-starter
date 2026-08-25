@@ -148,6 +148,13 @@ if [[ -n ${overlay} ]]; then
     git -C "${context}" apply "${PWD}/${patch}"
   done < <(find "${overlay}" -type f -name '*.patch' -print0 | sort -z)
 fi
+if [[ -n ${LOCAL_CA_CERT:-} && ${image} == ubi9-minimal ]]; then
+  [[ -r ${LOCAL_CA_CERT} ]] || {
+    echo "LOCAL_CA_CERT is not readable: ${LOCAL_CA_CERT}" >&2
+    exit 2
+  }
+  install -m 0644 "${LOCAL_CA_CERT}" "${context}/certs/factory-local-ca.crt"
+fi
 scripts/validate_context.py "${catalog}" "${context}"
 
 PYTHONPATH=. python3 -m factory.cli intake --image "${catalog}" --source-dir "${context}" \
@@ -165,9 +172,11 @@ else
   base_source=$(jq -er '.resources[] | select(.kind == "oci") | .source' \
     "${work_dir}/resource-lock.json" | head -n1)
   base_ref="${local_image_namespace}/${image}-upstream:local"
-  skopeo copy --all "${base_source}" "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
+  skopeo copy --retry-times 5 --remove-signatures --all "${base_source}" \
+    "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
     --dest-tls-verify=false
-  skopeo copy --all "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
+  skopeo copy --retry-times 5 --remove-signatures --all \
+    "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
     "oci-archive:${work_dir}/base.oci.tar:${base_ref}" --src-tls-verify=false
   base_digest=$(skopeo inspect --tls-verify=false \
     "docker://${registry}/${registry_namespace}/${image}-upstream:local" | jq -er '.Digest')
@@ -211,9 +220,10 @@ export FACTORY_RPM_SSLVERIFY=${LOCAL_RPM_SSLVERIFY:-1}
 # effective base and only the matching UBI repositories are enabled.
 export RPM_SNAPSHOT_UBI9_ID="${snapshot_id}"
 export RPM_SNAPSHOT_UBI10_ID="${snapshot_id}"
+export FACTORY_REMOVE_TRANSPORT_SIGNATURES=true
 
 scripts/build_image.sh "${catalog}" "${work_dir}"
-skopeo copy "oci-archive:${work_dir}/image.oci.tar" \
+skopeo copy --retry-times 5 --remove-signatures "oci-archive:${work_dir}/image.oci.tar" \
   "docker://${registry}/${registry_namespace}/${image}:local" --dest-tls-verify=false
 
 printf 'Built %s\nOCI archive: %s/image.oci.tar\nLocal registry: %s/%s/%s:local\nDevelopment lock: %s/resource-lock.json\n' \

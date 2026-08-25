@@ -28,8 +28,32 @@ class LocalWorkflowTests(unittest.TestCase):
     def test_repo_mount_does_not_make_yum_directory_read_only(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
 
-        self.assertIn("/factory.repo:/etc/yum.repos.d/factory.repo:ro", build)
+        self.assertIn("/factory.repo:/etc/yum.repos.d/factory.repo:ro,Z", build)
         self.assertNotIn("repo_dir}:/etc/yum.repos.d:ro", build)
+
+    def test_local_build_handles_new_skopeo_and_selinux_hosts(self) -> None:
+        local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
+        build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
+
+        self.assertIn("--remove-signatures", local_build)
+        self.assertIn("--retry-times 5", local_build)
+        self.assertIn("FACTORY_REMOVE_TRANSPORT_SIGNATURES=true", local_build)
+        self.assertIn("FACTORY_REMOVE_TRANSPORT_SIGNATURES", build)
+        self.assertIn("--remove-signatures", build)
+
+    def test_local_ubi9_ca_is_activated_before_rpm_access(self) -> None:
+        local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
+        patch = (
+            ROOT
+            / "overlays"
+            / "ubi9-minimal"
+            / "patches"
+            / "0002-update-ca-trust-before-rpm-access.patch"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("LOCAL_CA_CERT", local_build)
+        self.assertIn("factory-local-ca.crt", local_build)
+        self.assertLess(patch.index("+RUN update-ca-trust"), patch.index("microdnf repolist"))
 
     def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:
         component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")

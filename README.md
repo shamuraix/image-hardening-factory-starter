@@ -134,6 +134,29 @@ Useful overrides include `LOCAL_REGISTRY` (loopback only, default
 `LOCAL_RPM_REPO_GPGCHECK=0` is available only for disposable development data
 and weakens parity with the production build.
 
+On an SELinux-enforcing host such as the Fedora CoreOS guest used by Podman
+Machine, the generated repository file is privately relabeled for the build
+container. Newer Skopeo releases may also refuse to copy upstream transport
+signatures into local registries or OCI archives that cannot store them; the
+local workflow explicitly removes those transport signatures while retaining
+digest verification and retries transient registry failures.
+
+If local HTTPS access requires an additional corporate CA, pass a single PEM
+certificate with `LOCAL_CA_CERT`. For UBI 9 local builds, the certificate is
+copied into the development context and activated before the first RPM access:
+
+```bash
+make local-build \
+  IMAGE=ubi9-minimal \
+  LOCAL_USE_UPSTREAM_UBI_REPOS=true \
+  LOCAL_CA_CERT=/absolute/path/to/corporate-ca.crt
+```
+
+This adds the CA to the resulting development image and therefore expands its
+trust store. Review that addition before manually placing the image in a shared
+quarantine repository. Do not pass a bundle of unrelated trust roots when the
+specific issuing CA is available.
+
 For the simplest connected development build, use Red Hat's public UBI BaseOS
 and AppStream repositories directly:
 

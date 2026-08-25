@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from datetime import UTC, datetime
@@ -125,3 +126,27 @@ class IntakeTests(unittest.TestCase):
             self.assertRaisesRegex(intake.IntakeError, "OCI manifest digest mismatch"),
         ):
             intake._lock_oci(resource, Path(directory))
+
+    def test_oci_copy_removes_transport_signatures_and_retries(self) -> None:
+        resource = {
+            "url": "docker://registry.example.test/image@sha256:"
+            + "a" * 64,
+            "tag": "image:test",
+        }
+        raw_manifest = b"manifest"
+        resource["url"] = (
+            "docker://registry.example.test/image@sha256:"
+            + hashlib.sha256(raw_manifest).hexdigest()
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.object(intake.subprocess, "run") as run,
+            patch.object(intake.subprocess, "check_output", return_value=raw_manifest),
+            patch.object(intake, "digest_file", return_value="b" * 64),
+        ):
+            intake._lock_oci(resource, Path(directory))
+
+        command = run.call_args.args[0]
+        self.assertEqual(command[:2], ["skopeo", "copy"])
+        self.assertIn("--retry-times", command)
+        self.assertIn("--remove-signatures", command)
