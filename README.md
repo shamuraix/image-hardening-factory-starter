@@ -132,7 +132,9 @@ Useful overrides include `LOCAL_REGISTRY` (loopback only, default
 `127.0.0.1:5000`), `LOCAL_RPM_PORT` (default `18080`), and
 `LOCAL_KEEP_REGISTRY=true`. Setting `LOCAL_RPM_GPGCHECK=0` or
 `LOCAL_RPM_REPO_GPGCHECK=0` is available only for disposable development data
-and weakens parity with the production build.
+and weakens parity with the production build. `LOCAL_RPM_SSLVERIFY=0` also
+disables repository TLS verification and should be used only as a last-resort
+diagnostic override.
 
 On an SELinux-enforcing host such as the Fedora CoreOS guest used by Podman
 Machine, the generated repository file is privately relabeled for the build
@@ -156,6 +158,21 @@ This adds the CA to the resulting development image and therefore expands its
 trust store. Review that addition before manually placing the image in a shared
 quarantine repository. Do not pass a bundle of unrelated trust roots when the
 specific issuing CA is available.
+
+If only the host trust bundle is available, set `LOCAL_CA_BUNDLE` instead. The
+local workflow passes the bundle to Curl for repository metadata downloads and,
+when `LOCAL_CA_CERT` is unset, installs it in the UBI 9 development image before
+the first RPM access:
+
+```bash
+make local-build \
+  IMAGE=ubi9-minimal \
+  LOCAL_USE_UPSTREAM_UBI_REPOS=true \
+  LOCAL_CA_BUNDLE=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+```
+
+When both variables are set, `LOCAL_CA_BUNDLE` configures host Curl and
+`LOCAL_CA_CERT` is the certificate installed in the image.
 
 For the simplest connected development build, use Red Hat's public UBI BaseOS
 and AppStream repositories directly:

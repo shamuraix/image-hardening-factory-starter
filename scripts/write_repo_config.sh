@@ -35,7 +35,7 @@ baseurl=${prefix}/baseos/os/
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
-sslverify=1
+sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 
 [ubi-${FACTORY_UPSTREAM_UBI_VERSION}-appstream-rpms]
 name=Red Hat UBI ${FACTORY_UPSTREAM_UBI_VERSION} AppStream (local development)
@@ -43,7 +43,7 @@ baseurl=${prefix}/appstream/os/
 enabled=1
 gpgcheck=1
 repo_gpgcheck=0
-sslverify=1
+sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 EOF
   chmod 0600 "${output}"
   printf '%s\n' "${snapshot_id}"
