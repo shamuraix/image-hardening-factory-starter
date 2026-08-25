@@ -54,10 +54,11 @@ repo_dir=$(mktemp -d)
 trap 'rm -rf "${repo_dir}"' EXIT
 RPM_SNAPSHOT_ID=$(scripts/write_repo_config.sh "${catalog}" "${repo_dir}/factory.repo")
 export RPM_SNAPSHOT_ID
-# Mount only the factory repository file. Mounting the whole directory
-# read-only prevents librhsm from creating its generated redhat.repo file and
-# causes microdnf to fail before it can use the explicitly enabled UBI repos.
-args+=(--volume "${repo_dir}/factory.repo:/etc/yum.repos.d/factory.repo:ro,Z")
+# Mask the base image's repository files so package operations cannot fall back
+# to Red Hat's public CDN. Keep the replacement directory writable because
+# librhsm may create redhat.repo while microdnf initializes; the directory is
+# temporary and contains only the generated internal repository configuration.
+args+=(--volume "${repo_dir}:/etc/yum.repos.d:Z")
 
 while IFS=$'\t' read -r key value; do
   args+=(--build-arg "${key}=${value}")

@@ -206,11 +206,12 @@ The workflow selects UBI 9 or UBI 10 from the catalog dependency and requests
 BaseOS and AppStream only from the authenticated internal cache. It downloads
 and hashes both `repomd.xml` documents and records a composite metadata digest
 in the local development lock. The generated repo file enables both channels
-and is bind-mounted over `/etc/yum.repos.d/factory.repo` during the Buildah
-build. The source Dockerfile's default-disabled repository configuration is
-therefore overridden for local development only. Direct access to Red Hat's CDN
-is not supported by `local_build.sh`; `LOCAL_USE_UPSTREAM_UBI_REPOS=true` now
-fails with migration guidance. Because pull-through metadata can change, these
+and its temporary directory is bind-mounted over `/etc/yum.repos.d` during the
+Buildah build. This masks repository files inherited from the upstream UBI base
+image while leaving the directory writable for `librhsm` initialization. RPM
+operations therefore cannot fall back to Red Hat's public CDN. Direct CDN access
+is not supported by `local_build.sh`; `LOCAL_USE_UPSTREAM_UBI_REPOS=true` fails
+with migration guidance. Because pull-through metadata can change, these local
 development locks remain ineligible for quarantine import or promotion.
 
 To evaluate an application against the UBI 10 canary without changing its

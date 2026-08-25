@@ -30,11 +30,13 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertNotIn("FACTORY_UBI_REPO_PREFIX", production_prepare)
         self.assertNotIn("cdn-ubi.redhat.com", local_build)
 
-    def test_repo_mount_does_not_make_yum_directory_read_only(self) -> None:
+    def test_repo_mount_masks_upstream_repositories_and_remains_writable(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
 
-        self.assertIn("/factory.repo:/etc/yum.repos.d/factory.repo:ro,Z", build)
+        self.assertIn('"${repo_dir}:/etc/yum.repos.d:Z"', build)
         self.assertNotIn("repo_dir}:/etc/yum.repos.d:ro", build)
+        self.assertNotIn("/factory.repo:/etc/yum.repos.d/factory.repo", build)
+        self.assertIn("cannot fall back", build)
 
     def test_local_build_handles_new_skopeo_and_selinux_hosts(self) -> None:
         local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
