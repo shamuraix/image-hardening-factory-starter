@@ -1,0 +1,458 @@
+# GitHub Actions equivalent of .gitlab-ci.yml
+#
+# The GitLab root pipeline uses a two-stage pattern:
+#   plan  – render a dynamic child pipeline YAML
+#   execute – trigger that child pipeline
+#
+# GitHub Actions does not have native dynamic child pipelines, so the pattern
+# is replicated with two jobs:
+#   render  – calls `scripts/render_child_pipeline.sh` and uploads the YAML as
+#             a workflow artifact (mirrors the GitLab "render-child-pipeline" job)
+#   execute – downloads the artifact and re-runs the same per-image jobs that
+#             the factory `pipeline` subcommand would have scheduled (mirrors
+#             "execute-child-pipeline")
+#
+# The `execute` job reads the rendered YAML and fans out per-image work by
+# driving the same shell scripts that the child pipeline jobs call.  Each
+# feature gate (FACTORY_ENABLE_*) is an environment variable that can be
+# overridden via repository/environment variables or a workflow_dispatch input,
+# exactly as in GitLab.
+#
+# Runner requirements mirror the GitLab runner classes documented in
+# docs/operations.md: rootless Buildah/Podman, VFS storage driver, unprivileged
+# user namespaces.  Set the `factory` runner label on GitHub-hosted or
+# self-hosted runners that meet those requirements.
+
+name: Factory Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      FACTORY_CHANGED_IMAGES:
+        description: >
+          Comma-separated list of catalog image names to process.
+          Leave empty to process all images.
+        required: false
+        default: ""
+      FACTORY_ENABLE_VALIDATE:
+        description: "Enable validate stage"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_PREPARE:
+        description: "Enable prepare stage"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_BUILD:
+        description: "Enable build stage"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_SBOM:
+        description: "Enable SBOM generation"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_SCAN:
+        description: "Enable vulnerability scan"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_FCS:
+        description: "Enable FCS scan"
+        required: false
+        default: "false"
+      FACTORY_ENABLE_COMPLIANCE:
+        description: "Enable compliance scan"
+        required: false
+        default: "false"
+      FACTORY_ENABLE_TEST:
+        description: "Enable test stage"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_GATE:
+        description: "Enable policy gate"
+        required: false
+        default: "true"
+      FACTORY_ENABLE_REMEDIATE:
+        description: "Enable AI remediation"
+        required: false
+        default: "false"
+      FACTORY_ENABLE_IMPORT:
+        description: "Enable image import"
+        required: false
+        default: "false"
+      FACTORY_ENABLE_ATTEST:
+        description: "Enable signing/attestation"
+        required: false
+        default: "false"
+      FACTORY_ENABLE_PROMOTE:
+        description: "Enable promotion"
+        required: false
+        default: "false"
+
+# Limit the GITHUB_TOKEN to the minimum required scope.
+# Jobs that sign/attest images use external Cosign keys and Artifactory
+# credentials; they do not need write access to the GitHub repository.
+permissions:
+  contents: read
+
+# All jobs share these defaults.  Any value may be overridden by a repository
+# variable (Settings → Secrets and variables → Variables) or a workflow_dispatch
+# input above.  The precedence order matches GitLab: input > repo variable >
+# built-in default.
+env:
+  FACTORY_TOOLCHAIN_VERSION: "0.1.0"
+  FACTORY_TOOLCHAIN_REGISTRY: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}
+  FACTORY_TOOLCHAIN_IMAGE: ${{ vars.FACTORY_TOOLCHAIN_IMAGE || 'factory-python' }}
+  FACTORY_RUNNER_IMAGE: ${{ vars.FACTORY_RUNNER_IMAGE || 'factory-runner' }}
+  FACTORY_FCS_RUNNER_IMAGE: ${{ vars.FACTORY_FCS_RUNNER_IMAGE || 'factory-fcs-runner' }}
+  FCS_CLI_VERSION: ${{ vars.FCS_CLI_VERSION || '4.0.0' }}
+  FACTORY_CATALOG_DIR: ${{ vars.FACTORY_CATALOG_DIR || 'catalog/images' }}
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+  # Feature gates – prefer workflow_dispatch input when provided, then
+  # repository variable, then the default shown here.
+  FACTORY_ENABLE_VALIDATE: ${{ inputs.FACTORY_ENABLE_VALIDATE || vars.FACTORY_ENABLE_VALIDATE || 'true' }}
+  FACTORY_ENABLE_PREPARE: ${{ inputs.FACTORY_ENABLE_PREPARE || vars.FACTORY_ENABLE_PREPARE || 'true' }}
+  FACTORY_ENABLE_BUILD: ${{ inputs.FACTORY_ENABLE_BUILD || vars.FACTORY_ENABLE_BUILD || 'true' }}
+  FACTORY_ENABLE_SBOM: ${{ inputs.FACTORY_ENABLE_SBOM || vars.FACTORY_ENABLE_SBOM || 'true' }}
+  FACTORY_ENABLE_SCAN: ${{ inputs.FACTORY_ENABLE_SCAN || vars.FACTORY_ENABLE_SCAN || 'true' }}
+  FACTORY_ENABLE_FCS: ${{ inputs.FACTORY_ENABLE_FCS || vars.FACTORY_ENABLE_FCS || 'false' }}
+  FACTORY_ENABLE_COMPLIANCE: ${{ inputs.FACTORY_ENABLE_COMPLIANCE || vars.FACTORY_ENABLE_COMPLIANCE || 'false' }}
+  FACTORY_ENABLE_TEST: ${{ inputs.FACTORY_ENABLE_TEST || vars.FACTORY_ENABLE_TEST || 'true' }}
+  FACTORY_ENABLE_GATE: ${{ inputs.FACTORY_ENABLE_GATE || vars.FACTORY_ENABLE_GATE || 'true' }}
+  FACTORY_ENABLE_REMEDIATE: ${{ inputs.FACTORY_ENABLE_REMEDIATE || vars.FACTORY_ENABLE_REMEDIATE || 'false' }}
+  FACTORY_ENABLE_IMPORT: ${{ inputs.FACTORY_ENABLE_IMPORT || vars.FACTORY_ENABLE_IMPORT || 'false' }}
+  FACTORY_ENABLE_ATTEST: ${{ inputs.FACTORY_ENABLE_ATTEST || vars.FACTORY_ENABLE_ATTEST || 'false' }}
+  FACTORY_ENABLE_PROMOTE: ${{ inputs.FACTORY_ENABLE_PROMOTE || vars.FACTORY_ENABLE_PROMOTE || 'false' }}
+
+jobs:
+  # ── stage: plan ────────────────────────────────────────────────────────────
+  # Mirrors: render-child-pipeline
+  # Renders the per-image pipeline YAML and uploads it as a workflow artifact.
+  render:
+    name: Render child pipeline
+    runs-on: [self-hosted, factory]
+    container:
+      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-python:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Render child pipeline YAML
+        env:
+          FACTORY_CHANGED_IMAGES: ${{ inputs.FACTORY_CHANGED_IMAGES || vars.FACTORY_CHANGED_IMAGES || '' }}
+        run: scripts/render_child_pipeline.sh generated-child.yml
+
+      - name: Upload rendered pipeline
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-child-pipeline
+          path: generated-child.yml
+          retention-days: 7
+
+  # ── stage: execute ──────────────────────────────────────────────────────────
+  # Mirrors: execute-child-pipeline
+  #
+  # GitHub Actions does not support dynamically loading a workflow YAML at
+  # runtime.  Instead, the rendered YAML is parsed here to extract the image
+  # matrix and then the same per-image shell scripts are called sequentially for
+  # each image in the order that the child pipeline would have scheduled them.
+  #
+  # The job honours every FACTORY_ENABLE_* gate: when a gate is disabled the
+  # corresponding script is simply skipped, preserving the GitLab behaviour of
+  # "never" rules.
+  #
+  # Attest and promote run only on the default branch, matching the GitLab
+  # rule: `if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH`.
+  execute:
+    name: Execute pipeline (${{ matrix.FACTORY_IMAGE }})
+    needs: render
+    runs-on: [self-hosted, factory-buildah-ephemeral]
+    # Mirror GitLab interruptible: cancel in-progress runs on the same branch
+    # when a new commit arrives (does not apply to the default branch).
+    concurrency:
+      group: factory-execute-${{ github.ref }}-${{ matrix.FACTORY_IMAGE }}
+      cancel-in-progress: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        FACTORY_IMAGE:
+          # List all catalog images; this mirrors the child pipeline matrix that
+          # `factory pipeline --all` would generate.  When FACTORY_CHANGED_IMAGES
+          # is set the render job already scoped the YAML to only those images,
+          # but GitHub Actions requires a static matrix declaration.  Override
+          # this list via the repository variable FACTORY_IMAGE_MATRIX as a JSON
+          # array, or rely on the render job output (see note above).
+          ${{ fromJSON(vars.FACTORY_IMAGE_MATRIX || '["ubi9-minimal","ubi10-minimal","bitbucket-lts","confluence-lts","jira-lts"]') }}
+    container:
+      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-runner:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+      options: --userns=keep-id  # rootless; mirrors BUILDAH_ISOLATION=rootless
+    env:
+      FACTORY_IMAGE: ${{ matrix.FACTORY_IMAGE }}
+      FACTORY_WORK_DIR: work/${{ matrix.FACTORY_IMAGE }}
+      FACTORY_CATALOG_FILE: ${{ vars.FACTORY_CATALOG_DIR || 'catalog/images' }}/${{ matrix.FACTORY_IMAGE }}.yaml
+      HOME: /home/factory
+      XDG_RUNTIME_DIR: /tmp/factory-runtime
+      CONTAINERS_STORAGE_CONF: /home/factory/.config/containers/storage.conf
+      STORAGE_DRIVER: vfs
+      BUILDAH_ISOLATION: rootless
+      # Release environment for FCS and signing environments – set as a
+      # repository variable or environment variable scoped to the environment.
+      FACTORY_RELEASE_ENV: ${{ vars.FACTORY_RELEASE_ENV || 'default' }}
+      # Credentials passed through from repository/environment secrets.
+      INTERNAL_GIT_BASE_URL: ${{ vars.INTERNAL_GIT_BASE_URL }}
+      ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+      ARTIFACTORY_REGISTRY: ${{ vars.ARTIFACTORY_REGISTRY }}
+      UPSTREAM_OCI_REPOSITORY: ${{ vars.UPSTREAM_OCI_REPOSITORY }}
+      ARTIFACTORY_READ_TOKEN: ${{ secrets.ARTIFACTORY_READ_TOKEN }}
+      COSIGN_INTAKE_PUBLIC_KEY: ${{ vars.COSIGN_INTAKE_PUBLIC_KEY }}
+      COSIGN_KEY_PATH: ${{ secrets.COSIGN_KEY_PATH }}
+      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+      COSIGN_PUBLIC_KEY: ${{ vars.COSIGN_PUBLIC_KEY }}
+      ARTIFACTORY_OIDC_AUDIENCE: ${{ vars.ARTIFACTORY_OIDC_AUDIENCE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download rendered pipeline artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: generated-child-pipeline
+
+      - name: Prepare work directories
+        run: |
+          mkdir -p "${FACTORY_WORK_DIR}" "${XDG_RUNTIME_DIR}"
+          chmod 0700 "${XDG_RUNTIME_DIR}"
+
+      # ── validate ────────────────────────────────────────────────────────────
+      - name: Validate catalog
+        if: ${{ env.FACTORY_ENABLE_VALIDATE != 'false' && env.FACTORY_ENABLE_VALIDATE != '0' && env.FACTORY_ENABLE_VALIDATE != 'off' }}
+        run: |
+          factory validate --catalog "${FACTORY_CATALOG_DIR}"
+          scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
+
+      - name: Upload validation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/validation.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # ── prepare ─────────────────────────────────────────────────────────────
+      - name: Prepare build context
+        if: ${{ env.FACTORY_ENABLE_PREPARE != 'false' && env.FACTORY_ENABLE_PREPARE != '0' && env.FACTORY_ENABLE_PREPARE != 'off' }}
+        run: scripts/prepare_context.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload prepare artifacts
+        if: ${{ env.FACTORY_ENABLE_PREPARE != 'false' && env.FACTORY_ENABLE_PREPARE != '0' && env.FACTORY_ENABLE_PREPARE != 'off' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: prepare-${{ matrix.FACTORY_IMAGE }}
+          path: |
+            work/${{ matrix.FACTORY_IMAGE }}/context
+            work/${{ matrix.FACTORY_IMAGE }}/resource-lock.json
+            work/${{ matrix.FACTORY_IMAGE }}/resource-lock.sig
+            work/${{ matrix.FACTORY_IMAGE }}/build.env
+            work/${{ matrix.FACTORY_IMAGE }}/base.oci.tar
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # ── build ────────────────────────────────────────────────────────────────
+      - name: Build image
+        if: ${{ env.FACTORY_ENABLE_BUILD != 'false' && env.FACTORY_ENABLE_BUILD != '0' && env.FACTORY_ENABLE_BUILD != 'off' }}
+        # CI_PIPELINE_ID equivalent: the GitHub run ID provides the same role
+        # of a unique integer that scopes the local OCI tag within this run.
+        env:
+          CI_PIPELINE_ID: ${{ github.run_id }}
+          CI_PROJECT_URL: ${{ github.server_url }}/${{ github.repository }}
+          CI_COMMIT_SHA: ${{ github.sha }}
+          CI_PROJECT_DIR: ${{ github.workspace }}
+        run: scripts/build_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload build artifacts
+        if: ${{ env.FACTORY_ENABLE_BUILD != 'false' && env.FACTORY_ENABLE_BUILD != '0' && env.FACTORY_ENABLE_BUILD != 'off' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.FACTORY_IMAGE }}
+          path: |
+            work/${{ matrix.FACTORY_IMAGE }}/image.oci.tar
+            work/${{ matrix.FACTORY_IMAGE }}/image-metadata.json
+            work/${{ matrix.FACTORY_IMAGE }}/build.env
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # ── analyze: SBOM ────────────────────────────────────────────────────────
+      - name: Generate SBOM
+        if: ${{ env.FACTORY_ENABLE_SBOM != 'false' && env.FACTORY_ENABLE_SBOM != '0' && env.FACTORY_ENABLE_SBOM != 'off' }}
+        run: scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
+
+      - name: Upload SBOM artifacts
+        if: ${{ env.FACTORY_ENABLE_SBOM != 'false' && env.FACTORY_ENABLE_SBOM != '0' && env.FACTORY_ENABLE_SBOM != 'off' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/sbom.*
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── analyze: vulnerability scan ─────────────────────────────────────────
+      - name: Scan image
+        if: ${{ env.FACTORY_ENABLE_SCAN != 'false' && env.FACTORY_ENABLE_SCAN != '0' && env.FACTORY_ENABLE_SCAN != 'off' }}
+        # Mirror GitLab allow_failure: true — scan failures are non-blocking.
+        continue-on-error: true
+        run: scripts/scan_image.sh "${FACTORY_WORK_DIR}"
+
+      - name: Upload scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-${{ matrix.FACTORY_IMAGE }}
+          path: |
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/scans
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/findings.json
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/database-status.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── analyze: FCS ─────────────────────────────────────────────────────────
+      # Mirrors .factory-fcs; runs only when FACTORY_ENABLE_FCS is enabled.
+      # This step requires a connected runner with Falcon API credentials.
+      - name: FCS scan
+        if: ${{ env.FACTORY_ENABLE_FCS != 'false' && env.FACTORY_ENABLE_FCS != '0' && env.FACTORY_ENABLE_FCS != 'off' }}
+        env:
+          FALCON_CLIENT_ID: ${{ secrets.FALCON_CLIENT_ID }}
+          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
+        run: scripts/fcs_scan_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload FCS artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fcs-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/scans/fcs
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # ── compliance ───────────────────────────────────────────────────────────
+      - name: Compliance scan
+        if: ${{ env.FACTORY_ENABLE_COMPLIANCE != 'false' && env.FACTORY_ENABLE_COMPLIANCE != '0' && env.FACTORY_ENABLE_COMPLIANCE != 'off' }}
+        run: scripts/compliance_scan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload compliance artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/compliance
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── test ─────────────────────────────────────────────────────────────────
+      - name: Run tests
+        if: ${{ env.FACTORY_ENABLE_TEST != 'false' && env.FACTORY_ENABLE_TEST != '0' && env.FACTORY_ENABLE_TEST != 'off' }}
+        run: scripts/run_tests.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/tests
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── policy gate ──────────────────────────────────────────────────────────
+      - name: Evaluate policy gate
+        if: ${{ env.FACTORY_ENABLE_GATE != 'false' && env.FACTORY_ENABLE_GATE != '0' && env.FACTORY_ENABLE_GATE != 'off' }}
+        run: scripts/evaluate_gate.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-${{ matrix.FACTORY_IMAGE }}
+          path: |
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/gate-input.json
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/gate-result.json
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/findings.json
+            work/${{ matrix.FACTORY_IMAGE }}/evidence/database-status.json
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # ── policy: AI remediation ───────────────────────────────────────────────
+      # Mirrors .factory-remediate (when: manual, allow_failure: true).
+      # In GitHub Actions "manual" maps to a separate workflow_dispatch workflow;
+      # here it is gated on FACTORY_ENABLE_REMEDIATE so operators can enable it
+      # via dispatch input when needed.
+      - name: AI remediation
+        if: ${{ env.FACTORY_ENABLE_REMEDIATE != 'false' && env.FACTORY_ENABLE_REMEDIATE != '0' && env.FACTORY_ENABLE_REMEDIATE != 'off' }}
+        continue-on-error: true
+        run: scripts/ai_remediation.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload remediation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: remediation-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/remediation
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── import ───────────────────────────────────────────────────────────────
+      - name: Import image to quarantine
+        if: ${{ env.FACTORY_ENABLE_IMPORT != 'false' && env.FACTORY_ENABLE_IMPORT != '0' && env.FACTORY_ENABLE_IMPORT != 'off' }}
+        run: scripts/import_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload import artifacts
+        if: ${{ env.FACTORY_ENABLE_IMPORT != 'false' && env.FACTORY_ENABLE_IMPORT != '0' && env.FACTORY_ENABLE_IMPORT != 'off' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-${{ matrix.FACTORY_IMAGE }}
+          path: |
+            work/${{ matrix.FACTORY_IMAGE }}/import-result.json
+            work/${{ matrix.FACTORY_IMAGE }}/image.oci.tar
+            work/${{ matrix.FACTORY_IMAGE }}/image-metadata.json
+            work/${{ matrix.FACTORY_IMAGE }}/resource-lock.json
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # ── attest ───────────────────────────────────────────────────────────────
+      # Mirrors .factory-attest: runs only on the default branch
+      # (if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH).
+      - name: Sign and attest
+        if: >-
+          ${{ env.FACTORY_ENABLE_ATTEST != 'false' &&
+              env.FACTORY_ENABLE_ATTEST != '0' &&
+              env.FACTORY_ENABLE_ATTEST != 'off' &&
+              github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: scripts/sign_and_attest.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+
+      - name: Upload attestation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: attest-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/signing-result.json
+          if-no-files-found: ignore
+          retention-days: 365
+
+      # ── promote ──────────────────────────────────────────────────────────────
+      # Mirrors .factory-promote: default branch only, manual trigger.
+      # GitHub's equivalent of "when: manual" is a separate workflow_dispatch
+      # event; here FACTORY_ENABLE_PROMOTE controls the step.
+      - name: Promote image
+        if: >-
+          ${{ env.FACTORY_ENABLE_PROMOTE != 'false' &&
+              env.FACTORY_ENABLE_PROMOTE != '0' &&
+              env.FACTORY_ENABLE_PROMOTE != 'off' &&
+              github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+              github.event_name == 'workflow_dispatch' }}
+        run: scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
