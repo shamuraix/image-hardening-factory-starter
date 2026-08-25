@@ -12,7 +12,7 @@ Create these local repositories and enable immutability on release repositories:
 | `FACTORY_QUARANTINE_REPOSITORY` or catalog override (`oci-app-quarantine-local`) | OCI | Protected importer |
 | `oci-release-local` | OCI | Protected promotion broker |
 | `oci-canary-local` | OCI | Protected canary broker |
-| `rpm-ubi-remote` | RPM remote (`https://cdn-ubi.redhat.com`) | Local development read-through only |
+| `ext-redhat-ubi-remote` | RPM remote (`https://cdn-ubi.redhat.com`) | Local development read-through only |
 | `rpm-ubi9-snapshot-local` | RPM | Repository snapshot job |
 | `rpm-ubi10-snapshot-local` | RPM | Repository snapshot job |
 | `security-data-local` | Generic/OCI | Security-data intake job |

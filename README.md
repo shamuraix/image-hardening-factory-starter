@@ -106,7 +106,7 @@ export ARTIFACTORY_READ_TOKEN=replace-with-read-token
 make local-build IMAGE=ubi9-minimal
 ```
 
-The default Artifactory remote-repository key is `rpm-ubi-remote`. Override it
+The default Artifactory remote-repository key is `ext-redhat-ubi-remote`. Override it
 when the internal repository uses a different key. The default assumes that
 remote repository points to `https://cdn-ubi.redhat.com`, so Artifactory retains
 the upstream `content/public/ubi` path:

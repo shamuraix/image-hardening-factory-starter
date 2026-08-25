@@ -111,7 +111,7 @@ if [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
   major=${rpm_major}
   arch=$(yq -r '.build.platforms[0] | split("/")[1]' "${catalog}")
   [[ ${arch} == amd64 ]] && rpm_arch=x86_64 || rpm_arch=${arch}
-  rpm_cache_repository=${LOCAL_RPM_CACHE_REPOSITORY:-rpm-ubi-remote}
+  rpm_cache_repository=${LOCAL_RPM_CACHE_REPOSITORY:-ext-redhat-ubi-remote}
   [[ ${rpm_cache_repository} =~ ^[A-Za-z0-9._-]+$ ]] || {
     echo "LOCAL_RPM_CACHE_REPOSITORY must be an Artifactory repository name" >&2
     exit 2

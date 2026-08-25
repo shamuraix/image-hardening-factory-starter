@@ -23,6 +23,9 @@ class LocalWorkflowTests(unittest.TestCase):
         production_prepare = (ROOT / "scripts/prepare_context.sh").read_text(encoding="utf-8")
 
         self.assertIn("LOCAL_RPM_CACHE_REPOSITORY", local_build)
+        self.assertIn(
+            "${LOCAL_RPM_CACHE_REPOSITORY:-ext-redhat-ubi-remote}", local_build
+        )
         self.assertIn("FACTORY_UBI_REPO_PREFIX", local_build)
         self.assertNotIn("FACTORY_UBI_REPO_PREFIX", production_prepare)
         self.assertNotIn("cdn-ubi.redhat.com", local_build)
