@@ -37,33 +37,35 @@ on:
         required: false
         default: "true"
       FACTORY_ENABLE_PREPARE:
-        description: "Enable prepare stage"
+        description: >
+          Enable prepare stage (requires INTERNAL_GIT_BASE_URL, ARTIFACTORY_URL,
+          ARTIFACTORY_READ_TOKEN and COSIGN_INTAKE_PUBLIC_KEY to be set).
         required: false
-        default: "true"
+        default: "false"
       FACTORY_ENABLE_BUILD:
-        description: "Enable build stage"
+        description: "Enable build stage (requires prepare stage to have run)"
         required: false
-        default: "true"
+        default: "false"
       FACTORY_ENABLE_SBOM:
-        description: "Enable SBOM generation"
+        description: "Enable SBOM generation (requires build stage to have run)"
         required: false
-        default: "true"
+        default: "false"
       FACTORY_ENABLE_SCAN:
-        description: "Enable vulnerability scan"
+        description: "Enable vulnerability scan (requires build stage to have run)"
         required: false
-        default: "true"
+        default: "false"
       FACTORY_ENABLE_COMPLIANCE:
         description: "Enable compliance scan"
         required: false
         default: "false"
       FACTORY_ENABLE_TEST:
-        description: "Enable test stage"
+        description: "Enable test stage (requires build stage to have run)"
         required: false
-        default: "true"
+        default: "false"
       FACTORY_ENABLE_GATE:
-        description: "Enable policy gate"
+        description: "Enable policy gate (requires scan/sbom/test stages to have run)"
         required: false
-        default: "true"
+        default: "false"
       FACTORY_ENABLE_REMEDIATE:
         description: "Enable AI remediation"
         required: false
@@ -99,17 +101,17 @@ env:
   # Feature gates – prefer workflow_dispatch input when provided, then
   # repository variable, then the default shown here.
   FACTORY_ENABLE_VALIDATE: ${{ inputs.FACTORY_ENABLE_VALIDATE || vars.FACTORY_ENABLE_VALIDATE || 'true' }}
-  FACTORY_ENABLE_PREPARE: ${{ inputs.FACTORY_ENABLE_PREPARE || vars.FACTORY_ENABLE_PREPARE || 'true' }}
-  FACTORY_ENABLE_BUILD: ${{ inputs.FACTORY_ENABLE_BUILD || vars.FACTORY_ENABLE_BUILD || 'true' }}
-  FACTORY_ENABLE_SBOM: ${{ inputs.FACTORY_ENABLE_SBOM || vars.FACTORY_ENABLE_SBOM || 'true' }}
-  FACTORY_ENABLE_SCAN: ${{ inputs.FACTORY_ENABLE_SCAN || vars.FACTORY_ENABLE_SCAN || 'true' }}
+  FACTORY_ENABLE_PREPARE: ${{ inputs.FACTORY_ENABLE_PREPARE || vars.FACTORY_ENABLE_PREPARE || 'false' }}
+  FACTORY_ENABLE_BUILD: ${{ inputs.FACTORY_ENABLE_BUILD || vars.FACTORY_ENABLE_BUILD || 'false' }}
+  FACTORY_ENABLE_SBOM: ${{ inputs.FACTORY_ENABLE_SBOM || vars.FACTORY_ENABLE_SBOM || 'false' }}
+  FACTORY_ENABLE_SCAN: ${{ inputs.FACTORY_ENABLE_SCAN || vars.FACTORY_ENABLE_SCAN || 'false' }}
   # FCS (Falcon Cloud Security) requires a dedicated connected runner and Falcon
   # API credentials that are only available in the self-hosted GitLab environment.
   # It is always disabled on GitHub-hosted runners.
   FACTORY_ENABLE_FCS: 'false'
   FACTORY_ENABLE_COMPLIANCE: ${{ inputs.FACTORY_ENABLE_COMPLIANCE || vars.FACTORY_ENABLE_COMPLIANCE || 'false' }}
-  FACTORY_ENABLE_TEST: ${{ inputs.FACTORY_ENABLE_TEST || vars.FACTORY_ENABLE_TEST || 'true' }}
-  FACTORY_ENABLE_GATE: ${{ inputs.FACTORY_ENABLE_GATE || vars.FACTORY_ENABLE_GATE || 'true' }}
+  FACTORY_ENABLE_TEST: ${{ inputs.FACTORY_ENABLE_TEST || vars.FACTORY_ENABLE_TEST || 'false' }}
+  FACTORY_ENABLE_GATE: ${{ inputs.FACTORY_ENABLE_GATE || vars.FACTORY_ENABLE_GATE || 'false' }}
   FACTORY_ENABLE_REMEDIATE: ${{ inputs.FACTORY_ENABLE_REMEDIATE || vars.FACTORY_ENABLE_REMEDIATE || 'false' }}
   FACTORY_ENABLE_IMPORT: ${{ inputs.FACTORY_ENABLE_IMPORT || vars.FACTORY_ENABLE_IMPORT || 'false' }}
   FACTORY_ENABLE_ATTEST: ${{ inputs.FACTORY_ENABLE_ATTEST || vars.FACTORY_ENABLE_ATTEST || 'false' }}
