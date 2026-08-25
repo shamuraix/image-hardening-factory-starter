@@ -8,20 +8,13 @@
 # is replicated with two jobs:
 #   render  – calls `scripts/render_child_pipeline.sh` and uploads the YAML as
 #             a workflow artifact (mirrors the GitLab "render-child-pipeline" job)
-#   execute – downloads the artifact and re-runs the same per-image jobs that
+#   execute – downloads the artifact and runs the same per-image scripts that
 #             the factory `pipeline` subcommand would have scheduled (mirrors
 #             "execute-child-pipeline")
 #
-# The `execute` job reads the rendered YAML and fans out per-image work by
-# driving the same shell scripts that the child pipeline jobs call.  Each
-# feature gate (FACTORY_ENABLE_*) is an environment variable that can be
-# overridden via repository/environment variables or a workflow_dispatch input,
-# exactly as in GitLab.
-#
-# Runner requirements mirror the GitLab runner classes documented in
-# docs/operations.md: rootless Buildah/Podman, VFS storage driver, unprivileged
-# user namespaces.  Set the `factory` runner label on GitHub-hosted or
-# self-hosted runners that meet those requirements.
+# Both jobs run on GitHub-hosted ubuntu-latest runners.  Required tools
+# (factory CLI, buildah, skopeo, podman, cosign, jq, yq) are installed in a
+# setup step so no private registry is needed.
 
 name: Factory Pipeline
 
@@ -59,10 +52,6 @@ on:
         description: "Enable vulnerability scan"
         required: false
         default: "true"
-      FACTORY_ENABLE_FCS:
-        description: "Enable FCS scan"
-        required: false
-        default: "false"
       FACTORY_ENABLE_COMPLIANCE:
         description: "Enable compliance scan"
         required: false
@@ -104,11 +93,6 @@ permissions:
 # built-in default.
 env:
   FACTORY_TOOLCHAIN_VERSION: "0.1.0"
-  FACTORY_TOOLCHAIN_REGISTRY: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}
-  FACTORY_TOOLCHAIN_IMAGE: ${{ vars.FACTORY_TOOLCHAIN_IMAGE || 'factory-python' }}
-  FACTORY_RUNNER_IMAGE: ${{ vars.FACTORY_RUNNER_IMAGE || 'factory-runner' }}
-  FACTORY_FCS_RUNNER_IMAGE: ${{ vars.FACTORY_FCS_RUNNER_IMAGE || 'factory-fcs-runner' }}
-  FCS_CLI_VERSION: ${{ vars.FCS_CLI_VERSION || '4.0.0' }}
   FACTORY_CATALOG_DIR: ${{ vars.FACTORY_CATALOG_DIR || 'catalog/images' }}
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
@@ -119,7 +103,10 @@ env:
   FACTORY_ENABLE_BUILD: ${{ inputs.FACTORY_ENABLE_BUILD || vars.FACTORY_ENABLE_BUILD || 'true' }}
   FACTORY_ENABLE_SBOM: ${{ inputs.FACTORY_ENABLE_SBOM || vars.FACTORY_ENABLE_SBOM || 'true' }}
   FACTORY_ENABLE_SCAN: ${{ inputs.FACTORY_ENABLE_SCAN || vars.FACTORY_ENABLE_SCAN || 'true' }}
-  FACTORY_ENABLE_FCS: ${{ inputs.FACTORY_ENABLE_FCS || vars.FACTORY_ENABLE_FCS || 'false' }}
+  # FCS (Falcon Cloud Security) requires a dedicated connected runner and Falcon
+  # API credentials that are only available in the self-hosted GitLab environment.
+  # It is always disabled on GitHub-hosted runners.
+  FACTORY_ENABLE_FCS: 'false'
   FACTORY_ENABLE_COMPLIANCE: ${{ inputs.FACTORY_ENABLE_COMPLIANCE || vars.FACTORY_ENABLE_COMPLIANCE || 'false' }}
   FACTORY_ENABLE_TEST: ${{ inputs.FACTORY_ENABLE_TEST || vars.FACTORY_ENABLE_TEST || 'true' }}
   FACTORY_ENABLE_GATE: ${{ inputs.FACTORY_ENABLE_GATE || vars.FACTORY_ENABLE_GATE || 'true' }}
@@ -134,14 +121,21 @@ jobs:
   # Renders the per-image pipeline YAML and uploads it as a workflow artifact.
   render:
     name: Render child pipeline
-    runs-on: [self-hosted, factory]
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-python:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    runs-on: ubuntu-latest
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI
+        run: pip install -e .
 
       - name: Render child pipeline YAML
         env:
@@ -161,8 +155,7 @@ jobs:
   #
   # GitHub Actions does not support dynamically loading a workflow YAML at
   # runtime.  Instead, the rendered YAML is parsed here to extract the image
-  # matrix and then the same per-image shell scripts are called sequentially for
-  # each image in the order that the child pipeline would have scheduled them.
+  # matrix and then the same per-image shell scripts are called in stage order.
   #
   # The job honours every FACTORY_ENABLE_* gate: when a gate is disabled the
   # corresponding script is simply skipped, preserving the GitLab behaviour of
@@ -173,7 +166,7 @@ jobs:
   execute:
     name: Execute pipeline (${{ matrix.FACTORY_IMAGE }})
     needs: render
-    runs-on: [self-hosted, factory-buildah-ephemeral]
+    runs-on: ubuntu-latest
     # Mirror GitLab interruptible: cancel in-progress runs on the same branch
     # when a new commit arrives (does not apply to the default branch).
     concurrency:
@@ -188,22 +181,16 @@ jobs:
           # is set the render job already scoped the YAML to only those images,
           # but GitHub Actions requires a static matrix declaration.  Override
           # this list via the repository variable FACTORY_IMAGE_MATRIX as a JSON
-          # array, or rely on the render job output (see note above).
+          # array.
           ${{ fromJSON(vars.FACTORY_IMAGE_MATRIX || '["ubi9-minimal","ubi10-minimal","bitbucket-lts","confluence-lts","jira-lts"]') }}
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-runner:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
-      options: --userns=keep-id  # rootless; mirrors BUILDAH_ISOLATION=rootless
     env:
       FACTORY_IMAGE: ${{ matrix.FACTORY_IMAGE }}
       FACTORY_WORK_DIR: work/${{ matrix.FACTORY_IMAGE }}
       FACTORY_CATALOG_FILE: ${{ vars.FACTORY_CATALOG_DIR || 'catalog/images' }}/${{ matrix.FACTORY_IMAGE }}.yaml
-      HOME: /home/factory
       XDG_RUNTIME_DIR: /tmp/factory-runtime
-      CONTAINERS_STORAGE_CONF: /home/factory/.config/containers/storage.conf
       STORAGE_DRIVER: vfs
       BUILDAH_ISOLATION: rootless
-      # Release environment for FCS and signing environments – set as a
-      # repository variable or environment variable scoped to the environment.
+      # Release environment for FCS and signing environments.
       FACTORY_RELEASE_ENV: ${{ vars.FACTORY_RELEASE_ENV || 'default' }}
       # Credentials passed through from repository/environment secrets.
       INTERNAL_GIT_BASE_URL: ${{ vars.INTERNAL_GIT_BASE_URL }}
@@ -219,6 +206,25 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          # Install container tooling available on ubuntu-latest via apt/snap.
+          # buildah and skopeo are in the Ubuntu package index; podman is
+          # already present on GitHub-hosted ubuntu-latest runners.
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            buildah skopeo jq yq umoci
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
 
       - name: Download rendered pipeline artifact
         uses: actions/download-artifact@v4
@@ -322,25 +328,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-      # ── analyze: FCS ─────────────────────────────────────────────────────────
-      # Mirrors .factory-fcs; runs only when FACTORY_ENABLE_FCS is enabled.
-      # This step requires a connected runner with Falcon API credentials.
-      - name: FCS scan
-        if: ${{ env.FACTORY_ENABLE_FCS != 'false' && env.FACTORY_ENABLE_FCS != '0' && env.FACTORY_ENABLE_FCS != 'off' }}
-        env:
-          FALCON_CLIENT_ID: ${{ secrets.FALCON_CLIENT_ID }}
-          FALCON_CLIENT_SECRET: ${{ secrets.FALCON_CLIENT_SECRET }}
-        run: scripts/fcs_scan_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
-
-      - name: Upload FCS artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fcs-${{ matrix.FACTORY_IMAGE }}
-          path: work/${{ matrix.FACTORY_IMAGE }}/evidence/scans/fcs
-          if-no-files-found: ignore
-          retention-days: 90
-
       # ── compliance ───────────────────────────────────────────────────────────
       - name: Compliance scan
         if: ${{ env.FACTORY_ENABLE_COMPLIANCE != 'false' && env.FACTORY_ENABLE_COMPLIANCE != '0' && env.FACTORY_ENABLE_COMPLIANCE != 'off' }}
@@ -389,9 +376,8 @@ jobs:
 
       # ── policy: AI remediation ───────────────────────────────────────────────
       # Mirrors .factory-remediate (when: manual, allow_failure: true).
-      # In GitHub Actions "manual" maps to a separate workflow_dispatch workflow;
-      # here it is gated on FACTORY_ENABLE_REMEDIATE so operators can enable it
-      # via dispatch input when needed.
+      # In GitHub Actions "manual" maps to a workflow_dispatch input; here it is
+      # gated on FACTORY_ENABLE_REMEDIATE so operators can enable it via dispatch.
       - name: AI remediation
         if: ${{ env.FACTORY_ENABLE_REMEDIATE != 'false' && env.FACTORY_ENABLE_REMEDIATE != '0' && env.FACTORY_ENABLE_REMEDIATE != 'off' }}
         continue-on-error: true
@@ -446,8 +432,8 @@ jobs:
 
       # ── promote ──────────────────────────────────────────────────────────────
       # Mirrors .factory-promote: default branch only, manual trigger.
-      # GitHub's equivalent of "when: manual" is a separate workflow_dispatch
-      # event; here FACTORY_ENABLE_PROMOTE controls the step.
+      # GitHub's equivalent of "when: manual" is a workflow_dispatch event;
+      # here FACTORY_ENABLE_PROMOTE controls the step.
       - name: Promote image
         if: >-
           ${{ env.FACTORY_ENABLE_PROMOTE != 'false' &&

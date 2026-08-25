@@ -7,13 +7,9 @@
 #   intake    – resolve and publish resource locks for each catalog image
 #   publish-lock – commit the resolved locks
 #
-# This workflow mirrors each of those stages.  Because it accesses external
-# networks (upstream RPM repos, OCI registries) it must run on a connected
-# runner that has the same network access as the GitLab `factory-connected-intake`
-# runner class described in docs/operations.md.
-#
-# Set the runner label `factory-connected-intake` on self-hosted runners that
-# meet the connectivity and credential requirements.
+# This workflow mirrors each of those stages.  All jobs run on GitHub-hosted
+# ubuntu-latest runners.  Required tools (factory CLI, jq, yq) are installed
+# in a setup step so no private registry is needed.
 
 name: Factory Intake
 
@@ -34,7 +30,6 @@ permissions:
 
 env:
   FACTORY_TOOLCHAIN_VERSION: "0.1.0"
-  FACTORY_TOOLCHAIN_REGISTRY: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}
   FACTORY_SOURCE_REPOSITORY: ${{ vars.FACTORY_SOURCE_REPOSITORY || 'generic-source-local' }}
   INTERNAL_GIT_BASE_URL: ${{ vars.INTERNAL_GIT_BASE_URL }}
   ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
@@ -46,9 +41,7 @@ jobs:
   # Mirrors: snapshot-ubi9-rpms
   snapshot-ubi9-rpms:
     name: Snapshot UBI 9 RPMs
-    runs-on: [self-hosted, factory-connected-intake]
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-intake:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    runs-on: ubuntu-latest
     env:
       ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
     outputs:
@@ -56,6 +49,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
 
       - name: Snapshot UBI 9 RPM repository
         id: snapshot
@@ -77,9 +82,7 @@ jobs:
   # Mirrors: snapshot-ubi10-rpms
   snapshot-ubi10-rpms:
     name: Snapshot UBI 10 RPMs
-    runs-on: [self-hosted, factory-connected-intake]
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-intake:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    runs-on: ubuntu-latest
     env:
       ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
     outputs:
@@ -87,6 +90,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
 
       - name: Snapshot UBI 10 RPM repository
         id: snapshot
@@ -109,14 +124,24 @@ jobs:
   # Mirrors: mirror-repo1-sources
   mirror-sources:
     name: Mirror upstream sources
-    runs-on: [self-hosted, factory-connected-intake]
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-intake:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    runs-on: ubuntu-latest
     env:
       ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
 
       - name: Mirror upstream sources
         run: scripts/mirror_sources.sh
@@ -126,9 +151,7 @@ jobs:
   resolve-resource-locks:
     name: Resolve resource locks (${{ matrix.FACTORY_IMAGE }})
     needs: [snapshot-ubi9-rpms, snapshot-ubi10-rpms, mirror-sources]
-    runs-on: [self-hosted, factory-connected-intake]
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-intake:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -142,6 +165,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
 
       - name: Resolve resource lock
         run: |
@@ -171,9 +206,7 @@ jobs:
   publish-resource-locks:
     name: Publish resource locks (${{ matrix.FACTORY_IMAGE }})
     needs: resolve-resource-locks
-    runs-on: [self-hosted, factory-connected-intake]
-    container:
-      image: ${{ vars.FACTORY_TOOLCHAIN_REGISTRY || 'registry.example.com/factory' }}/factory-intake:${{ vars.FACTORY_TOOLCHAIN_VERSION || '0.1.0' }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -185,6 +218,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
 
       - name: Download resource lock artifact
         uses: actions/download-artifact@v4
