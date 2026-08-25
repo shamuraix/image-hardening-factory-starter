@@ -1,0 +1,241 @@
+# GitHub Actions equivalent of .gitlab/intake.yml
+#
+# The GitLab intake pipeline runs on a schedule or manually ("web") and is
+# responsible for:
+#   snapshot  – create immutable RPM repository snapshots in Artifactory
+#   mirror    – mirror upstream Git/OCI sources into internal repositories
+#   intake    – resolve and publish resource locks for each catalog image
+#   publish-lock – commit the resolved locks
+#
+# This workflow mirrors each of those stages.  All jobs run on GitHub-hosted
+# ubuntu-latest runners.  Required tools (factory CLI, jq, yq) are installed
+# in a setup step so no private registry is needed.
+
+name: Factory Intake
+
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # weekly, mirrors GitLab schedule trigger
+  workflow_dispatch:
+    inputs:
+      FACTORY_IMAGE_LIST:
+        description: >
+          Comma-separated list of catalog image names to process in the
+          intake stage.  Defaults to all images if empty.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  FACTORY_TOOLCHAIN_VERSION: "0.1.0"
+  FACTORY_SOURCE_REPOSITORY: ${{ vars.FACTORY_SOURCE_REPOSITORY || 'generic-source-local' }}
+  INTERNAL_GIT_BASE_URL: ${{ vars.INTERNAL_GIT_BASE_URL }}
+  ARTIFACTORY_URL: ${{ vars.ARTIFACTORY_URL }}
+  ARTIFACTORY_READ_TOKEN: ${{ secrets.ARTIFACTORY_READ_TOKEN }}
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  # ── stage: snapshot ─────────────────────────────────────────────────────────
+  # Mirrors: snapshot-ubi9-rpms
+  snapshot-ubi9-rpms:
+    name: Snapshot UBI 9 RPMs
+    runs-on: ubuntu-latest
+    env:
+      ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
+    outputs:
+      RPM_SNAPSHOT_UBI9_ID: ${{ steps.snapshot.outputs.RPM_SNAPSHOT_UBI9_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
+
+      - name: Snapshot UBI 9 RPM repository
+        id: snapshot
+        env:
+          UBI9_SOURCE_REPO_FILE: ${{ vars.UBI9_SOURCE_REPO_FILE }}
+          UBI9_SOURCE_REPO_ID: ${{ vars.UBI9_SOURCE_REPO_ID }}
+          FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY: ${{ vars.FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY || 'rpm-ubi9-snapshot-local' }}
+        run: |
+          snapshot_id=$(
+            scripts/snapshot_rpm_repo.sh \
+              "${UBI9_SOURCE_REPO_FILE}" \
+              "${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY}" \
+              work/rpm-ubi9 \
+              "${UBI9_SOURCE_REPO_ID}" \
+            | tail -n1
+          )
+          printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" >> "${GITHUB_OUTPUT}"
+
+  # Mirrors: snapshot-ubi10-rpms
+  snapshot-ubi10-rpms:
+    name: Snapshot UBI 10 RPMs
+    runs-on: ubuntu-latest
+    env:
+      ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
+    outputs:
+      RPM_SNAPSHOT_UBI10_ID: ${{ steps.snapshot.outputs.RPM_SNAPSHOT_UBI10_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
+
+      - name: Snapshot UBI 10 RPM repository
+        id: snapshot
+        env:
+          UBI10_SOURCE_REPO_FILE: ${{ vars.UBI10_SOURCE_REPO_FILE }}
+          UBI10_SOURCE_REPO_ID: ${{ vars.UBI10_SOURCE_REPO_ID }}
+          FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY: ${{ vars.FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY || 'rpm-ubi10-snapshot-local' }}
+        run: |
+          snapshot_id=$(
+            scripts/snapshot_rpm_repo.sh \
+              "${UBI10_SOURCE_REPO_FILE}" \
+              "${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY}" \
+              work/rpm-ubi10 \
+              "${UBI10_SOURCE_REPO_ID}" \
+            | tail -n1
+          )
+          printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" >> "${GITHUB_OUTPUT}"
+
+  # ── stage: mirror ────────────────────────────────────────────────────────────
+  # Mirrors: mirror-repo1-sources
+  mirror-sources:
+    name: Mirror upstream sources
+    runs-on: ubuntu-latest
+    env:
+      ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
+
+      - name: Mirror upstream sources
+        run: scripts/mirror_sources.sh
+
+  # ── stage: intake ────────────────────────────────────────────────────────────
+  # Mirrors: resolve-resource-locks (parallel matrix over all catalog images)
+  resolve-resource-locks:
+    name: Resolve resource locks (${{ matrix.FACTORY_IMAGE }})
+    needs: [snapshot-ubi9-rpms, snapshot-ubi10-rpms, mirror-sources]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        FACTORY_IMAGE:
+          ${{ fromJSON(vars.FACTORY_IMAGE_MATRIX || '["ubi9-minimal","ubi10-minimal","bitbucket-lts","confluence-lts","jira-lts"]') }}
+    env:
+      FACTORY_IMAGE: ${{ matrix.FACTORY_IMAGE }}
+      ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
+      RPM_SNAPSHOT_UBI9_ID: ${{ needs.snapshot-ubi9-rpms.outputs.RPM_SNAPSHOT_UBI9_ID }}
+      RPM_SNAPSHOT_UBI10_ID: ${{ needs.snapshot-ubi10-rpms.outputs.RPM_SNAPSHOT_UBI10_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
+
+      - name: Resolve resource lock
+        run: |
+          catalog="catalog/images/${FACTORY_IMAGE}.yaml"
+          mirror=$(yq -r '.source.mirrorPath' "${catalog}")
+          revision=$(yq -r '.source.revision' "${catalog}")
+          git clone --no-checkout "${INTERNAL_GIT_BASE_URL}/${mirror}.git" "work/${FACTORY_IMAGE}/source"
+          git -C "work/${FACTORY_IMAGE}/source" checkout --detach "${revision}"
+          factory intake \
+            --image "${catalog}" \
+            --source-dir "work/${FACTORY_IMAGE}/source" \
+            --cache-dir "work/${FACTORY_IMAGE}/cache" \
+            --output "work/${FACTORY_IMAGE}/resource-lock.json"
+
+      - name: Upload resource lock artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-lock-${{ matrix.FACTORY_IMAGE }}
+          path: |
+            work/${{ matrix.FACTORY_IMAGE }}/resource-lock.json
+            work/${{ matrix.FACTORY_IMAGE }}/cache
+          if-no-files-found: error
+          retention-days: 2
+
+  # ── stage: publish-lock ──────────────────────────────────────────────────────
+  # Mirrors: publish-resource-locks (parallel matrix)
+  publish-resource-locks:
+    name: Publish resource locks (${{ matrix.FACTORY_IMAGE }})
+    needs: resolve-resource-locks
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        FACTORY_IMAGE:
+          ${{ fromJSON(vars.FACTORY_IMAGE_MATRIX || '["ubi9-minimal","ubi10-minimal","bitbucket-lts","confluence-lts","jira-lts"]') }}
+    env:
+      FACTORY_IMAGE: ${{ matrix.FACTORY_IMAGE }}
+      ARTIFACTORY_WRITE_TOKEN: ${{ secrets.ARTIFACTORY_INTAKE_WRITE_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install factory CLI and tools
+        run: |
+          pip install -e .
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends jq yq
+
+      - name: Download resource lock artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: resource-lock-${{ matrix.FACTORY_IMAGE }}
+          path: work/${{ matrix.FACTORY_IMAGE }}
+
+      - name: Publish resource lock
+        run: scripts/publish_intake.sh "${FACTORY_IMAGE}"
