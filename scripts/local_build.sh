@@ -102,6 +102,13 @@ cleanup_local_services() {
 trap cleanup_local_services EXIT
 
 curl_args=(--fail --silent --show-error --location)
+if [[ -n ${LOCAL_CA_BUNDLE:-} ]]; then
+  [[ -r ${LOCAL_CA_BUNDLE} ]] || {
+    echo "LOCAL_CA_BUNDLE is not readable: ${LOCAL_CA_BUNDLE}" >&2
+    exit 2
+  }
+  curl_args+=(--cacert "${LOCAL_CA_BUNDLE}")
+fi
 if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
   major=${rpm_major}
   arch=$(yq -r '.build.platforms[0] | split("/")[1]' "${catalog}")
@@ -148,12 +155,13 @@ if [[ -n ${overlay} ]]; then
     git -C "${context}" apply "${PWD}/${patch}"
   done < <(find "${overlay}" -type f -name '*.patch' -print0 | sort -z)
 fi
-if [[ -n ${LOCAL_CA_CERT:-} && ${image} == ubi9-minimal ]]; then
-  [[ -r ${LOCAL_CA_CERT} ]] || {
-    echo "LOCAL_CA_CERT is not readable: ${LOCAL_CA_CERT}" >&2
+local_ca_cert=${LOCAL_CA_CERT:-${LOCAL_CA_BUNDLE:-}}
+if [[ -n ${local_ca_cert} && ${image} == ubi9-minimal ]]; then
+  [[ -r ${local_ca_cert} ]] || {
+    echo "LOCAL_CA_CERT is not readable: ${local_ca_cert}" >&2
     exit 2
   }
-  install -m 0644 "${LOCAL_CA_CERT}" "${context}/certs/factory-local-ca.crt"
+  install -m 0644 "${local_ca_cert}" "${context}/certs/factory-local-ca.crt"
 fi
 scripts/validate_context.py "${catalog}" "${context}"
 

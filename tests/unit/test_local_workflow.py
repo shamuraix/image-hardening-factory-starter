@@ -52,8 +52,24 @@ class LocalWorkflowTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("LOCAL_CA_CERT", local_build)
+        self.assertIn("LOCAL_CA_BUNDLE", local_build)
+        self.assertIn('curl_args+=(--cacert "${LOCAL_CA_BUNDLE}")', local_build)
+        self.assertIn(
+            "local_ca_cert=${LOCAL_CA_CERT:-${LOCAL_CA_BUNDLE:-}}", local_build
+        )
         self.assertIn("factory-local-ca.crt", local_build)
         self.assertLess(patch.index("+RUN update-ca-trust"), patch.index("microdnf repolist"))
+
+    def test_upstream_ubi_tls_verification_honors_local_override(self) -> None:
+        repo_config = (ROOT / "scripts/write_repo_config.sh").read_text(encoding="utf-8")
+        upstream_config = repo_config.split(
+            'if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]', maxsplit=1
+        )[0]
+
+        self.assertEqual(
+            upstream_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2
+        )
+        self.assertNotIn("sslverify=1", upstream_config)
 
     def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:
         component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")
