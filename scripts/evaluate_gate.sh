@@ -16,7 +16,7 @@ if ! jq -e 'type == "object"' "${evidence}/database-status.json" >/dev/null 2>&1
   jq -n '{available:false}' >"${evidence}/database-status.json"
 fi
 
-factory gate-input \
+python3 -m factory.cli gate-input \
   --image "${FACTORY_IMAGE}" \
   --image-digest "$(jq -er '.digest' "${work_dir}/image-metadata.json")" \
   --sbom "${evidence}/sbom.cdx.json" \

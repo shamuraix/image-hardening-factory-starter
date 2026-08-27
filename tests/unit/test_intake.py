@@ -24,7 +24,7 @@ class IntakeTests(unittest.TestCase):
                 "resources": [
                     {
                         "filename": "resource.bin",
-                        "url": "https://upstream.example/resource.bin",
+                        "url": "https://www.rfc-editor.org/rfc/rfc9110.txt",
                         "validation": {"type": "sha512", "value": digest},
                     }
                 ]
@@ -59,7 +59,7 @@ class IntakeTests(unittest.TestCase):
                 "resources": [
                     {
                         "filename": "../outside.bin",
-                        "url": "https://upstream.example/resource.bin",
+                        "url": "https://www.rfc-editor.org/rfc/rfc9110.txt",
                         "validation": {"type": "sha256", "value": "0" * 64},
                     }
                 ]
@@ -90,7 +90,7 @@ class IntakeTests(unittest.TestCase):
                 "resources": [
                     {
                         "filename": "resource.bin",
-                        "url": "https://upstream.example/resource.bin",
+                        "url": "https://www.rfc-editor.org/rfc/rfc9110.txt",
                         "validation": {"type": "sha512", "value": digest},
                     }
                 ]
@@ -116,7 +116,7 @@ class IntakeTests(unittest.TestCase):
 
     def test_oci_resource_rejects_manifest_digest_mismatch(self) -> None:
         resource = {
-            "url": f"docker://registry.example/image@sha256:{'0' * 64}",
+            "url": f"docker://registry-1.docker.io/library/alpine@sha256:{'0' * 64}",
             "tag": "image:test",
         }
         with (
@@ -129,13 +129,13 @@ class IntakeTests(unittest.TestCase):
 
     def test_oci_copy_removes_transport_signatures_and_retries(self) -> None:
         resource = {
-            "url": "docker://registry.example.test/image@sha256:"
+            "url": "docker://registry-1.docker.io/library/alpine@sha256:"
             + "a" * 64,
             "tag": "image:test",
         }
         raw_manifest = b"manifest"
         resource["url"] = (
-            "docker://registry.example.test/image@sha256:"
+            "docker://registry-1.docker.io/library/alpine@sha256:"
             + hashlib.sha256(raw_manifest).hexdigest()
         )
         with (

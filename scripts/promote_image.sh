@@ -11,14 +11,21 @@ source "${work_dir}/import.env"
 : "${ARTIFACTORY_RELEASE_TOKEN:?}"
 
 if [[ ${FACTORY_RELEASE_ENV:-commercial} =~ ^gov[12]$ ]]; then
-  [[ ${GITLAB_USER_EMAIL:-} == *.us ]] || { echo "Gov promotion requires a .us approver" >&2; exit 1; }
+  : "${FACTORY_APPROVER_ID:?Gov promotion requires an authenticated Jenkins approver}"
+  : "${FACTORY_GOV_APPROVER_PATTERN:?FACTORY_GOV_APPROVER_PATTERN is required}"
+  [[ ${FACTORY_APPROVER_ID} =~ ${FACTORY_GOV_APPROVER_PATTERN} ]] || {
+    echo "Jenkins approver is not authorized for Gov promotion" >&2
+    exit 1
+  }
 fi
 
 source_ref="${IMPORTED_IMAGE_REF}@${IMPORTED_IMAGE_DIGEST}"
 cosign verify --key "${COSIGN_PUBLIC_KEY}" --insecure-ignore-tlog "${source_ref}" >/dev/null
 
-release_repository=$(yq -r '.publication.releaseRepository' "${catalog}")
-path=$(yq -r '.publication.imagePath' "${catalog}")
+release_repository=${FACTORY_RELEASE_REPOSITORY:-$(
+  scripts/catalog_value.sh "${catalog}" '.publication.releaseRepository'
+)}
+path=${FACTORY_IMAGE_PATH:-$(scripts/catalog_value.sh "${catalog}" '.publication.imagePath')}
 version=$(yq -r '.product.version' "${catalog}")
 destination="${ARTIFACTORY_REGISTRY}/${release_repository}/${path}:${version}"
 
@@ -30,3 +37,5 @@ observed=$(skopeo inspect --creds "oidc:${ARTIFACTORY_RELEASE_TOKEN}" "docker://
   exit 1
 }
 cosign verify --key "${COSIGN_PUBLIC_KEY}" --insecure-ignore-tlog "${destination}@${observed}" >/dev/null
+jq -n --arg imageRef "${destination}" --arg digest "${observed}" \
+  '{promoted:true,imageRef:$imageRef,digest:$digest}' >"${work_dir}/promotion-result.json"

@@ -18,7 +18,9 @@ def main() -> int:
     lock = load(work / "resource-lock.json")
     predicate = {
         "buildDefinition": {
-            "buildType": "https://factory.platform.example/buildah/v1",
+            "buildType": os.environ.get(
+                "FACTORY_BUILD_TYPE_URI", "urn:image-hardening-factory:build:buildah:v1"
+            ),
             "externalParameters": {
                 "sourceRevision": build["sourceRevision"],
                 "factoryRevision": build["factoryRevision"],
@@ -40,9 +42,9 @@ def main() -> int:
             ],
         },
         "runDetails": {
-            "builder": {"id": os.environ.get("CI_RUNNER_ID", "local")},
+            "builder": {"id": os.environ.get("FACTORY_RUNNER_ID", "local")},
             "metadata": {
-                "invocationId": os.environ.get("CI_PIPELINE_URL", "local"),
+                "invocationId": os.environ.get("FACTORY_BUILD_URL", "local"),
                 "startedOn": build["created"],
             },
         },

@@ -1,14 +1,14 @@
 # Implementation status
 
 The repository is a deployable reference implementation, but infrastructure-
-specific integration cannot be completed without the target GitLab,
-Artifactory, runner images, repository certificates and approval
+specific integration cannot be completed without the target Jenkins and
+Kubernetes configuration, Artifactory, runner images, repository certificates and approval
 groups.
 
 | Capability | Code status | Environment work remaining |
 |---|---|---|
 | Five-image catalog and schema | Implemented and tested | Establish change ownership |
-| Dependency-aware child pipeline | Implemented and tested | GitLab CI lint against deployed version |
+| Dependency-aware Jenkins execution plan | Implemented and tested | Validate against the deployed Jenkins plugin versions |
 | Source mirroring | Implemented | Pre-create internal mirror projects |
 | Resource checksum/digest locks | Implemented and tested | Configure upstream allowlist and Artifactory |
 | Immutable RPM snapshots | Implemented | Supply UBI-only source repository files |
@@ -23,7 +23,7 @@ groups.
 | Cosign/Artifactory OCI signing | Implemented | Configure environment-local key pairs, OIDC identity mapping and public keys |
 | Recursive promotion | Implemented | Confirm Artifactory OCI 1.1 referrer preservation |
 | AI read-only summary | Implemented | Deploy approved internal model and candidate index |
-| AI patch-MR broker | Guardrails implemented | Add patch-producing agent recipe and keep auto-merge disabled |
+| AI remediation branch broker | Guardrails implemented | Add patch-producing agent recipe and keep auto-merge disabled |
 | UBI 10 canary | Catalog/pipeline implemented | Complete vendor compatibility testing before adoption |
 
 The first production activation should stop after UBI 9 quarantine until the

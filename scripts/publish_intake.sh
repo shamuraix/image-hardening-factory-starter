@@ -5,7 +5,7 @@ image=${1:?image name is required}
 catalog="catalog/images/${image}.yaml"
 revision=$(yq -r '.source.revision' "${catalog}")
 work="work/${image}"
-source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
+source_repository=${FACTORY_SOURCE_REPOSITORY:?FACTORY_SOURCE_REPOSITORY is required}
 : "${ARTIFACTORY_URL:?}"
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
 : "${COSIGN_INTAKE_KEY_REF:?}"

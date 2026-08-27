@@ -23,9 +23,7 @@ class LocalWorkflowTests(unittest.TestCase):
         production_prepare = (ROOT / "scripts/prepare_context.sh").read_text(encoding="utf-8")
 
         self.assertIn("LOCAL_RPM_CACHE_REPOSITORY", local_build)
-        self.assertIn(
-            "${LOCAL_RPM_CACHE_REPOSITORY:-ext-redhat-ubi-remote}", local_build
-        )
+        self.assertIn("LOCAL_RPM_CACHE_REPOSITORY is required", local_build)
         self.assertIn("FACTORY_UBI_REPO_PREFIX", local_build)
         self.assertNotIn("FACTORY_UBI_REPO_PREFIX", production_prepare)
         self.assertNotIn("cdn-ubi.redhat.com", local_build)
@@ -78,13 +76,13 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertNotIn("cdn-ubi.redhat.com", cache_config)
 
     def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:
-        component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
         runner = (ROOT / "toolchain/Containerfile.factory-runner").read_text(encoding="utf-8")
         storage = (ROOT / "toolchain/storage.conf").read_text(encoding="utf-8")
 
-        self.assertIn("BUILDAH_ISOLATION: rootless", component)
-        self.assertIn("STORAGE_DRIVER: vfs", component)
+        self.assertIn("'BUILDAH_ISOLATION=rootless'", jenkinsfile)
+        self.assertIn("'STORAGE_DRIVER=vfs'", jenkinsfile)
         self.assertIn('--isolation "${isolation}"', build)
         self.assertNotIn("--isolation chroot", build)
         self.assertIn("USER ${FACTORY_UID}", runner)

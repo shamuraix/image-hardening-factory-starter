@@ -7,7 +7,7 @@ Each milestone leaves the factory in a usable and testable state.
 
 Deliverables:
 
-- Mirror the five Repo One repositories into internal GitLab.
+- Mirror the five Repo One repositories into the configured internal SCM.
 - Validate every source revision as a full 40-character commit.
 - Resolve every `hardening_manifest.yaml` HTTP and OCI resource.
 - Verify declared SHA-256/SHA-512 values before upload.
@@ -61,7 +61,7 @@ Acceptance criteria:
 
 Deliverables:
 
-- Dependency-aware child-pipeline generator.
+- Dependency-aware Jenkins execution-plan generator.
 - UBI 9 completion triggers Bitbucket, Confluence and Jira builds in parallel.
 - Each image has an isolated build context and evidence directory.
 - Failure of one application does not conceal results for the other two.
@@ -143,20 +143,20 @@ Acceptance criteria:
 - Every proposed version is proven to exist in Artifactory.
 - Unverifiable guidance is labeled blocked rather than guessed.
 
-## Milestone 9 — Agent-generated patch merge requests
+## Milestone 9 — Agent-generated remediation branches
 
 Deliverables:
 
 - Agent writes only to an ephemeral overlay working tree.
 - Deterministic tools perform dependency solving and checksum calculation.
-- A trusted broker, not the agent, creates the GitLab branch and MR.
+- A trusted broker, not the agent, publishes the SCM branch for human review.
 - Clean-checkout rebuild and rescan pipeline verifies the proposal.
 
 Acceptance criteria:
 
 - AI cannot edit `policies/`, `exceptions/`, VEX or signing configuration.
 - Auto-merge remains disabled.
-- The MR includes before/after findings, SBOM delta and test evidence.
+- The change request includes before/after findings, SBOM delta and test evidence.
 
 ## Milestone 10 — UBI 10 canary
 

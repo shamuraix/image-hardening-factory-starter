@@ -101,6 +101,6 @@ jq -n \
     assessmentPassed:$assessmentPassed}' >"${output}/status.json"
 
 # Always hand a structured result to the policy job. The policy gate, rather
-# than GitLab job scheduling, is the authoritative fail-closed decision point.
+# than CI job scheduling, is the authoritative fail-closed decision point.
 unset FCS_CLIENT_ID FCS_CLIENT_SECRET FALCON_CLIENT_SECRET
 exit 0

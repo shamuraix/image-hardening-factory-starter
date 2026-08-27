@@ -10,7 +10,7 @@ jq -e '.localDevelopment != true' "${work_dir}/resource-lock.json" >/dev/null ||
 allowed=$(jq -er '.allow' "${work_dir}/evidence/gate-result.json")
 [[ "${allowed}" == true ]] || { echo "release gate denied import" >&2; exit 1; }
 
-if [[ ${CI_PIPELINE_SOURCE:-local} == merge_request_event ]]; then
+if [[ ${FACTORY_PROTECTED_PUBLISH:-false} != true ]]; then
   jq -n --arg image "${FACTORY_IMAGE}" '{imported:false,candidateOnly:true,image:$image}' \
     >"${work_dir}/import-result.json"
   printf 'IMPORTED_IMAGE_REF=oci-archive:%s/image.oci.tar\n' "${work_dir}" >"${work_dir}/import.env"
@@ -19,10 +19,17 @@ fi
 
 : "${ARTIFACTORY_REGISTRY:?}"
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
-repository=${FACTORY_QUARANTINE_REPOSITORY:-$(yq -r '.publication.quarantineRepository' "${catalog}")}
-path=${FACTORY_IMAGE_PATH:-$(yq -r '.publication.imagePath' "${catalog}")}
+repository=${FACTORY_QUARANTINE_REPOSITORY:-$(
+  scripts/catalog_value.sh "${catalog}" '.publication.quarantineRepository'
+)}
+path=${FACTORY_IMAGE_PATH:-$(scripts/catalog_value.sh "${catalog}" '.publication.imagePath')}
 version=$(yq -r '.product.version' "${catalog}")
-destination="${ARTIFACTORY_REGISTRY}/${repository}/${path}:${version}-${CI_PIPELINE_ID:-local}"
+build_id=${FACTORY_BUILD_ID:?FACTORY_BUILD_ID is required for protected publication}
+[[ "${build_id}" =~ ^[A-Za-z0-9_.-]+$ ]] || {
+  echo "FACTORY_BUILD_ID contains characters that are invalid in an OCI tag" >&2
+  exit 2
+}
+destination="${ARTIFACTORY_REGISTRY}/${repository}/${path}:${version}-${build_id}"
 candidate_digest=$(jq -er '.digest' "${work_dir}/image-metadata.json")
 authfile=$(mktemp)
 trap 'rm -f "${authfile}"' EXIT
