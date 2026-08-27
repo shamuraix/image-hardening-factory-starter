@@ -1,4 +1,4 @@
-apiVersion: factory.platform.example/v1alpha1
+apiVersion: image-hardening-factory/v1alpha1
 kind: HardenedImage
 metadata:
   name: ubi9-minimal
@@ -32,6 +32,6 @@ policy:
     fixableHigh: true
     newHigh: true
 publication:
-  quarantineRepository: oci-base-quarantine-local
-  releaseRepository: oci-release-local
+  quarantineRepository: ${FACTORY_BASE_QUARANTINE_REPOSITORY}
+  releaseRepository: ${FACTORY_RELEASE_REPOSITORY}
   imagePath: bases/ubi9-minimal

@@ -32,7 +32,7 @@ normalize_args=(
 )
 baseline="/opt/security-data/baselines/${FACTORY_IMAGE}.json"
 [[ -s "${baseline}" ]] && normalize_args+=(--baseline "${baseline}")
-factory normalize-findings "${normalize_args[@]}"
+python3 -m factory.cli normalize-findings "${normalize_args[@]}"
 
 malware_bundle="${work_dir}/malware-rootfs"
 malware_rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${malware_bundle}")

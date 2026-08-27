@@ -8,8 +8,9 @@ image=$(yq -r '.metadata.name' "${catalog}")
 mirror_path=$(yq -r '.source.mirrorPath' "${catalog}")
 revision=$(yq -r '.source.revision' "${catalog}")
 overlay=$(yq -r '.source.overlay // ""' "${catalog}")
-source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
+source_repository=${FACTORY_SOURCE_REPOSITORY:?FACTORY_SOURCE_REPOSITORY is required}
 local_image_namespace=${LOCAL_IMAGE_NAMESPACE:-localhost/factory}
+factory_workspace=${FACTORY_WORKSPACE:-${PWD}}
 
 : "${INTERNAL_GIT_BASE_URL:?INTERNAL_GIT_BASE_URL is required}"
 : "${ARTIFACTORY_URL:?ARTIFACTORY_URL is required}"
@@ -23,8 +24,8 @@ git -C "${context}" checkout --detach "${revision}"
 
 if [[ -n "${overlay}" ]]; then
   while IFS= read -r -d '' patch; do
-    git -C "${context}" apply --check "${CI_PROJECT_DIR}/${patch}"
-    git -C "${context}" apply "${CI_PROJECT_DIR}/${patch}"
+    git -C "${context}" apply --check "${factory_workspace}/${patch}"
+    git -C "${context}" apply "${factory_workspace}/${patch}"
   done < <(find "${overlay}" -type f -name '*.patch' -print0 | sort -z)
 fi
 scripts/validate_context.py "${catalog}" "${context}"

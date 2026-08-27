@@ -9,7 +9,13 @@ if [[ -n "${FACTORY_CHANGED_IMAGES:-}" ]]; then
   for name in "${changed[@]}"; do
     [[ "${name}" =~ ^[a-z0-9][a-z0-9-]+$ ]] || { echo "invalid image name: ${name}" >&2; exit 2; }
   done
-  factory pipeline --catalog "${FACTORY_CATALOG_DIR:-catalog/images}" --changed "${changed[@]}" --output "${output}"
+  PYTHONPATH=. python3 -m factory.cli plan \
+    --catalog "${FACTORY_CATALOG_DIR:-catalog/images}" \
+    --changed "${changed[@]}" \
+    --output "${output}"
 else
-  factory pipeline --catalog "${FACTORY_CATALOG_DIR:-catalog/images}" --all --output "${output}"
+  PYTHONPATH=. python3 -m factory.cli plan \
+    --catalog "${FACTORY_CATALOG_DIR:-catalog/images}" \
+    --all \
+    --output "${output}"
 fi

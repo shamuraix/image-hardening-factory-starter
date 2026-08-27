@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://factory.example/schema/hardened-image-v1alpha1.json",
+  "$id": "urn:image-hardening-factory:schema:hardened-image:v1alpha1",
   "title": "HardenedImage",
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "metadata", "source", "product", "build", "policy", "publication"],
   "properties": {
-    "apiVersion": {"const": "factory.platform.example/v1alpha1"},
+    "apiVersion": {"const": "image-hardening-factory/v1alpha1"},
     "kind": {"const": "HardenedImage"},
     "metadata": {
       "type": "object",

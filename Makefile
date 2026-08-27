@@ -1,4 +1,4 @@
-.PHONY: validate test lint pipeline local-build local-test local-fcs package
+.PHONY: validate test lint plan local-build local-test local-fcs update-pins package
 
 validate:
 	PYTHONPATH=. python3 -m factory.cli validate --catalog catalog/images
@@ -10,8 +10,11 @@ lint:
 	ruff check factory scripts tests
 	ruff format --check factory scripts tests
 
-pipeline:
-	PYTHONPATH=. python3 -m factory.cli pipeline --catalog catalog/images --all --output generated-child.yml
+plan:
+	PYTHONPATH=. python3 -m factory.cli plan --catalog catalog/images --all --output generated-jenkins-plan.json
+
+update-pins:
+	scripts/update_source_pins.sh
 
 local-build:
 	@test -n "$(IMAGE)" || { echo "usage: make local-build IMAGE=ubi9-minimal [LOCAL_RPM_REPO_DIR=/path/to/snapshot]" >&2; exit 2; }

@@ -5,17 +5,12 @@ catalog=${1:?catalog file is required}
 output=${2:?output file is required}
 base_kind=$(yq -r '.build.base.kind' "${catalog}")
 if [[ "${base_kind}" == catalog ]]; then
-  base=$(yq -r '.build.base.image' "${catalog}")
-  case "${base}" in
-    ubi9-minimal) repository=rpm-ubi9-snapshot-local ;;
-    ubi10-minimal) repository=rpm-ubi10-snapshot-local ;;
-    *) echo "unknown catalog RPM base: ${base}" >&2; exit 2 ;;
-  esac
+  family=$(yq -r '.build.base.image' "${catalog}")
 else
   version=$(yq -r '.product.version' "${catalog}")
   case "${version}" in
-    9.*) repository=rpm-ubi9-snapshot-local ;;
-    10.*) repository=rpm-ubi10-snapshot-local ;;
+    9.*) family=ubi9-minimal ;;
+    10.*) family=ubi10-minimal ;;
     *) echo "unable to determine RPM snapshot for ${catalog}" >&2; exit 2 ;;
   esac
 fi
@@ -67,6 +62,15 @@ fi
 
 : "${ARTIFACTORY_URL:?}"
 : "${ARTIFACTORY_READ_TOKEN:?}"
+case "${family}" in
+  ubi9-minimal)
+    repository=${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY:?FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY is required}
+    ;;
+  ubi10-minimal)
+    repository=${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY:?FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY is required}
+    ;;
+  *) echo "unknown catalog RPM base: ${family}" >&2; exit 2 ;;
+esac
 
 cat >"${output}" <<EOF
 [factory-snapshot]

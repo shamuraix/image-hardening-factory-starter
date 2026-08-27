@@ -5,7 +5,7 @@ source_repo=${1:?source .repo file is required}
 repository=${2:?Artifactory repository is required}
 output=${3:?output directory is required}
 repo_id=${4:?source repository id is required}
-source_repository=${FACTORY_SOURCE_REPOSITORY:-generic-source-local}
+source_repository=${FACTORY_SOURCE_REPOSITORY:?FACTORY_SOURCE_REPOSITORY is required}
 : "${ARTIFACTORY_URL:?}"
 : "${ARTIFACTORY_WRITE_TOKEN:?}"
 : "${COSIGN_INTAKE_KEY_REF:?}"

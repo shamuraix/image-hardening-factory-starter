@@ -9,7 +9,7 @@ The following changes require protected CODEOWNER approval:
 
 - Release policy, exceptions and VEX handling.
 - Signing, attestation, importer or promotion code.
-- GitLab runner trust boundaries and protected tags.
+- Jenkins/Kubernetes pod-template trust boundaries, RBAC and credential scopes.
 - Cosign key material, Artifactory signing identities or key references.
 - AI prompts, schemas, tools or writable-path policy.
 - Scanner thresholds or database-freshness policy.

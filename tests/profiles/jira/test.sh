@@ -23,7 +23,7 @@ scripts/assert_rpm_integrity.sh "${FACTORY_TEST_IMAGE}" \
   "${FACTORY_TEST_OUTPUT}/rpm-verify.txt" "${allowlists[@]}"
 
 if [[ ${FACTORY_ENABLE_FULL_INTEGRATION:-true} == true ]]; then
-  name="factory-jira-${CI_JOB_ID:-local}"
+  name="factory-jira-${FACTORY_JOB_ID:-local}"
   podman run --detach --cgroups=disabled --name "${name}" \
     --publish 127.0.0.1::8080 "${FACTORY_TEST_IMAGE}" >/dev/null
   trap 'podman logs "${name}" >"${FACTORY_TEST_OUTPUT}/container.log" 2>&1 || true; podman rm -f "${name}" >/dev/null 2>&1 || true' EXIT

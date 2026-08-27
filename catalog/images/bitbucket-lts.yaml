@@ -1,4 +1,4 @@
-apiVersion: factory.platform.example/v1alpha1
+apiVersion: image-hardening-factory/v1alpha1
 kind: HardenedImage
 metadata:
   name: bitbucket-lts
@@ -34,6 +34,6 @@ policy:
     fixableHigh: true
     newHigh: true
 publication:
-  quarantineRepository: oci-app-quarantine-local
-  releaseRepository: oci-release-local
+  quarantineRepository: ${FACTORY_APPLICATION_QUARANTINE_REPOSITORY}
+  releaseRepository: ${FACTORY_RELEASE_REPOSITORY}
   imagePath: atlassian/bitbucket-lts

@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 
 from factory.catalog import load_catalog
-from factory.pipeline import render_pipeline
+from factory.pipeline import render_plan
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -11,34 +11,33 @@ class PipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.images = load_catalog(ROOT / "catalog/images")
 
-    def test_ubi9_pipeline_contains_parallel_application_builds(self) -> None:
-        pipeline = render_pipeline(self.images, {"ubi9-minimal"})
-        self.assertIn("build:bitbucket-lts", pipeline)
-        self.assertIn("build:confluence-lts", pipeline)
-        self.assertIn("build:jira-lts", pipeline)
-        self.assertNotIn("build:ubi10-minimal", pipeline)
+    def test_ubi9_plan_contains_parallel_application_wave(self) -> None:
+        plan = render_plan(self.images, {"ubi9-minimal"})
+        self.assertEqual(plan["waves"][0], ["ubi9-minimal"])
+        self.assertEqual(
+            plan["waves"][1],
+            ["bitbucket-lts", "confluence-lts", "jira-lts"],
+        )
+        self.assertNotIn("ubi10-minimal", {image["name"] for image in plan["images"]})
 
-    def test_application_prepare_waits_for_changed_base_import(self) -> None:
-        pipeline = render_pipeline(self.images, {"ubi9-minimal"})
-        needs = {item["job"] for item in pipeline["prepare:jira-lts"]["needs"]}
-        self.assertEqual(needs, {"validate:jira-lts", "import:ubi9-minimal"})
+    def test_application_records_selected_base_dependency(self) -> None:
+        plan = render_plan(self.images, {"ubi9-minimal"})
+        jira = next(image for image in plan["images"] if image["name"] == "jira-lts")
+        self.assertEqual(jira["dependsOn"], ["ubi9-minimal"])
 
     def test_single_application_does_not_force_unchanged_base_build(self) -> None:
-        pipeline = render_pipeline(self.images, {"jira-lts"})
-        self.assertIn("build:jira-lts", pipeline)
-        self.assertNotIn("build:ubi9-minimal", pipeline)
+        plan = render_plan(self.images, {"jira-lts"})
+        self.assertEqual([image["name"] for image in plan["images"]], ["jira-lts"])
+        self.assertEqual(plan["images"][0]["dependsOn"], [])
 
-    def test_ai_patch_job_does_not_gate_import(self) -> None:
-        pipeline = render_pipeline(self.images, {"jira-lts"})
-        import_needs = {item["job"] for item in pipeline["import:jira-lts"]["needs"]}
-        self.assertNotIn("patch-mr:jira-lts", import_needs)
+    def test_plan_rejects_unknown_images(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown changed images"):
+            render_plan(self.images, {"unknown-image"})
 
     def test_fcs_is_required_by_gate(self) -> None:
-        pipeline = render_pipeline(self.images, {"jira-lts"})
-        self.assertIn("fcs:jira-lts", pipeline)
-        gate_needs = {item["job"] for item in pipeline["gate:jira-lts"]["needs"]}
-        self.assertIn("fcs:jira-lts", gate_needs)
-        self.assertIn("build:jira-lts", gate_needs)
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("GATE: ['BUILD', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST']", jenkinsfile)
+        self.assertIn("fcsArtifact", jenkinsfile)
 
     def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
         script = (ROOT / "scripts/fcs_scan_image.sh").read_text(encoding="utf-8")
@@ -52,11 +51,10 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('[[ "${digest}" == "${candidate_digest}" ]]', script)
 
     def test_legacy_scanners_are_informational_and_fcs_is_isolated(self) -> None:
-        component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")
-        self.assertIn(".factory-scan:", component)
-        self.assertIn("allow_failure: true", component)
-        self.assertIn("factory-fcs-runner:${FCS_CLI_VERSION}", component)
-        self.assertIn("tags: [factory-fcs-connected]", component)
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("'FACTORY_K8S_FCS_POD_TEMPLATE'", jenkinsfile)
+        self.assertIn("'FACTORY_FCS_RUNNER_IMAGE'", jenkinsfile)
+        self.assertIn("catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE')", jenkinsfile)
 
         policy = (ROOT / "policies/rego/factory/release/release.rego").read_text(encoding="utf-8")
         self.assertIn("input.fcs.assessmentPassed", policy)
@@ -66,25 +64,34 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('(.findings | type == "array")', gate_script)
 
     def test_attestation_job_downloads_fcs_and_all_signed_evidence(self) -> None:
-        pipeline = render_pipeline(self.images, {"jira-lts"})
-        attest_needs = {item["job"] for item in pipeline["attest:jira-lts"]["needs"]}
-        self.assertEqual(
-            attest_needs,
-            {
-                "import:jira-lts",
-                "gate:jira-lts",
-                "sbom:jira-lts",
-                "fcs:jira-lts",
-                "compliance:jira-lts",
-                "test:jira-lts",
-            },
-        )
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        for artifact in (
+            "importArtifact",
+            "gateArtifact",
+            "sbomArtifact",
+            "fcsArtifact",
+            "complianceArtifact",
+            "testArtifact",
+        ):
+            self.assertIn(artifact, jenkinsfile)
 
-    def test_signing_component_uses_artifactory_oidc(self) -> None:
-        component = (ROOT / "components/jobs.yml").read_text(encoding="utf-8")
-        self.assertIn("ARTIFACTORY_ID_TOKEN", component)
+    def test_signing_stage_uses_scoped_jenkins_credentials(self) -> None:
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("COSIGN_KEY_CREDENTIAL_ID", jenkinsfile)
+        self.assertIn("ARTIFACTORY_SIGN_CREDENTIAL_ID", jenkinsfile)
+        self.assertIn("FACTORY_K8S_SIGNING_POD_TEMPLATE", jenkinsfile)
 
     def test_promotion_downloads_import_identity_and_attestation(self) -> None:
-        pipeline = render_pipeline(self.images, {"jira-lts"})
-        promote_needs = {item["job"] for item in pipeline["promote:jira-lts"]["needs"]}
-        self.assertEqual(promote_needs, {"import:jira-lts", "attest:jira-lts"})
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("[importArtifact, attestArtifact]", jenkinsfile)
+        self.assertIn("FACTORY_PROMOTION_LOCK_PREFIX", jenkinsfile)
+
+    def test_change_requests_cannot_publish_to_quarantine(self) -> None:
+        script = (ROOT / "scripts/import_image.sh").read_text(encoding="utf-8")
+        self.assertIn("FACTORY_PROTECTED_PUBLISH", script)
+        self.assertIn("candidateOnly:true", script)
+
+    def test_jenkins_uses_parameterized_kubernetes_pod_templates(self) -> None:
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("podTemplate(", jenkinsfile)
+        self.assertIn("inheritFrom: podTemplateName", jenkinsfile)

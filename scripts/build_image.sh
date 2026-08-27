@@ -10,7 +10,13 @@ scripts/require_rootless.sh buildah
 containerfile=$(yq -r '.source.containerfile' "${catalog}")
 platform=$(yq -r '.build.platforms[0]' "${catalog}")
 created=$(git -C "${work_dir}/context" show -s --format=%cI "${SOURCE_REVISION}")
-local_ref="localhost/factory/${FACTORY_IMAGE}:${CI_PIPELINE_ID:-local}"
+build_id=${FACTORY_BUILD_ID:-local}
+[[ "${build_id}" =~ ^[A-Za-z0-9_.-]+$ ]] || {
+  echo "FACTORY_BUILD_ID contains characters that are invalid in an OCI tag" >&2
+  exit 2
+}
+local_image_namespace=${FACTORY_LOCAL_IMAGE_NAMESPACE:-localhost/factory}
+local_ref="${local_image_namespace}/${FACTORY_IMAGE}:${build_id}"
 isolation=${BUILDAH_ISOLATION:-rootless}
 [[ "${isolation}" == rootless ]] || {
   echo "BUILDAH_ISOLATION must be rootless" >&2
@@ -37,7 +43,7 @@ args=(
   --build-arg "BASE_REF=${BASE_REF}"
   --label "org.opencontainers.image.revision=${SOURCE_REVISION}"
   --label "org.opencontainers.image.created=${created}"
-  --label "org.opencontainers.image.source=${CI_PROJECT_URL:-local}"
+  --label "org.opencontainers.image.source=${FACTORY_SOURCE_URL:-local}"
 )
 
 if [[ -n ${FACTORY_BASE_MAJOR:-} ]]; then
@@ -81,7 +87,7 @@ jq -n \
   --arg sourceRevision "${SOURCE_REVISION}" \
   --arg baseRef "${BASE_REF}" \
   --arg baseDigest "${BASE_DIGEST}" \
-  --arg factoryRevision "${CI_COMMIT_SHA:-local}" \
+  --arg factoryRevision "${FACTORY_COMMIT_SHA:-local}" \
   --arg rpmSnapshot "${RPM_SNAPSHOT_ID}" \
   --arg rpmRepomdDigest "${RPM_REPOMD_DIGEST}" \
   --arg created "${created}" \

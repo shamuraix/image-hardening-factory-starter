@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "image-hardening-factory"
 version = "0.1.0"
-description = "Offline-first GitLab CI image hardening factory"
+description = "Offline-first Jenkins image hardening factory"
 requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0,<7",

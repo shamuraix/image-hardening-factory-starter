@@ -2,161 +2,163 @@
 
 ## Artifactory setup
 
-Create these local repositories and enable immutability on release repositories:
+Infrastructure resource names are deployment settings, not repository defaults.
+Create repositories for each setting and enable immutability on release
+repositories:
 
-| Repository | Type | Writer |
+| Setting | Type | Writer |
 |---|---|---|
-| `FACTORY_SOURCE_REPOSITORY` (default `generic-source-local`) | Generic | Connected intake only |
-| `oci-upstream-cache-local` | OCI | Connected intake only |
-| `FACTORY_QUARANTINE_REPOSITORY` or catalog override (`oci-base-quarantine-local`) | OCI | Protected importer |
-| `FACTORY_QUARANTINE_REPOSITORY` or catalog override (`oci-app-quarantine-local`) | OCI | Protected importer |
-| `oci-release-local` | OCI | Protected promotion broker |
-| `oci-canary-local` | OCI | Protected canary broker |
-| `ext-redhat-ubi-remote` | RPM remote (`https://cdn-ubi.redhat.com`) | Local development read-through only |
-| `rpm-ubi9-snapshot-local` | RPM | Repository snapshot job |
-| `rpm-ubi10-snapshot-local` | RPM | Repository snapshot job |
-| `security-data-local` | Generic/OCI | Security-data intake job |
-| `oci-toolchain-local` | OCI | Toolchain bootstrap job |
+| `FACTORY_SOURCE_REPOSITORY` | Generic | Connected intake only |
+| `UPSTREAM_OCI_REPOSITORY` | OCI | Connected intake only |
+| `FACTORY_BASE_QUARANTINE_REPOSITORY` | OCI | Protected importer |
+| `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | OCI | Protected importer |
+| `FACTORY_RELEASE_REPOSITORY` | OCI | Protected promotion broker |
+| `FACTORY_CANARY_REPOSITORY` | OCI | Protected canary broker |
+| `LOCAL_RPM_CACHE_REPOSITORY` | RPM remote | Local development read-through only |
+| `FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY` | RPM | Repository snapshot job |
+| `FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY` | RPM | Repository snapshot job |
 
-Do not point production build containers at an Artifactory remote repository
-whose RPM metadata changes in place. Use `scripts/snapshot_rpm_repo.sh`, set the
-resulting immutable ID as `RPM_SNAPSHOT_ID`, and include the `repomd.xml`
-SHA-256 in the resource lock. The build records the snapshot ID in provenance.
-The local workflow may use the internal pull-through cache, but marks the lock
-as development-only and prevents that build from entering import or promotion.
+Do not point production builds at a remote repository whose RPM metadata changes
+in place. Run `scripts/snapshot_rpm_repo.sh`, set the resulting immutable ID as
+the matching `RPM_SNAPSHOT_*_ID`, and include the `repomd.xml` SHA-256 in the
+resource lock. Local development may use the configured pull-through cache, but
+the resulting lock is marked development-only and cannot enter import or
+promotion.
 
-## Runner classes
+## Jenkins Kubernetes trust classes
 
-| Tag | Network | Credential scope | Kubernetes placement |
+Each Jenkins pod-template setting must resolve to a separately administered
+Kubernetes trust class:
+
+| Setting | Network | Credential scope | Placement |
 |---|---|---|---|
-| `factory-connected-intake` | Approved upstream + internal | Intake-only writes | Connected pool |
-| `factory-offline` | Internal only | Artifact read | Offline pool |
-| `factory-buildah-ephemeral` | Internal mirrors only | Artifact read | Rootless build pool |
-| `factory-fips-ephemeral` | Internal only | Artifact read | FIPS-node pool |
-| `factory-test-ephemeral` | Internal only | Test registry read | Rootless test pool |
-| `factory-fcs-connected` | Falcon API + local candidate | Falcon image-assessment credentials only | Connected protected pool |
-| `factory-ai-untrusted` | AI endpoint + evidence read | No Git/registry write | Untrusted network pool |
-| `factory-remediation-broker` | Internal GitLab | Create branch/MR only | Protected broker pool |
-| `factory-protected-importer` | Artifactory quarantine | Quarantine write | Protected importer pool |
-| `factory-protected-signing` | Artifactory only | Write OCI signature/attestation referrers | Protected signing pool |
-| `factory-protected-promotion` | Source/target Artifactory | Release copy | Protected promotion pool |
+| `FACTORY_K8S_INTAKE_POD_TEMPLATE` | Approved upstream + internal | Intake-only writes | Connected pool |
+| `FACTORY_K8S_OFFLINE_POD_TEMPLATE` | Internal only | Artifact read | Offline pool |
+| `FACTORY_K8S_BUILDAH_POD_TEMPLATE` | Internal mirrors only | Artifact read | Rootless build pool |
+| `FACTORY_K8S_FIPS_POD_TEMPLATE` | Internal only | Artifact read | FIPS-node pool |
+| `FACTORY_K8S_TEST_POD_TEMPLATE` | Internal only | Test registry read | Rootless test pool |
+| `FACTORY_K8S_FCS_POD_TEMPLATE` | Falcon API + candidate | Falcon assessment only | Connected protected pool |
+| `FACTORY_K8S_AI_POD_TEMPLATE` | AI endpoint + evidence read | No SCM/registry write | Untrusted pool |
+| `FACTORY_K8S_REMEDIATION_POD_TEMPLATE` | Internal SCM | Branch push only | Protected broker pool |
+| `FACTORY_K8S_IMPORT_POD_TEMPLATE` | Quarantine | Quarantine write | Protected importer pool |
+| `FACTORY_K8S_SIGNING_POD_TEMPLATE` | Artifactory only | Referrer write | Protected signing pool |
+| `FACTORY_K8S_PROMOTION_POD_TEMPLATE` | Source/target Artifactory | Release copy | Protected promotion pool |
 
-Configure every pool with the GitLab Kubernetes executor and
-`privileged = false`. Do not add Linux capabilities or mount host paths,
-container-engine sockets, or host devices. The runner image uses UID 10001,
-rootless Buildah and Podman, VFS storage, and job-local ephemeral paths. Nodes
-must allow unprivileged user namespaces, and `/tmp` and `/home/factory` must be
-writable. The container runtime's seccomp profile must permit the
-user-namespace operations used by rootless Buildah and Podman. FIPS jobs
-additionally require scheduling on FIPS-enabled nodes. Rootless nested
-containers disable their own cgroups; the outer pod remains subject to its
-Kubernetes resource limits.
+Give every class its own Kubernetes ServiceAccount and least-privilege
+NetworkPolicy. Pods must run unprivileged without added capabilities, host
+paths, host devices, or container-engine sockets. Nodes must allow unprivileged
+user namespaces; `/tmp` and `/home/factory` must be writable. The runtime
+seccomp profile must permit rootless Buildah and Podman user-namespace
+operations. FIPS jobs require FIPS-enabled nodes.
 
-Buildah uses rootless isolation. ClamAV and OpenSCAP consume an
-ownership-preserving Umoci unpack inside Podman's rootless user namespace
-instead of `podman mount`. The FCS socket is created inside the job filesystem
-by rootless Podman and is never shared with the node.
+The factory image runs as UID 10001 with subordinate IDs and VFS storage.
+ClamAV and OpenSCAP consume an ownership-preserving Umoci unpack inside
+Podman's user namespace. FCS creates a rootless, job-local Podman socket.
+
+Configure an object-storage-backed Jenkins Artifact Manager. The pipeline uses
+stashes to transfer OCI archives between ephemeral pods; controller-local stash
+storage is not suitable for these files.
+
+## Jenkins authorization boundary
+
+Use separate Jenkins jobs for untrusted change-request validation and protected
+release execution:
+
+1. The change-request job loads the proposed Jenkinsfile but cannot resolve any
+   importer, signing, promotion, mirror, or remediation-broker credential.
+2. The release job loads its pipeline definition from the protected default
+   branch and runs only trusted revisions.
+3. Folder-level RBAC restricts the Gov approval `input` step to the group named
+   by `FACTORY_GOV_APPROVERS`.
+4. `FACTORY_GOV_APPROVER_PATTERN` independently validates the authenticated
+   submitter ID before Gov signing or promotion.
+5. Lockable Resources prefixes from `FACTORY_IMPORT_LOCK_PREFIX` and
+   `FACTORY_PROMOTION_LOCK_PREFIX` serialize writes for the same image.
+
+Do not rely on branch checks inside a Jenkinsfile supplied by an untrusted
+change request. Credential visibility, trusted pipeline loading, SCM branch
+protection, and Kubernetes admission policy are primary controls.
+
+Use Kubernetes workload identity and the Artifactory identity provider to issue
+short-lived stage credentials. Scope each Jenkins credential ID setting to the
+job and pod class that owns it. Do not replace short-lived tokens with
+controller-wide static secrets.
 
 ## Bootstrap sequence
 
-1. Build the intake and runner toolchain images from verified source/binaries.
-   For the FCS runner, use a bootstrap-only Falcon API client with Cloud
-   Security Tools Download `READ` to download the pinned Linux CLI, verify the
-   SHA-256 returned by the Falcon download API, and stage only the verified
-   executable as `dist/fcs/fcs`.
-2. Generate SBOMs and sign the toolchain images before using them in CI.
-3. Create GitLab source mirror projects and protected runner tags.
-4. Run `.gitlab/intake.yml` from a connected environment.
-5. Transfer and verify resource locks and security-data bundles.
-6. Run the normal root pipeline with `FACTORY_CHANGED_IMAGES=ubi9-minimal`.
-7. Approve the UBI 9 quarantine import and signature.
-8. Review the three resulting Atlassian pipelines and integration evidence.
-9. Promote by digest after the policy and approval attestations are present.
+1. Build the intake and factory runner images from verified source and binaries.
+2. Generate SBOMs and sign the runner images; configure their digest-qualified
+   references as Jenkins settings.
+3. Create internal source mirrors and the Artifactory repositories selected by
+   the resource-name settings.
+4. Create the Kubernetes ServiceAccounts, namespaces, NetworkPolicies, and
+   Jenkins pod templates for every trust class.
+5. Configure Jenkins RBAC, credential providers, Lockable Resources, and the
+   external Artifact Manager.
+6. Register `Jenkinsfile.intake` as a connected scheduled job and run intake.
+7. Verify resource-lock and security-data signatures.
+8. Register `Jenkinsfile` as a multibranch validation job and as a separately
+   protected release job.
+9. Build the UBI 9 lineage, stopping after quarantine until evidence is
+   independently reviewed.
+10. Approve signing and digest-preserving promotion.
 
-Build `toolchain/Containerfile.factory-fcs-runner` from the already signed
-factory runner image, passing its digest as `FACTORY_RUNNER_REF` and the pinned
-`FCS_CLI_VERSION`. Do not download the CLI in an ordinary image pipeline job:
-that would make each scan depend on a mutable tool download and would give the
-scanner job permission to replace its own executable. The runtime Falcon API
-client uses the documented FCS image-scan scopes and is stored as protected,
-masked variables scoped to `fcs/<environment>`.
+Build `toolchain/Containerfile.factory-fcs-runner` from the signed factory
+runner image by passing its digest as `FACTORY_RUNNER_REF` and supplying the
+pinned `FCS_CLI_VERSION`. Download and checksum-verify the entitlement-protected
+CLI only in the bootstrap process. The runtime FCS client belongs only to the
+FCS pod template.
 
 ## Artifactory-compatible signing
 
 Artifactory 7.90.1 or newer is required for OCI 1.1 Referrers API support.
-Create a separate Cosign key pair for each release environment. Configure the
-encrypted private key as the protected GitLab file variable `COSIGN_KEY_PATH`,
-its password as the protected masked variable `COSIGN_PASSWORD`, and distribute
-only the public key to promotion and verification jobs as `COSIGN_PUBLIC_KEY`.
+Create a separate encrypted Cosign key pair for each release environment.
+Bind the private key and password only through `COSIGN_KEY_CREDENTIAL_ID` and
+`COSIGN_PASSWORD_CREDENTIAL_ID`. Bind only the public key selected by
+`COSIGN_PUBLIC_KEY_CREDENTIAL_ID` in promotion jobs.
 
-The signing job exchanges its GitLab OIDC identity for the short-lived
-`ARTIFACTORY_SIGN_TOKEN`. That identity may write only signature and
-attestation referrers for subjects already present in quarantine; it must not
-upload or overwrite candidate image manifests. Confirm referrer discovery with
+The signing workload identity obtains the short-lived credential selected by
+`ARTIFACTORY_SIGN_CREDENTIAL_ID`. It may create signature and attestation
+referrers for existing quarantine subjects but cannot replace candidate
+manifests or write release repositories. Confirm referrer discovery with
 `oras discover` before enabling promotion.
 
-## U.S.-person approval
+## Intake settings
 
-Configure Gov1/Gov2 as protected GitLab environments with approval rules bound
-to the U.S.-person group. The scripts also reject a manual signing or promotion
-job when `GITLAB_USER_EMAIL` does not end in `.us`; this is defense in depth,
-not a replacement for protected-environment authorization.
+`Jenkinsfile.intake` requires:
 
-## Helm charts
+| Setting | Purpose |
+|---|---|
+| `UBI9_SOURCE_REPO_FILE` / `UBI9_SOURCE_REPO_ID` | UBI 9 source `.repo` file and repository ID |
+| `UBI10_SOURCE_REPO_FILE` / `UBI10_SOURCE_REPO_ID` | UBI 10 source `.repo` file and repository ID |
+| `FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY` / `FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY` | Snapshot destinations |
+| `FACTORY_SOURCE_REPOSITORY` | Locks, snapshot metadata, and locked resources |
+| `INTERNAL_GIT_BASE_URL` | Internal source-mirror namespace |
+| `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Generic API and OCI endpoints |
+| `UPSTREAM_OCI_REPOSITORY` | Digest-pinned upstream OCI destination |
 
-The `helm/` content in the three Repo One source repositories is excluded from
-this image pipeline. Build a separate OCI Helm pipeline from Atlassian's
-supported chart, with digest-pinned images, Gateway API overlays, Kyverno/OPA
-validation, and independent signing and promotion.
+The intake job also uses credential IDs documented in the main README. Configure
+its schedule in Jenkins job configuration; no environment-specific cron or job
+resource name is embedded in the repository.
 
-## Intake pipeline additional variables
+## Build repository configuration
 
-The `.gitlab/intake.yml` pipeline and its supporting scripts accept a number of
-variables beyond the core set listed in the main README:
-
-| Variable | Script | Purpose |
-|---|---|---|
-| `UBI9_SOURCE_REPO_FILE` | `snapshot_rpm_repo.sh` | Path to the `.repo` file describing the UBI 9 source repository to snapshot |
-| `UBI9_SOURCE_REPO_ID` | `snapshot_rpm_repo.sh` | Repository ID within the `.repo` file used by `dnf reposync` |
-| `UBI10_SOURCE_REPO_FILE` | `snapshot_rpm_repo.sh` | Path to the `.repo` file describing the UBI 10 source repository to snapshot |
-| `UBI10_SOURCE_REPO_ID` | `snapshot_rpm_repo.sh` | Repository ID within the `.repo` file used by `dnf reposync` |
-| `FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY` | `snapshot_rpm_repo.sh` | Artifactory repository for UBI 9 RPM snapshots; defaults to `rpm-ubi9-snapshot-local` |
-| `FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY` | `snapshot_rpm_repo.sh` | Artifactory repository for UBI 10 RPM snapshots; defaults to `rpm-ubi10-snapshot-local` |
-| `FACTORY_SOURCE_REPOSITORY` | `publish_intake.sh` / `snapshot_rpm_repo.sh` | Artifactory generic repository for resource locks, snapshot metadata, and OCI imports; defaults to `generic-source-local` |
-| `AI_REPOSITORY_CANDIDATES` | `ai_remediation.py` | Path to the pre-built repository-candidates JSON file; defaults to `/opt/security-data/repository-candidates.json` |
-
-## Build pipeline repo-config variables
-
-`scripts/write_repo_config.sh` selects an RPM repository configuration for the
-build. Two optional variables enable use cases outside the default Artifactory
-snapshot path:
+`scripts/write_repo_config.sh` selects an RPM repository configuration:
 
 | Variable | Purpose |
 |---|---|
-| `FACTORY_UBI_REPO_PREFIX` | Internal UBI cache URL through the architecture segment. Local builds derive this from Artifactory; direct Red Hat CDN URLs are not supported. |
-| `FACTORY_RPM_REPO_USERNAME` / `FACTORY_RPM_REPO_PASSWORD` | Read-only credentials embedded in the temporary cache repository file. |
-| `FACTORY_RPM_BASE_URL` | Override the Artifactory snapshot URL with an arbitrary base URL (for example, the loopback HTTP server used with `LOCAL_RPM_REPO_DIR`). Incompatible with `FACTORY_UBI_REPO_PREFIX`. |
-| `FACTORY_RPM_GPGCHECK` | RPM package signature check (`1` or `0`); defaults to `1`. |
-| `FACTORY_RPM_REPO_GPGCHECK` | Repository metadata signature check (`1` or `0`); defaults to `1`. |
-| `FACTORY_RPM_SSLVERIFY` | TLS verification for the RPM repository (`1` or `0`); defaults to `1`. |
+| `FACTORY_UBI_REPO_PREFIX` | Internal UBI cache URL through the architecture segment |
+| `FACTORY_RPM_REPO_USERNAME` / `FACTORY_RPM_REPO_PASSWORD` | Temporary read-only repository credentials |
+| `FACTORY_RPM_BASE_URL` | Explicit immutable snapshot URL, including loopback local development |
+| `FACTORY_RPM_GPGCHECK` | RPM package signature check |
+| `FACTORY_RPM_REPO_GPGCHECK` | Repository metadata signature check |
+| `FACTORY_RPM_SSLVERIFY` | Repository TLS verification |
 
 ## Automated source-pin maintenance
 
-`updatecli/updatecli.d/repo1-source-pins.yaml` describes an updatecli pipeline
-that queries each Repo One repository's `development` branch tip and opens a
-GitLab merge request updating both the catalog `source.revision` fields and the
-matching `vendir/config.yml` `ref` values. Run it on a scheduled GitLab
-pipeline from a connected intake runner:
-
-```bash
-updatecli apply --config updatecli/updatecli.d/repo1-source-pins.yaml
-```
-
-The `UPDATECLI_GITLAB_TOKEN` GitLab variable must be present and have MR-create
-permission. Review and merge the resulting MR before triggering the intake
-pipeline so that the new revision is mirrored and locked before the build uses
-it.
-
-`vendir/config.yml` provides a complementary `vendir sync` workflow for
-developers who want to inspect the upstream source content locally without
-running the full intake pipeline.
+Set `FACTORY_UPSTREAM_BRANCH` and run `scripts/update_source_pins.sh` from a
+connected Jenkins job. The script resolves each catalog's `source.upstream`,
+updates the catalog revision and matching `vendir/config.yml` reference, and
+leaves the resulting change for normal review. Publish that diff through an
+SCM-specific protected branch workflow; the source-pin process must never
+auto-merge.
