@@ -28,6 +28,19 @@ class CatalogTests(unittest.TestCase):
             all(len(image.data["source"]["revision"]) == 40 for image in images.values())
         )
 
+    def test_publication_repositories_are_deployment_variables(self) -> None:
+        images = load_catalog(ROOT / "catalog/images")
+        for image in images.values():
+            publication = image.data["publication"]
+            self.assertRegex(
+                publication["quarantineRepository"],
+                r"^\$\{FACTORY_[A-Z0-9_]+_REPOSITORY\}$",
+            )
+            self.assertRegex(
+                publication["releaseRepository"],
+                r"^\$\{FACTORY_[A-Z0-9_]+_REPOSITORY\}$",
+            )
+
     def test_invalid_catalog_fails_schema_validation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             catalog = Path(directory) / "invalid.yaml"

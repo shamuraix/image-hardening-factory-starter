@@ -7,6 +7,16 @@ def parameterText(String name) {
 }
 
 
+def safeName(String value) {
+    return value.replaceAll(/[^A-Za-z0-9_.-]/, '-').take(120)
+}
+
+
+def snapshotArtifact(String family) {
+    return safeName("${family}-snapshot-${env.BUILD_NUMBER}-${env.JOB_NAME}")
+}
+
+
 def requiredSetting(String name) {
     def value = env[name]?.trim()
     if (!value) {
@@ -16,16 +26,27 @@ def requiredSetting(String name) {
 }
 
 
-def intakeCredentials(boolean includeMirror = false) {
-    if (includeMirror) {
-        return [
-            usernamePassword(
-                credentialsId: requiredSetting('SCM_MIRROR_CREDENTIAL_ID'),
-                usernameVariable: 'SCM_MIRROR_USERNAME',
-                passwordVariable: 'SCM_MIRROR_TOKEN',
-            ),
-        ]
+def requiredRunnerImage(String name) {
+    def value = requiredSetting(name)
+    if (!(value ==~ /.+@sha256:[0-9a-f]{64}$/)) {
+        error("Jenkins setting ${name} must be a digest-qualified OCI image reference")
     }
+    return value
+}
+
+
+def mirrorCredentials() {
+    return [
+        usernamePassword(
+            credentialsId: requiredSetting('SCM_MIRROR_CREDENTIAL_ID'),
+            usernameVariable: 'SCM_MIRROR_USERNAME',
+            passwordVariable: 'SCM_MIRROR_TOKEN',
+        ),
+    ]
+}
+
+
+def intakeCredentials() {
     return [
         string(
             credentialsId: requiredSetting('ARTIFACTORY_INTAKE_WRITE_CREDENTIAL_ID'),
@@ -53,7 +74,7 @@ def inIntakePod(String stageName, Closure body) {
         containers: [
             containerTemplate(
                 name: 'factory',
-                image: requiredSetting('FACTORY_INTAKE_RUNNER_IMAGE'),
+                image: requiredRunnerImage('FACTORY_INTAKE_RUNNER_IMAGE'),
                 alwaysPullImage: true,
                 command: 'sleep',
                 args: '99d',
@@ -66,16 +87,19 @@ def inIntakePod(String stageName, Closure body) {
                 deleteDir()
                 def scmState = checkout(scm)
                 def catalogDirectory = env.FACTORY_CATALOG_DIR?.trim() ?: 'catalog/images'
+                def buildIdentity = safeName(
+                    "${env.BUILD_NUMBER}-${env.JOB_NAME}-${scmState.GIT_COMMIT ?: ''}"
+                )
                 withEnv([
                     "PYTHONPATH=${pwd()}",
                     "FACTORY_CATALOG_DIR=${catalogDirectory}",
                     "FACTORY_WORKSPACE=${pwd()}",
-                    "FACTORY_BUILD_ID=${env.BUILD_TAG}",
+                    "FACTORY_BUILD_ID=${buildIdentity}",
                     "FACTORY_BUILD_URL=${env.BUILD_URL ?: ''}",
                     "FACTORY_COMMIT_SHA=${scmState.GIT_COMMIT ?: env.GIT_COMMIT ?: ''}",
                     "FACTORY_SOURCE_URL=${scmState.GIT_URL ?: env.GIT_URL ?: ''}",
                     "FACTORY_RUNNER_ID=${env.NODE_NAME}",
-                    "FACTORY_JOB_ID=${env.BUILD_TAG}-${stageName}",
+                    "FACTORY_JOB_ID=${safeName("${buildIdentity}-${stageName}")}",
                     'HOME=/home/factory',
                     'XDG_RUNTIME_DIR=/tmp/factory-runtime',
                 ]) {
@@ -120,7 +144,8 @@ stage('plan') {
         withEnv(["FACTORY_CHANGED_IMAGES=${parameterText('FACTORY_CHANGED_IMAGES')}"]) {
             sh 'scripts/render_jenkins_plan.sh generated-jenkins-plan.json'
         }
-        plan = new JsonSlurperClassic().parseText(readFile('generated-jenkins-plan.json'))
+        def planText = readFile('generated-jenkins-plan.json')
+        plan = new JsonSlurperClassic().parseText(planText)
         archiveArtifacts artifacts: 'generated-jenkins-plan.json', fingerprint: true
     }
 }
@@ -142,7 +167,7 @@ stage('snapshot and mirror') {
                         printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" > work/intake/ubi9.env
                     '''
                 }
-                stash name: "${env.BUILD_TAG}-ubi9-snapshot", includes: 'work/intake/ubi9.env'
+                stash name: snapshotArtifact('ubi9'), includes: 'work/intake/ubi9.env'
             }
         },
         'snapshot UBI 10': {
@@ -160,12 +185,12 @@ stage('snapshot and mirror') {
                         printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" > work/intake/ubi10.env
                     '''
                 }
-                stash name: "${env.BUILD_TAG}-ubi10-snapshot", includes: 'work/intake/ubi10.env'
+                stash name: snapshotArtifact('ubi10'), includes: 'work/intake/ubi10.env'
             }
         },
         'mirror sources': {
             inIntakePod('mirror-sources') {
-                withCredentials(intakeCredentials(true)) {
+                withCredentials(mirrorCredentials()) {
                     sh 'scripts/mirror_sources.sh'
                 }
             }
@@ -179,8 +204,8 @@ stage('resolve and publish resource locks') {
         def image = definition.name as String
         branches[image] = {
             inIntakePod("intake-${image}") {
-                unstash "${env.BUILD_TAG}-ubi9-snapshot"
-                unstash "${env.BUILD_TAG}-ubi10-snapshot"
+                unstash snapshotArtifact('ubi9')
+                unstash snapshotArtifact('ubi10')
                 withCredentials(intakeCredentials()) {
                     withEnv(["FACTORY_IMAGE=${image}"]) {
                         sh '''

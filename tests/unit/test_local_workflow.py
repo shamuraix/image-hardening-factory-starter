@@ -67,12 +67,8 @@ class LocalWorkflowTests(unittest.TestCase):
         repo_config = (ROOT / "scripts/write_repo_config.sh").read_text(encoding="utf-8")
         cache_config = repo_config.split("if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]", maxsplit=1)[0]
 
-        self.assertEqual(
-            cache_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2
-        )
-        self.assertEqual(
-            cache_config.count("password=${FACTORY_RPM_REPO_PASSWORD}"), 2
-        )
+        self.assertEqual(cache_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2)
+        self.assertEqual(cache_config.count("password=${FACTORY_RPM_REPO_PASSWORD}"), 2)
         self.assertNotIn("cdn-ubi.redhat.com", cache_config)
 
     def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:

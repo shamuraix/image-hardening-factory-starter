@@ -4,6 +4,7 @@ set -euo pipefail
 : "${INTERNAL_GIT_BASE_URL:?}"
 : "${SCM_MIRROR_USERNAME:?}"
 : "${SCM_MIRROR_TOKEN:?}"
+catalog_directory=${FACTORY_CATALOG_DIR:-catalog/images}
 
 directory=$(mktemp -d)
 trap 'rm -rf "${directory}"' EXIT
@@ -17,7 +18,7 @@ esac
 EOF
 chmod 0700 "${askpass}"
 
-for catalog in catalog/images/*.yaml; do
+for catalog in "${catalog_directory}"/*.yaml; do
   upstream=$(yq -r '.source.upstream' "${catalog}")
   mirror_path=$(yq -r '.source.mirrorPath' "${catalog}")
   revision=$(yq -r '.source.revision' "${catalog}")

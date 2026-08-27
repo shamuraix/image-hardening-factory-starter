@@ -9,9 +9,7 @@ from factory.catalog import ImageDefinition, descendants, topological_order
 PLAN_SCHEMA_VERSION = 1
 
 
-def dependency_waves(
-    images: dict[str, ImageDefinition], selected: set[str]
-) -> list[list[str]]:
+def dependency_waves(images: dict[str, ImageDefinition], selected: set[str]) -> list[list[str]]:
     waves: list[list[str]] = []
     remaining = set(selected)
     while remaining:
@@ -45,9 +43,7 @@ def render_plan(
                 "track": images[name].track,
                 "baseImage": images[name].base_image,
                 "dependsOn": (
-                    [images[name].base_image]
-                    if images[name].base_image in selected
-                    else []
+                    [images[name].base_image] if images[name].base_image in selected else []
                 ),
             }
             for name in ordered

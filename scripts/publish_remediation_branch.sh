@@ -29,7 +29,7 @@ git apply "${patch}"
 
 changed=$(git diff --name-only)
 if grep -Eq \
-  '^(policies/|compliance/|Jenkinsfile(\.intake)?$|scripts/(sign_and_attest|promote_image|import_image|publish_remediation_branch)\.sh|.*vex|.*exception)' \
+  '^(CODEOWNERS$|policies/|compliance/|catalog/schema/|factory/pipeline\.py$|Jenkinsfile(\.intake)?$|scripts/(catalog_value|render_jenkins_plan|sign_and_attest|promote_image|import_image|publish_remediation_branch)\.sh|.*vex|.*exception)' \
   <<<"${changed}"; then
   echo "agent patch touches a protected path" >&2
   exit 1

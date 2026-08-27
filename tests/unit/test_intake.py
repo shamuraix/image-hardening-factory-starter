@@ -101,7 +101,9 @@ class IntakeTests(unittest.TestCase):
 
             output = root / "nested" / "locks" / "resource-lock.json"
             with patch.object(intake, "download_file", return_value=None) as fake_download:
-                fake_download.side_effect = lambda _url, destination: destination.write_bytes(payload)
+                fake_download.side_effect = lambda _url, destination: destination.write_bytes(
+                    payload
+                )
                 intake.resolve_manifest(
                     source,
                     "hardening_manifest.yaml",
@@ -129,8 +131,7 @@ class IntakeTests(unittest.TestCase):
 
     def test_oci_copy_removes_transport_signatures_and_retries(self) -> None:
         resource = {
-            "url": "docker://registry-1.docker.io/library/alpine@sha256:"
-            + "a" * 64,
+            "url": "docker://registry-1.docker.io/library/alpine@sha256:" + "a" * 64,
             "tag": "image:test",
         }
         raw_manifest = b"manifest"

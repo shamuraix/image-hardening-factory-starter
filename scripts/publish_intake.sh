@@ -46,10 +46,14 @@ done
 
 # OCI archives are imported by digest with Skopeo. The destination name is
 # derived from the source repository while the digest remains authoritative.
+authfile=$(mktemp)
+trap 'rm -f "${authfile}"' EXIT
+skopeo login --authfile "${authfile}" --username oidc \
+  --password "${ARTIFACTORY_WRITE_TOKEN}" "${ARTIFACTORY_REGISTRY}"
 while IFS=$'\t' read -r source digest; do
   [[ -n "${source}" ]] || continue
   source=${source#docker://}
   path=${source%%@*}
-  skopeo copy --all "docker://${source}" \
+  skopeo copy --all --authfile "${authfile}" "docker://${source}" \
     "docker://${ARTIFACTORY_REGISTRY}/${UPSTREAM_OCI_REPOSITORY}/${path#*/}:${digest#sha256:}"
 done < <(jq -r '.resources[] | select(.kind == "oci") | [.source,.declaredDigest] | @tsv' "${work}/resource-lock.json")

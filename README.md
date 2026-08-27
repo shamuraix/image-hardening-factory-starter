@@ -303,6 +303,8 @@ Configure them at the Jenkins folder or job level:
 | `FACTORY_IMPORT_LOCK_PREFIX` / `FACTORY_PROMOTION_LOCK_PREFIX` | Lockable Resources prefixes |
 | `FACTORY_GOV_APPROVERS` | Jenkins RBAC group allowed to approve Gov release stages |
 | `FACTORY_GOV_APPROVER_PATTERN` | Anchored allowlist pattern for authenticated approver IDs |
+| `SCM_REMEDIATION_AUTHOR_NAME` / `SCM_REMEDIATION_AUTHOR_EMAIL` | Bot identity for remediation commits |
+| `FACTORY_UPSTREAM_BRANCH` | Upstream branch resolved by source-pin maintenance |
 | `AI_BASE_URL` / `AI_MODEL` | Approved internal inference endpoint and model |
 | `FALCON_REGION` | FCS tenant region |
 
@@ -415,29 +417,29 @@ Before enabling production promotion, confirm that Artifactory returns the
 Cosign artifacts for a signed candidate:
 
 ```bash
-oras discover "${ARTIFACTORY_REGISTRY}/${QUARANTINE_REPOSITORY}/${IMAGE_PATH}@${IMAGE_DIGEST}"
+oras discover "${ARTIFACTORY_REGISTRY}/${FACTORY_QUARANTINE_REPOSITORY}/${FACTORY_IMAGE_PATH}@${IMAGE_DIGEST}"
 ```
 
 ## Pipeline stage toggles
 
-Each pipeline stage can be disabled by setting the corresponding
-`FACTORY_ENABLE_*` variable to `false`, `0`, or `off`. All stages default to
-enabled (`true`) except for `FCS`, `COMPLIANCE`, `REMEDIATE`, `IMPORT`,
-`ATTEST`, and `PROMOTE`, which require protected runners or credentials and
-default to `false`.
+Each pipeline stage is controlled by a Jenkins boolean parameter. Only catalog
+validation is enabled by default. The Jenkinsfile rejects combinations that
+omit a required predecessor; for example, the policy gate requires build,
+SBOM, FCS, compliance, and test stages.
 
 | Variable | Default | Stage controlled |
 |---|---|---|
 | `FACTORY_ENABLE_VALIDATE` | `true` | Schema and context validation |
-| `FACTORY_ENABLE_PREPARE` | `true` | Resource-lock resolution and build context assembly |
-| `FACTORY_ENABLE_BUILD` | `true` | Rootless Buildah OCI build |
-| `FACTORY_ENABLE_SBOM` | `true` | Syft SBOM generation |
-| `FACTORY_ENABLE_SCAN` | `true` | Grype/Trivy/OSV/ClamAV informational scans |
+| `FACTORY_ENABLE_PREPARE` | `false` | Resource-lock resolution and build context assembly |
+| `FACTORY_ENABLE_BUILD` | `false` | Rootless Buildah OCI build |
+| `FACTORY_ENABLE_SBOM` | `false` | Syft SBOM generation |
+| `FACTORY_ENABLE_SCAN` | `false` | Grype/Trivy/OSV/ClamAV informational scans |
 | `FACTORY_ENABLE_FCS` | `false` | CrowdStrike FCS authoritative assessment |
 | `FACTORY_ENABLE_COMPLIANCE` | `false` | OpenSCAP compliance scan |
-| `FACTORY_ENABLE_TEST` | `true` | Product integration tests |
-| `FACTORY_ENABLE_GATE` | `true` | OPA policy gate |
-| `FACTORY_ENABLE_REMEDIATE` | `false` | AI read-only remediation summary and patch-MR broker |
+| `FACTORY_ENABLE_TEST` | `false` | Product integration tests |
+| `FACTORY_ENABLE_GATE` | `false` | OPA policy gate |
+| `FACTORY_ENABLE_REMEDIATE` | `false` | AI read-only remediation summary |
+| `FACTORY_ENABLE_REMEDIATION_BRANCH` | `false` | Protected publication of an agent-proposed branch |
 | `FACTORY_ENABLE_IMPORT` | `false` | Protected quarantine import |
 | `FACTORY_ENABLE_ATTEST` | `false` | Cosign signing and attestation |
 | `FACTORY_ENABLE_PROMOTE` | `false` | Pull-based release promotion |

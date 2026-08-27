@@ -20,7 +20,7 @@ groups.
 | Product tests | Implemented baseline | Add licensed PostgreSQL/OpenSearch cluster tests |
 | OPA gate | Implemented; FCS is the sole scanner authority | Govern tenant image-assessment policies and review policy changes |
 | Quarantine import | Implemented | Configure OIDC token exchange and permissions |
-| Cosign/Artifactory OCI signing | Implemented | Configure environment-local key pairs, OIDC identity mapping and public keys |
+| Cosign/Artifactory OCI signing | Implemented | Configure environment-local key pairs, Kubernetes workload identity mapping and public keys |
 | Recursive promotion | Implemented | Confirm Artifactory OCI 1.1 referrer preservation |
 | AI read-only summary | Implemented | Deploy approved internal model and candidate index |
 | AI remediation branch broker | Guardrails implemented | Add patch-producing agent recipe and keep auto-merge disabled |

@@ -15,7 +15,7 @@ Every released subject digest must have the following signed predicates:
 | Compliance | OpenSCAP | ARF, profile, failed/not-applicable/error controls |
 | Tests | Product test job | Image digest, runtime checks and logs |
 | Gate | OPA | Policy bundle digest, allow/deny and reasons |
-| Approval | Protected environment job | Approver identity, environment, subject and timestamp |
+| Approval | RBAC-restricted Jenkins input | Authenticated approver identity, environment, subject and timestamp |
 
 The release broker must verify that the complete required predicate set refers
 to the same subject digest before promotion. A tag is never evidence identity.

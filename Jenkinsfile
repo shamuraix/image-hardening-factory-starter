@@ -27,6 +27,15 @@ def requiredSetting(String name) {
 }
 
 
+def requiredRunnerImage(String name) {
+    def value = requiredSetting(name)
+    if (!(value ==~ /.+@sha256:[0-9a-f]{64}$/)) {
+        error("Jenkins setting ${name} must be a digest-qualified OCI image reference")
+    }
+    return value
+}
+
+
 def stageEnabled(String name) {
     return parameterEnabled("FACTORY_ENABLE_${name}", name == 'VALIDATE')
 }
@@ -81,7 +90,7 @@ def inFactoryPod(
     Closure body
 ) {
     def podTemplateName = requiredSetting(templateVariable)
-    def runnerImage = requiredSetting(imageVariable)
+    def runnerImage = requiredRunnerImage(imageVariable)
     podTemplate(
         inheritFrom: podTemplateName,
         containers: [
@@ -100,7 +109,9 @@ def inFactoryPod(
                 deleteDir()
                 def scmState = checkout(scm)
                 def catalogDirectory = env.FACTORY_CATALOG_DIR?.trim() ?: 'catalog/images'
-                def buildIdentity = safeName(env.BUILD_TAG ?: "${env.JOB_NAME}-${env.BUILD_NUMBER}")
+                def buildIdentity = safeName(
+                    "${env.BUILD_NUMBER}-${env.JOB_NAME}-${scmState.GIT_COMMIT ?: ''}"
+                ).take(120)
                 withEnv([
                     "PYTHONPATH=${pwd()}",
                     "FACTORY_IMAGE=${imageName}",
@@ -229,7 +240,10 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
     def image = imageDefinition.name as String
     def catalogFile = imageDefinition.catalogFile as String
     def baseImage = imageDefinition.baseImage as String
-    def catalogEnvironment = ["FACTORY_CATALOG_FILE=${catalogFile}"]
+    def catalogEnvironment = [
+        "FACTORY_CATALOG_FILE=${catalogFile}",
+        "FACTORY_RELEASE_ENV=${parameterText('FACTORY_RELEASE_ENV', 'commercial')}",
+    ]
     def validateArtifact = ''
     def prepareArtifact = ''
     def buildArtifact = ''
@@ -459,6 +473,8 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
 
     if (stageEnabled('IMPORT')) {
         def protectedPublish = isProtectedBranch()
+        def importPodTemplate = protectedPublish ?
+            'FACTORY_K8S_IMPORT_POD_TEMPLATE' : 'FACTORY_K8S_OFFLINE_POD_TEMPLATE'
         def importCredentials = protectedPublish ? [[
             type: 'string',
             idVariable: 'ARTIFACTORY_WRITE_CREDENTIAL_ID',
@@ -469,7 +485,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
         importArtifact = runFactoryStage(
             image,
             'import',
-            'FACTORY_K8S_IMPORT_POD_TEMPLATE',
+            importPodTemplate,
             'FACTORY_RUNNER_IMAGE',
             [prepareArtifact, buildArtifact, gateArtifact],
             "work/${image}/import-result.json,work/${image}/import.env",
@@ -560,7 +576,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
 
 properties([
     buildDiscarder(logRotator(numToKeepStr: '20')),
-    disableConcurrentBuilds(abortPrevious: true),
+    disableConcurrentBuilds(),
     parameters([
         string(
             name: 'FACTORY_CHANGED_IMAGES',
@@ -591,7 +607,7 @@ properties([
 
 validateStageDependencies()
 def releaseEnvironment = parameterText('FACTORY_RELEASE_ENV', 'commercial')
-def releaseApprover = env.BUILD_USER_ID ?: 'jenkins'
+def releaseApprover = ''
 if ((stageEnabled('ATTEST') || stageEnabled('PROMOTE')) && releaseEnvironment.startsWith('gov')) {
     stage('Release approval') {
         releaseApprover = input(
@@ -614,7 +630,8 @@ stage('plan') {
         withEnv(["FACTORY_CHANGED_IMAGES=${parameterText('FACTORY_CHANGED_IMAGES')}"]) {
             sh 'scripts/render_jenkins_plan.sh generated-jenkins-plan.json'
         }
-        plan = new JsonSlurperClassic().parseText(readFile('generated-jenkins-plan.json'))
+        def planText = readFile('generated-jenkins-plan.json')
+        plan = new JsonSlurperClassic().parseText(planText)
         archiveArtifacts artifacts: 'generated-jenkins-plan.json', fingerprint: true
     }
 }

@@ -7,7 +7,7 @@ value=$(yq -er "${query}" "${catalog}")
 
 if [[ "${value}" =~ ^\$\{([A-Z][A-Z0-9_]*)\}$ ]]; then
   variable=${BASH_REMATCH[1]}
-  [[ -n ${!variable:-} ]] || {
+  [[ -v ${variable} && -n ${!variable} ]] || {
     echo "${variable} is required by ${catalog}:${query}" >&2
     exit 2
   }
