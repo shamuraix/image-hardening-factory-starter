@@ -26,7 +26,10 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertIn("LOCAL_RPM_CACHE_REPOSITORY is required", local_build)
         self.assertIn("FACTORY_UBI_REPO_PREFIX", local_build)
         self.assertNotIn("FACTORY_UBI_REPO_PREFIX", production_prepare)
-        self.assertNotIn("cdn-ubi.redhat.com", local_build)
+        # CDN access is permitted only when LOCAL_USE_UPSTREAM_UBI_REPOS is explicitly set;
+        # it is never the default and must not appear outside that explicit branch.
+        self.assertIn("cdn-ubi.redhat.com", local_build)
+        self.assertNotIn("cdn-ubi.redhat.com", production_prepare)
 
     def test_repo_mount_masks_upstream_repositories_and_remains_writable(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
@@ -65,7 +68,9 @@ class LocalWorkflowTests(unittest.TestCase):
 
     def test_internal_ubi_cache_uses_auth_and_honors_tls_override(self) -> None:
         repo_config = (ROOT / "scripts/write_repo_config.sh").read_text(encoding="utf-8")
-        cache_config = repo_config.split("if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]", maxsplit=1)[0]
+        cache_config = repo_config.split(
+            "if [[ -n ${FACTORY_RPM_UPSTREAM_UBI_BASE:-} ]]", maxsplit=1
+        )[0]
 
         self.assertEqual(cache_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2)
         self.assertEqual(cache_config.count("password=${FACTORY_RPM_REPO_PASSWORD}"), 2)
@@ -166,3 +171,94 @@ class LocalWorkflowTests(unittest.TestCase):
 
         self.assertIn(">/dev/null 2>&1; do", wait_http)
         self.assertIn("timed out waiting for", wait_http)
+
+    def test_upstream_cdn_mode_uses_public_ubi_urls_without_artifactory(self) -> None:
+        local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
+        repo_config = (ROOT / "scripts/write_repo_config.sh").read_text(encoding="utf-8")
+
+        # LOCAL_USE_UPSTREAM_UBI_REPOS must be the explicit gating flag
+        self.assertIn("LOCAL_USE_UPSTREAM_UBI_REPOS", local_build)
+        # CDN base URL is present only in the upstream development branch
+        self.assertIn("cdn-ubi.redhat.com", local_build)
+        # Artifactory credentials are NOT required in this mode
+        upstream_block = local_build.split("LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true")[1].split(
+            "elif [[ -z ${LOCAL_RPM_REPO_DIR:-}"
+        )[0]
+        self.assertNotIn("ARTIFACTORY_URL:?", upstream_block)
+        self.assertNotIn("ARTIFACTORY_READ_TOKEN:?", upstream_block)
+        self.assertNotIn("LOCAL_RPM_CACHE_REPOSITORY", upstream_block)
+        # CDN URL is built from rpm_major (supports UBI 9 and UBI 10)
+        self.assertIn("cdn-ubi.redhat.com/content/public/ubi/dist/ubi${rpm_major}", local_build)
+        # write_repo_config generates CDN repos without credentials
+        cdn_block = repo_config.split("FACTORY_RPM_UPSTREAM_UBI_BASE:-}")[1].split(
+            "if [[ -n ${FACTORY_RPM_BASE_URL:-}"
+        )[0]
+        self.assertIn("FACTORY_RPM_UPSTREAM_UBI_BASE", cdn_block)
+        self.assertNotIn("username=", cdn_block)
+        # CDN URLs in local_build.sh come from the gated upstream block
+
+        # CDN mode writes a composite hash file (one line per channel)
+        self.assertIn("upstream-repomd.sha256", local_build)
+        self.assertIn("upstream-${channel}-repomd.xml", local_build)
+        # rpm_source records the CDN origin (not Artifactory)
+        self.assertIn('rpm_source="cdn-ubi.redhat.com:ubi${rpm_major}', local_build)
+        # The lock remains marked as development-only
+        self.assertIn("localDevelopment:true", local_build)
+        # GPG and TLS remain enabled by default (gpgcheck=1)
+        self.assertIn("LOCAL_RPM_GPGCHECK:-1", local_build)
+        self.assertIn("LOCAL_RPM_SSLVERIFY:-1", local_build)
+
+    def test_bundled_ubi_repo_files_use_public_cdn_without_credentials(self) -> None:
+        for major, baseid in [
+            ("9", "ubi-9-baseos-rpms"),
+            ("10", "ubi-10-for-x86_64-baseos-rpms"),
+        ]:
+            repo = (ROOT / f"config/rpm/ubi{major}.repo").read_text(encoding="utf-8")
+            self.assertIn("cdn-ubi.redhat.com", repo)
+            self.assertIn(baseid, repo)
+            self.assertNotIn("username=", repo)
+            self.assertIn("gpgcheck=1", repo)
+            self.assertIn("sslverify=1", repo)
+
+    def test_intake_uses_bundled_defaults_when_operator_settings_absent(self) -> None:
+        jenkinsfile = (ROOT / "Jenkinsfile.intake").read_text(encoding="utf-8")
+
+        # Bundled repo files are the default
+        self.assertIn("UBI9_SOURCE_REPO_FILE:-config/rpm/ubi9.repo}", jenkinsfile)
+        self.assertIn("UBI10_SOURCE_REPO_FILE:-config/rpm/ubi10.repo}", jenkinsfile)
+        # Default repo IDs cover BaseOS and AppStream
+        self.assertIn("ubi-9-baseos-rpms ubi-9-appstream-rpms", jenkinsfile)
+        self.assertIn("ubi-10-for-x86_64-baseos-rpms ubi-10-for-x86_64-appstream-rpms", jenkinsfile)
+        # SOURCE_REPO_FILE and _IDS are no longer required settings
+        required_block = jenkinsfile.split(".each { requiredSetting(it) }")[0].rsplit("[", 1)[1]
+        self.assertNotIn("UBI9_SOURCE_REPO_FILE", required_block)
+        self.assertNotIn("UBI10_SOURCE_REPO_FILE", required_block)
+        self.assertNotIn("UBI9_SOURCE_REPO_ID", required_block)
+        self.assertNotIn("UBI10_SOURCE_REPO_ID", required_block)
+
+    def test_snapshot_accepts_multiple_repo_ids_and_validates_each(self) -> None:
+        snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
+
+        # Interface: positional args after the first three are repo IDs
+        self.assertIn("shift 3", snapshot)
+        self.assertIn("if [[ $# -eq 0 ]]", snapshot)
+        self.assertIn("at least one source repository id is required", snapshot)
+        # Each ID is validated before use
+        self.assertIn("[A-Za-z0-9_.:/-]+", snapshot)
+        self.assertIn("invalid repository id:", snapshot)
+        # All IDs are passed to dnf reposync
+        self.assertIn("repoid_args", snapshot)
+        self.assertIn('--repoid "${id}"', snapshot)
+        self.assertIn('"${repoid_args[@]}"', snapshot)
+
+    def test_snapshot_records_size_in_metadata(self) -> None:
+        snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
+
+        # Size and file count are measured
+        self.assertIn("snapshot_bytes=$(du -sb", snapshot)
+        self.assertIn("snapshot_files=$(find", snapshot)
+        # Reported to stderr for operator visibility
+        self.assertIn("snapshot size:", snapshot)
+        # Included in snapshot.json
+        self.assertIn("snapshotBytes", snapshot)
+        self.assertIn("snapshotFiles", snapshot)

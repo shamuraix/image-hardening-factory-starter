@@ -5,10 +5,9 @@ image=${1:?usage: scripts/local_build.sh IMAGE}
 catalog="catalog/images/${image}.yaml"
 [[ -f "${catalog}" ]] || { echo "unknown image: ${image}" >&2; exit 2; }
 
-if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
-  echo "LOCAL_USE_UPSTREAM_UBI_REPOS is no longer supported; use the internal Artifactory UBI cache" >&2
-  exit 2
-fi
+# LOCAL_USE_UPSTREAM_UBI_REPOS=true: development-only direct public CDN mode.
+# No Artifactory credentials are required.  The resulting resource lock is
+# marked localDevelopment:true and cannot be imported, signed, or promoted.
 if [[ -n ${LOCAL_RPM_REPO_DIR:-} && ! -d ${LOCAL_RPM_REPO_DIR}/repodata ]]; then
   echo "${LOCAL_RPM_REPO_DIR}/repodata is missing" >&2
   exit 2
@@ -105,7 +104,21 @@ if [[ -n ${LOCAL_CA_BUNDLE:-} ]]; then
   }
   curl_args+=(--cacert "${LOCAL_CA_BUNDLE}")
 fi
-if [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
+if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
+  arch=$(yq -r '.build.platforms[0] | split("/")[1]' "${catalog}")
+  [[ ${arch} == amd64 ]] && rpm_arch=x86_64 || rpm_arch=${arch}
+  cdn_base="https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi${rpm_major}/${rpm_major}/${rpm_arch}"
+  repomd_file="${local_root}/${image}-upstream-repomd.sha256"
+  : >"${repomd_file}"
+  for channel in baseos appstream; do
+    metadata="${local_root}/${image}-upstream-${channel}-repomd.xml"
+    curl "${curl_args[@]}" --output "${metadata}" \
+      "${cdn_base}/${channel}/os/repodata/repomd.xml"
+    sha256sum "${metadata}" >>"${repomd_file}"
+  done
+  rpm_source="cdn-ubi.redhat.com:ubi${rpm_major}:${rpm_arch}"
+  upstream_cdn_base="${cdn_base}"
+elif [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
   : "${ARTIFACTORY_URL:?ARTIFACTORY_URL is required when LOCAL_RPM_REPO_DIR is not set}"
   : "${ARTIFACTORY_READ_TOKEN:?ARTIFACTORY_READ_TOKEN is required when LOCAL_RPM_REPO_DIR is not set}"
   major=${rpm_major}
@@ -221,7 +234,10 @@ EOF
 
 export FACTORY_IMAGE="${image}"
 export FACTORY_RPM_BASE_URL="${rpm_base_url}"
-if [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
+if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
+  export FACTORY_RPM_UPSTREAM_UBI_BASE="${upstream_cdn_base}"
+  unset FACTORY_UBI_REPO_PREFIX FACTORY_RPM_REPO_USERNAME FACTORY_RPM_REPO_PASSWORD
+elif [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
   export FACTORY_UBI_REPO_PREFIX="${rpm_cache_prefix}"
   export FACTORY_RPM_REPO_USERNAME=${LOCAL_ARTIFACTORY_USERNAME:-oidc}
   export FACTORY_RPM_REPO_PASSWORD="${ARTIFACTORY_READ_TOKEN}"

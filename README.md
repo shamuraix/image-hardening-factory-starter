@@ -84,18 +84,32 @@ The `factory` entry point exposes five subcommands:
 ## Local image builds
 
 The local development workflow uses rootless Podman and Buildah with a temporary
-loopback OCI registry. By default, RPMs are read through an internal Artifactory
-pull-through cache; an existing local RPM snapshot can be served from a loopback
-HTTP server instead. The workflow applies the catalog overlay, downloads and
-checksum-verifies manifest resources, generates a clearly marked development
-resource lock, and publishes the result to both an OCI archive and the local
-registry. Catalog base images are built automatically before an application
-image.
+loopback OCI registry. Three RPM source modes are available:
+
+| Mode | Flag | Credentials required |
+|---|---|---|
+| **Direct public CDN** | `LOCAL_USE_UPSTREAM_UBI_REPOS=true` | None — UBI is publicly accessible |
+| **Artifactory pull-through cache** | `ARTIFACTORY_URL`, `ARTIFACTORY_READ_TOKEN`, `LOCAL_RPM_CACHE_REPOSITORY` | Artifactory token |
+| **Complete local snapshot** | `LOCAL_RPM_REPO_DIR=/path/to/snapshot` | None |
+
+The direct CDN mode builds against `cdn-ubi.redhat.com` without Artifactory.
+It is convenient for initial setup and zero-credential development, but upstream
+content may change between builds, making these builds non-reproducible.  The
+resulting lock is marked `localDevelopment: true` and cannot enter import,
+signing, or promotion.
+
+The Artifactory pull-through cache mode fetches RPMs via the internal Artifactory
+remote repository.  The complete local snapshot mode serves an existing snapshot
+from a loopback HTTP server.  Both modes also produce development-only locks.
+
+The workflow applies the catalog overlay, downloads and checksum-verifies
+manifest resources, generates a clearly marked development resource lock, and
+publishes the result to both an OCI archive and the local registry.  Catalog
+base images are built automatically before an application image.
 
 Prerequisites are Python 3.11+, Git, Curl, Podman, Buildah, Skopeo, `yq`, and
 `jq`. Umoci is also required for malware and compliance scans. Podman and
-Buildah must run rootless. The default connected path requires `ARTIFACTORY_URL`,
-`ARTIFACTORY_READ_TOKEN`, and `LOCAL_RPM_CACHE_REPOSITORY`. For snapshot-based testing,
+Buildah must run rootless.  For snapshot-based testing,
 `LOCAL_RPM_REPO_DIR` must point to a complete RPM repository containing
 `repodata/repomd.xml`. Signature checking remains enabled by default, so the
 repository must also contain valid RPM and repository signatures trusted by
@@ -194,7 +208,23 @@ make local-build \
 When both variables are set, `LOCAL_CA_BUNDLE` configures host Curl and
 `LOCAL_CA_CERT` is the certificate installed in the image.
 
-For the simplest connected development build, set the two Artifactory
+For the fastest zero-credential development build, set `LOCAL_USE_UPSTREAM_UBI_REPOS=true`
+to pull RPMs directly from the public UBI CDN:
+
+```bash
+make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
+```
+
+This mode fetches BaseOS and AppStream from `cdn-ubi.redhat.com`, requires no
+`ARTIFACTORY_URL`, `ARTIFACTORY_READ_TOKEN`, or `LOCAL_RPM_CACHE_REPOSITORY`,
+and keeps RPM GPG checking and TLS verification enabled.  Both channel
+`repomd.xml` documents are fetched and hashed into a deterministic composite
+metadata digest; the CDN origin is recorded as `developmentSource` in the lock.
+Because upstream content can change between builds, these direct CDN builds are
+convenient but non-reproducible.  The lock remains marked
+`"localDevelopment": true` and cannot be imported, signed, or promoted.
+
+For the simplest Artifactory-backed connected development build, set the two
 credentials and run the target directly:
 
 ```bash
@@ -208,10 +238,10 @@ in the local development lock. The generated repo file enables both channels
 and its temporary directory is bind-mounted over `/etc/yum.repos.d` during the
 Buildah build. This masks repository files inherited from the upstream UBI base
 image while leaving the directory writable for `librhsm` initialization. RPM
-operations therefore cannot fall back to Red Hat's public CDN. Direct CDN access
-is not supported by `local_build.sh`; `LOCAL_USE_UPSTREAM_UBI_REPOS=true` fails
-with migration guidance. Because pull-through metadata can change, these local
-development locks remain ineligible for quarantine import or promotion.
+operations therefore cannot fall back to Red Hat's public CDN or other
+repository files inherited from the base image.  Because pull-through metadata
+can change, these local development locks remain ineligible for quarantine
+import or promotion.
 
 To evaluate an application against the UBI 10 canary without changing its
 production catalog dependency, set the local base override:

@@ -45,6 +45,30 @@ EOF
   exit 0
 fi
 
+if [[ -n ${FACTORY_RPM_UPSTREAM_UBI_BASE:-} ]]; then
+  cat >"${output}" <<EOF2
+[factory-ubi-upstream-baseos]
+name=Factory development UBI BaseOS direct upstream (non-reproducible)
+baseurl=${FACTORY_RPM_UPSTREAM_UBI_BASE%/}/baseos/os/
+enabled=1
+gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
+repo_gpgcheck=0
+sslverify=${FACTORY_RPM_SSLVERIFY:-1}
+
+[factory-ubi-upstream-appstream]
+name=Factory development UBI AppStream direct upstream (non-reproducible)
+baseurl=${FACTORY_RPM_UPSTREAM_UBI_BASE%/}/appstream/os/
+enabled=1
+gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
+repo_gpgcheck=0
+sslverify=${FACTORY_RPM_SSLVERIFY:-1}
+EOF2
+  chmod 0600 "${output}"
+  printf '%s
+' "${snapshot_id}"
+  exit 0
+fi
+
 if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]; then
   cat >"${output}" <<EOF
 [factory-snapshot]
