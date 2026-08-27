@@ -217,7 +217,7 @@ class LocalWorkflowTests(unittest.TestCase):
             self.assertIn("cdn-ubi.redhat.com", repo)
             self.assertIn(baseid, repo)
             self.assertNotIn("username=", repo)
-            self.assertNotIn("******gpgcheck=1", repo)
+            self.assertIn("gpgcheck=1", repo)
             self.assertIn("sslverify=1", repo)
 
     def test_intake_uses_bundled_defaults_when_operator_settings_absent(self) -> None:
