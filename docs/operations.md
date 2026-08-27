@@ -129,17 +129,50 @@ manifests or write release repositories. Confirm referrer discovery with
 
 | Setting | Purpose |
 |---|---|
-| `UBI9_SOURCE_REPO_FILE` / `UBI9_SOURCE_REPO_ID` | UBI 9 source `.repo` file and repository ID |
-| `UBI10_SOURCE_REPO_FILE` / `UBI10_SOURCE_REPO_ID` | UBI 10 source `.repo` file and repository ID |
 | `FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY` / `FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY` | Snapshot destinations |
 | `FACTORY_SOURCE_REPOSITORY` | Locks, snapshot metadata, and locked resources |
 | `INTERNAL_GIT_BASE_URL` | Internal source-mirror namespace |
 | `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Generic API and OCI endpoints |
 | `UPSTREAM_OCI_REPOSITORY` | Digest-pinned upstream OCI destination |
 
+The following settings are **optional**; bundled defaults are used when absent:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `UBI9_SOURCE_REPO_FILE` | `config/rpm/ubi9.repo` | UBI 9 source `.repo` file |
+| `UBI9_SOURCE_REPO_IDS` | `ubi-9-baseos-rpms ubi-9-appstream-rpms` | Space-separated UBI 9 repository IDs |
+| `UBI10_SOURCE_REPO_FILE` | `config/rpm/ubi10.repo` | UBI 10 source `.repo` file |
+| `UBI10_SOURCE_REPO_IDS` | `ubi-10-for-x86_64-baseos-rpms ubi-10-for-x86_64-appstream-rpms` | Space-separated UBI 10 repository IDs |
+
+The bundled `.repo` files point to the public `cdn-ubi.redhat.com` endpoints and
+require no Red Hat subscription credentials.  Override these settings to use a
+deployment-specific mirror or an authenticated proxy.
+
 The intake job also uses credential IDs documented in the main README. Configure
 its schedule in Jenkins job configuration; no environment-specific cron or job
 resource name is embedded in the repository.
+
+### RPM snapshot size
+
+`scripts/snapshot_rpm_repo.sh` reports the downloaded snapshot's logical byte
+size and file count to stderr and records both values in `snapshot.json`
+(`snapshotBytes`, `snapshotFiles`).  Actual size varies as Red Hat updates UBI
+content.  Estimate current storage requirements before initial deployment:
+
+```bash
+dnf reposync \
+  --config config/rpm/ubi9.repo \
+  --repoid ubi-9-baseos-rpms \
+  --repoid ubi-9-appstream-rpms \
+  --download-metadata \
+  --download-path /tmp/ubi9-measure \
+  --arch x86_64 --arch noarch --newest-only --delete
+du -sh /tmp/ubi9-measure
+```
+
+Retaining multiple snapshots multiplies storage usage.  If Artifactory
+checksum-deduplication is enabled, unchanged RPMs share physical storage, but
+each snapshot path still counts towards logical repository size.
 
 ## Build repository configuration
 
@@ -147,6 +180,7 @@ resource name is embedded in the repository.
 
 | Variable | Purpose |
 |---|---|
+| `FACTORY_RPM_UPSTREAM_UBI_BASE` | Development-only: direct public CDN base URL (no credentials) |
 | `FACTORY_UBI_REPO_PREFIX` | Internal UBI cache URL through the architecture segment |
 | `FACTORY_RPM_REPO_USERNAME` / `FACTORY_RPM_REPO_PASSWORD` | Temporary read-only repository credentials |
 | `FACTORY_RPM_BASE_URL` | Explicit immutable snapshot URL, including loopback local development |

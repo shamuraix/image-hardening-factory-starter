@@ -1,0 +1,21 @@
+# Default public UBI 9 repository definitions.
+# These repositories are freely available and do not require Red Hat subscription
+# credentials.  Set UBI9_SOURCE_REPO_FILE in your Jenkins settings to supply a
+# deployment-specific override; when the setting is absent the intake pipeline
+# uses this file.
+
+[ubi-9-baseos-rpms]
+name=Red Hat Universal Base Image 9 (RPMs) - BaseOS
+baseurl=https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/baseos/os
+enabled=1
+gpgcheck=1
+gpgkey=https://www.redhat.com/security/team/key/RPM-GPG-KEY-redhat-release
+sslverify=1
+
+[ubi-9-appstream-rpms]
+name=Red Hat Universal Base Image 9 (RPMs) - AppStream
+baseurl=https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/$basearch/appstream/os
+enabled=1
+gpgcheck=1
+gpgkey=https://www.redhat.com/security/team/key/RPM-GPG-KEY-redhat-release
+sslverify=1

@@ -132,10 +132,6 @@ properties([
     'INTERNAL_GIT_BASE_URL',
     'ARTIFACTORY_URL',
     'ARTIFACTORY_REGISTRY',
-    'UBI9_SOURCE_REPO_FILE',
-    'UBI9_SOURCE_REPO_ID',
-    'UBI10_SOURCE_REPO_FILE',
-    'UBI10_SOURCE_REPO_ID',
 ].each { requiredSetting(it) }
 
 def plan
@@ -156,12 +152,15 @@ stage('snapshot and mirror') {
             inIntakePod('snapshot-ubi9') {
                 withCredentials(intakeCredentials()) {
                     sh '''
+                        ubi9_repo_file="${UBI9_SOURCE_REPO_FILE:-config/rpm/ubi9.repo}"
+                        ubi9_repo_ids="${UBI9_SOURCE_REPO_IDS:-ubi-9-baseos-rpms ubi-9-appstream-rpms}"
+                        # shellcheck disable=SC2086
                         snapshot_id=$(
                           scripts/snapshot_rpm_repo.sh \
-                            "${UBI9_SOURCE_REPO_FILE}" \
+                            "${ubi9_repo_file}" \
                             "${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY}" \
                             work/rpm-ubi9 \
-                            "${UBI9_SOURCE_REPO_ID}" |
+                            ${ubi9_repo_ids} |
                           tail -n1
                         )
                         printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" > work/intake/ubi9.env
@@ -174,12 +173,15 @@ stage('snapshot and mirror') {
             inIntakePod('snapshot-ubi10') {
                 withCredentials(intakeCredentials()) {
                     sh '''
+                        ubi10_repo_file="${UBI10_SOURCE_REPO_FILE:-config/rpm/ubi10.repo}"
+                        ubi10_repo_ids="${UBI10_SOURCE_REPO_IDS:-ubi-10-for-x86_64-baseos-rpms ubi-10-for-x86_64-appstream-rpms}"
+                        # shellcheck disable=SC2086
                         snapshot_id=$(
                           scripts/snapshot_rpm_repo.sh \
-                            "${UBI10_SOURCE_REPO_FILE}" \
+                            "${ubi10_repo_file}" \
                             "${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY}" \
                             work/rpm-ubi10 \
-                            "${UBI10_SOURCE_REPO_ID}" |
+                            ${ubi10_repo_ids} |
                           tail -n1
                         )
                         printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" > work/intake/ubi10.env
