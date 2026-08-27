@@ -1,0 +1,216 @@
+import groovy.json.JsonSlurperClassic
+
+
+def parameterText(String name) {
+    def value = params[name]
+    return value == null ? '' : value.toString().trim()
+}
+
+
+def requiredSetting(String name) {
+    def value = env[name]?.trim()
+    if (!value) {
+        error("Jenkins setting ${name} is required")
+    }
+    return value
+}
+
+
+def intakeCredentials(boolean includeMirror = false) {
+    if (includeMirror) {
+        return [
+            usernamePassword(
+                credentialsId: requiredSetting('SCM_MIRROR_CREDENTIAL_ID'),
+                usernameVariable: 'SCM_MIRROR_USERNAME',
+                passwordVariable: 'SCM_MIRROR_TOKEN',
+            ),
+        ]
+    }
+    return [
+        string(
+            credentialsId: requiredSetting('ARTIFACTORY_INTAKE_WRITE_CREDENTIAL_ID'),
+            variable: 'ARTIFACTORY_WRITE_TOKEN',
+        ),
+        file(
+            credentialsId: requiredSetting('COSIGN_INTAKE_KEY_CREDENTIAL_ID'),
+            variable: 'COSIGN_INTAKE_KEY_REF',
+        ),
+        string(
+            credentialsId: requiredSetting('COSIGN_INTAKE_PASSWORD_CREDENTIAL_ID'),
+            variable: 'COSIGN_PASSWORD',
+        ),
+        file(
+            credentialsId: requiredSetting('COSIGN_INTAKE_PUBLIC_KEY_CREDENTIAL_ID'),
+            variable: 'COSIGN_INTAKE_PUBLIC_KEY',
+        ),
+    ]
+}
+
+
+def inIntakePod(String stageName, Closure body) {
+    podTemplate(
+        inheritFrom: requiredSetting('FACTORY_K8S_INTAKE_POD_TEMPLATE'),
+        containers: [
+            containerTemplate(
+                name: 'factory',
+                image: requiredSetting('FACTORY_INTAKE_RUNNER_IMAGE'),
+                alwaysPullImage: true,
+                command: 'sleep',
+                args: '99d',
+                ttyEnabled: true,
+            ),
+        ],
+    ) {
+        node(POD_LABEL) {
+            container('factory') {
+                deleteDir()
+                def scmState = checkout(scm)
+                def catalogDirectory = env.FACTORY_CATALOG_DIR?.trim() ?: 'catalog/images'
+                withEnv([
+                    "PYTHONPATH=${pwd()}",
+                    "FACTORY_CATALOG_DIR=${catalogDirectory}",
+                    "FACTORY_WORKSPACE=${pwd()}",
+                    "FACTORY_BUILD_ID=${env.BUILD_TAG}",
+                    "FACTORY_BUILD_URL=${env.BUILD_URL ?: ''}",
+                    "FACTORY_COMMIT_SHA=${scmState.GIT_COMMIT ?: env.GIT_COMMIT ?: ''}",
+                    "FACTORY_SOURCE_URL=${scmState.GIT_URL ?: env.GIT_URL ?: ''}",
+                    "FACTORY_RUNNER_ID=${env.NODE_NAME}",
+                    "FACTORY_JOB_ID=${env.BUILD_TAG}-${stageName}",
+                    'HOME=/home/factory',
+                    'XDG_RUNTIME_DIR=/tmp/factory-runtime',
+                ]) {
+                    sh 'mkdir -p work/intake "${XDG_RUNTIME_DIR}" && chmod 0700 "${XDG_RUNTIME_DIR}"'
+                    body()
+                }
+            }
+        }
+    }
+}
+
+
+properties([
+    buildDiscarder(logRotator(numToKeepStr: '10')),
+    disableConcurrentBuilds(),
+    parameters([
+        string(
+            name: 'FACTORY_CHANGED_IMAGES',
+            defaultValue: '',
+            description: 'Comma-separated catalog roots; empty selects all images',
+        ),
+    ]),
+])
+
+[
+    'FACTORY_SOURCE_REPOSITORY',
+    'FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY',
+    'FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY',
+    'UPSTREAM_OCI_REPOSITORY',
+    'INTERNAL_GIT_BASE_URL',
+    'ARTIFACTORY_URL',
+    'ARTIFACTORY_REGISTRY',
+    'UBI9_SOURCE_REPO_FILE',
+    'UBI9_SOURCE_REPO_ID',
+    'UBI10_SOURCE_REPO_FILE',
+    'UBI10_SOURCE_REPO_ID',
+].each { requiredSetting(it) }
+
+def plan
+stage('plan') {
+    inIntakePod('plan') {
+        withEnv(["FACTORY_CHANGED_IMAGES=${parameterText('FACTORY_CHANGED_IMAGES')}"]) {
+            sh 'scripts/render_jenkins_plan.sh generated-jenkins-plan.json'
+        }
+        plan = new JsonSlurperClassic().parseText(readFile('generated-jenkins-plan.json'))
+        archiveArtifacts artifacts: 'generated-jenkins-plan.json', fingerprint: true
+    }
+}
+
+stage('snapshot and mirror') {
+    parallel(
+        'snapshot UBI 9': {
+            inIntakePod('snapshot-ubi9') {
+                withCredentials(intakeCredentials()) {
+                    sh '''
+                        snapshot_id=$(
+                          scripts/snapshot_rpm_repo.sh \
+                            "${UBI9_SOURCE_REPO_FILE}" \
+                            "${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY}" \
+                            work/rpm-ubi9 \
+                            "${UBI9_SOURCE_REPO_ID}" |
+                          tail -n1
+                        )
+                        printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" > work/intake/ubi9.env
+                    '''
+                }
+                stash name: "${env.BUILD_TAG}-ubi9-snapshot", includes: 'work/intake/ubi9.env'
+            }
+        },
+        'snapshot UBI 10': {
+            inIntakePod('snapshot-ubi10') {
+                withCredentials(intakeCredentials()) {
+                    sh '''
+                        snapshot_id=$(
+                          scripts/snapshot_rpm_repo.sh \
+                            "${UBI10_SOURCE_REPO_FILE}" \
+                            "${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY}" \
+                            work/rpm-ubi10 \
+                            "${UBI10_SOURCE_REPO_ID}" |
+                          tail -n1
+                        )
+                        printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" > work/intake/ubi10.env
+                    '''
+                }
+                stash name: "${env.BUILD_TAG}-ubi10-snapshot", includes: 'work/intake/ubi10.env'
+            }
+        },
+        'mirror sources': {
+            inIntakePod('mirror-sources') {
+                withCredentials(intakeCredentials(true)) {
+                    sh 'scripts/mirror_sources.sh'
+                }
+            }
+        },
+    )
+}
+
+stage('resolve and publish resource locks') {
+    def branches = [:]
+    plan.images.each { definition ->
+        def image = definition.name as String
+        branches[image] = {
+            inIntakePod("intake-${image}") {
+                unstash "${env.BUILD_TAG}-ubi9-snapshot"
+                unstash "${env.BUILD_TAG}-ubi10-snapshot"
+                withCredentials(intakeCredentials()) {
+                    withEnv(["FACTORY_IMAGE=${image}"]) {
+                        sh '''
+                            set -a
+                            . work/intake/ubi9.env
+                            . work/intake/ubi10.env
+                            set +a
+                            catalog="${FACTORY_CATALOG_DIR}/${FACTORY_IMAGE}.yaml"
+                            mirror=$(yq -r '.source.mirrorPath' "${catalog}")
+                            revision=$(yq -r '.source.revision' "${catalog}")
+                            mkdir -p "work/${FACTORY_IMAGE}"
+                            git clone --no-checkout \
+                              "${INTERNAL_GIT_BASE_URL%/}/${mirror}.git" \
+                              "work/${FACTORY_IMAGE}/source"
+                            git -C "work/${FACTORY_IMAGE}/source" checkout --detach "${revision}"
+                            python3 -m factory.cli intake \
+                              --image "${catalog}" \
+                              --source-dir "work/${FACTORY_IMAGE}/source" \
+                              --cache-dir "work/${FACTORY_IMAGE}/cache" \
+                              --output "work/${FACTORY_IMAGE}/resource-lock.json"
+                            scripts/publish_intake.sh "${FACTORY_IMAGE}"
+                        '''
+                    }
+                }
+                archiveArtifacts(
+                    artifacts: "work/${image}/resource-lock.json,work/${image}/resource-lock.sig",
+                    fingerprint: true,
+                )
+            }
+        }
+    }
+    parallel(branches)
+}

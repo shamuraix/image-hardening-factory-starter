@@ -8,7 +8,7 @@ from factory.catalog import load_catalog, load_image
 from factory.findings import normalize
 from factory.gate import gate_input, write_gate_input
 from factory.intake import resolve_manifest, upload_locked_files
-from factory.pipeline import render_pipeline, write_pipeline
+from factory.pipeline import render_plan, write_plan
 
 
 def _catalog_path(value: str) -> Path:
@@ -25,12 +25,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate = commands.add_parser("validate")
     validate.add_argument("--catalog", type=_catalog_path, required=True)
 
-    pipeline = commands.add_parser("pipeline")
-    pipeline.add_argument("--catalog", type=_catalog_path, required=True)
-    selection = pipeline.add_mutually_exclusive_group(required=True)
+    plan = commands.add_parser("plan")
+    plan.add_argument("--catalog", type=_catalog_path, required=True)
+    selection = plan.add_mutually_exclusive_group(required=True)
     selection.add_argument("--all", action="store_true")
     selection.add_argument("--changed", nargs="+")
-    pipeline.add_argument("--output", required=True)
+    plan.add_argument("--output", required=True)
 
     intake = commands.add_parser("intake")
     intake.add_argument("--image", type=_catalog_path, required=True)
@@ -66,10 +66,10 @@ def main() -> int:
         images = load_catalog(args.catalog)
         print(json.dumps({"valid": True, "images": sorted(images)}, indent=2))
         return 0
-    if args.command == "pipeline":
+    if args.command == "plan":
         images = load_catalog(args.catalog)
         roots = None if args.all else set(args.changed)
-        write_pipeline(render_pipeline(images, roots), args.output)
+        write_plan(render_plan(images, roots), args.output)
         return 0
     if args.command == "intake":
         image = load_image(args.image)
