@@ -43,4 +43,5 @@ allowed=$(jq -r '.allow' "${evidence}/gate-result.json")
 printf 'FACTORY_GATE_ALLOWED=%s\n' "${allowed}" >"${work_dir}/gate.env"
 if [[ "${allowed}" != true ]]; then
   jq -r '.deny[]' "${evidence}/gate-result.json" >&2
+  exit 1
 fi

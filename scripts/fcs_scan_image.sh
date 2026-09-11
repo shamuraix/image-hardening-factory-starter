@@ -21,6 +21,8 @@ platform=$(yq -r '.build.platforms[0]' "${catalog}")
 source "${work_dir}/build.env"
 : "${LOCAL_IMAGE_REF:?LOCAL_IMAGE_REF is missing from build.env}"
 : "${IMAGE_DIGEST:?IMAGE_DIGEST is missing from build.env}"
+observed_digest=$(skopeo inspect "oci-archive:${work_dir}/image.oci.tar" | jq -er '.Digest')
+[[ "${observed_digest}" == "${IMAGE_DIGEST}" ]] || { echo "FCS candidate digest mismatch" >&2; exit 1; }
 podman load -i "${work_dir}/image.oci.tar" >"${output}/load.log"
 podman image exists "${LOCAL_IMAGE_REF}"
 
@@ -75,8 +77,8 @@ set -e
 
 report_valid=false
 sbom_valid=false
-jq -e 'type == "object"' "${assessment}" >/dev/null 2>&1 && report_valid=true
-jq -e '.bomFormat == "CycloneDX"' "${sbom}" >/dev/null 2>&1 && sbom_valid=true
+jq -e 'type == "object" and length > 0' "${assessment}" >/dev/null 2>&1 && report_valid=true
+jq -e '.bomFormat == "CycloneDX" and (.specVersion | type == "string") and (.components | type == "array")' "${sbom}" >/dev/null 2>&1 && sbom_valid=true
 version=$(fcs version 2>&1 | head -n1 || fcs --version 2>&1 | head -n1 || true)
 assessment_passed=false
 if [[ ${assessment_exit} -eq 0 && ${report_valid} == true && ${sbom_exit} -eq 0 && ${sbom_valid} == true ]]; then

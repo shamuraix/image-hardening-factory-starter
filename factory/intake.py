@@ -5,7 +5,6 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
@@ -119,7 +118,12 @@ def resolve_manifest(
     manifest_path = source_dir / manifest_name
     manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     locked = []
+    names: set[str] = set()
     for resource in manifest.get("resources", []):
+        name = resource.get("filename") or resource.get("tag")
+        if name in names:
+            raise IntakeError(f"duplicate resource name: {name}")
+        names.add(name)
         url = resource.get("url") or (resource.get("urls") or [None])[0]
         if not url:
             raise IntakeError("resource is missing url/urls")
@@ -170,7 +174,3 @@ def upload_locked_files(lock: dict[str, Any], cache_dir: str | Path, repository_
                 raise IntakeError(
                     f"Artifactory upload failed for {path.name}: HTTP {response.status}"
                 )
-
-
-def temporary_cache() -> tempfile.TemporaryDirectory[str]:
-    return tempfile.TemporaryDirectory(prefix="factory-intake-")

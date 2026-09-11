@@ -22,21 +22,32 @@ if [[ ${FACTORY_RELEASE_ENV:-commercial} =~ ^gov[12]$ ]]; then
   }
 fi
 
+jq -e '.localDevelopment != true' "${work_dir}/resource-lock.json" >/dev/null
+jq -e '.allow == true' "${evidence}/gate-result.json" >/dev/null
+jq -e --arg digest "${IMPORTED_IMAGE_DIGEST}" '.digest == $digest' "${work_dir}/image-metadata.json" >/dev/null
 subject="${IMPORTED_IMAGE_REF}@${IMPORTED_IMAGE_DIGEST}"
-authfile=$(mktemp)
-trap 'rm -f "${authfile}"' EXIT
-skopeo login --authfile "${authfile}" --username oidc --password "${ARTIFACTORY_SIGN_TOKEN}" \
+authdir=$(mktemp -d)
+trap 'rm -rf "${authdir}"' EXIT
+export DOCKER_CONFIG="${authdir}"
+authfile="${authdir}/config.json"
+printf '%s' "${ARTIFACTORY_SIGN_TOKEN}" | skopeo login --authfile "${authfile}" --username oidc --password-stdin \
   "${ARTIFACTORY_REGISTRY}"
 export REGISTRY_AUTH_FILE="${authfile}"
 
 # Cosign stores the signature and attestations beside the subject in
-# Artifactory as OCI artifacts/referrers. The private key is supplied by a
+# Artifactory as digest-tagged Cosign attachments. The private key is supplied by a
 # protected, release-job-scoped Jenkins file credential and is never uploaded.
 cosign sign --yes --tlog-upload=false --key "${COSIGN_KEY_PATH}" "${subject}"
+
+jq -n --arg digest "${IMPORTED_IMAGE_DIGEST}" --arg approver "${FACTORY_APPROVER_ID:-}" \
+  --arg environment "${FACTORY_RELEASE_ENV:-commercial}" --arg approvedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{approvedAt:$approvedAt,digest:$digest,approver:$approver,environment:$environment}' >"${evidence}/approval.json"
 
 scripts/generate_provenance.py "${work_dir}" "${evidence}/provenance.json"
 
 declare -A predicates=(
+  ["${work_dir}/resource-lock.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:resource-lock:v1"
+  ["${evidence}/approval.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:approval:v1"
   ["${evidence}/sbom.cdx.json"]="https://cyclonedx.org/bom"
   ["${evidence}/sbom.spdx.json"]="https://spdx.dev/Document"
   ["${evidence}/provenance.json"]="https://slsa.dev/provenance/v1"
@@ -54,5 +65,6 @@ for predicate in "${!predicates[@]}"; do
 done
 
 jq -n --arg subject "${subject}" --arg environment "${FACTORY_RELEASE_ENV:-commercial}" \
-  '{signed:true,subject:$subject,environment:$environment}' >"${evidence}/signing-result.json"
+  --arg approver "${FACTORY_APPROVER_ID:-}" \
+  '{signed:true,subject:$subject,environment:$environment,approver:$approver}'  >"${evidence}/signing-result.json"
 unset COSIGN_PASSWORD ARTIFACTORY_SIGN_TOKEN REGISTRY_AUTH_FILE

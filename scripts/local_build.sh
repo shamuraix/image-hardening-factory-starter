@@ -209,8 +209,8 @@ else
   skopeo copy --retry-times 5 --remove-signatures --all \
     "docker://${registry}/${registry_namespace}/${image}-upstream:local" \
     "oci-archive:${work_dir}/base.oci.tar:${base_ref}" --src-tls-verify=false
-  base_digest=$(skopeo inspect --tls-verify=false \
-    "docker://${registry}/${registry_namespace}/${image}-upstream:local" | jq -er '.Digest')
+  base_digest=$(skopeo inspect \
+    "oci-archive:${work_dir}/base.oci.tar" | jq -er '.Digest')
 fi
 
 jq --arg snapshot "${snapshot_id}" --arg repomdDigest "${repomd_digest}" \

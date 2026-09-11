@@ -119,9 +119,8 @@ Bind the private key and password only through `COSIGN_KEY_CREDENTIAL_ID` and
 
 The signing workload identity obtains the short-lived credential selected by
 `ARTIFACTORY_SIGN_CREDENTIAL_ID`. It may create signature and attestation
-referrers for existing quarantine subjects but cannot replace candidate
-manifests or write release repositories. Confirm referrer discovery with
-`oras discover` before enabling promotion.
+attachment tags for existing quarantine subjects but cannot replace candidate
+manifests or write release repositories. Confirm both referrer discovery and Cosign verification after copying before enabling promotion.
 
 ## Intake settings
 
@@ -196,3 +195,65 @@ updates the catalog revision and matching `vendir/config.yml` reference, and
 leaves the resulting change for normal review. Publish that diff through an
 SCM-specific protected branch workflow; the source-pin process must never
 auto-merge.
+
+## Day 2 operating cadence
+
+| Frequency/event | Action | Evidence to retain |
+|---|---|---|
+| Each intake | Check approved origins, checksums, root RPM metadata and snapshot signatures | Source revision, snapshot ID, signed resource lock |
+| Each release | Review FCS tenant policy, compliance and product results for the candidate digest | Gate input/result, assessment reports, signed predicates |
+| Security-data refresh | Rebuild and sign scanner data/tool images; check actual versions and data age | Data inventory and runner digest |
+| Source update | Refresh pins on a branch, reconcile versions and recheck patches | Reviewed diff and clean build results |
+| Key rotation | Distribute new public trust, test verification, then switch signer | Old/new key IDs and verification record |
+| Periodic restore drill | Recover an archived candidate and verify every required predicate | Restore and destination verification logs |
+
+### Snapshot and resource lock contract
+
+Resource locks are stored under
+`locks/<image>/<source-revision>/<rpm-snapshot-id>/resource-lock.json` and a
+sibling `resource-lock.sig`. Re-run intake when migrating from the earlier
+revision-only path. Never rewrite an existing signed lock to select a new RPM
+snapshot. Deny overwrite/delete for normal intake credentials and apply retention
+only after verifying that no retained release depends on the content.
+
+The snapshot job re-indexes combined RPM channels with `createrepo_c`. It signs
+`snapshot.json`, not `repomd.xml.asc`. Production builds authenticate the root
+`repodata/repomd.xml` hash against that signed lock; `repo_gpgcheck=0` is therefore
+intentional for factory snapshots. RPM package signature checking remains on.
+The Artifactory snapshot must remain immutable between the metadata check and
+package resolution. Provide the vendor RPM trust keys in the base image.
+
+### Failure runbooks
+
+| Symptom | Check and recovery |
+|---|---|
+| Base unavailable with `--pull=never` | Verify internal digest and read credentials; the build stage must preload it into the fresh pod |
+| Intake upload denied | Check intake token and repository path; never use a release token as a shortcut |
+| Snapshot hash mismatch | Stop and investigate replacement/corruption; issue a new snapshot and lock after review |
+| OpenSCAP has no evaluated rules | Check ARF output, profile applicability and tailoring; empty evidence must not pass |
+| FCS unavailable or denies | Check matching region/client and tenant policy; retain report, rebuild or resolve the finding |
+| Gate denied | Inspect `evidence/gate-result.json`; informational scanner thresholds do not change FCS policy |
+| Signature absent after copy | Check Cosign attachment tags, ORAS referrers and destination permissions; do not promote without evidence |
+| Canary reaches wrong repository | Verify `FACTORY_CANARY_REPOSITORY`; destination comes from the catalog, not a global release override |
+
+### Rollback
+
+Select a previously approved image by digest and verify its signature and required
+attestations using the retained environment public key. Re-evaluate its security
+eligibility with current policy/data before redeployment. Change the downstream
+GitOps desired digest through its approval workflow; this repository does not
+operate Flux or roll back application databases. Coordinate database compatibility
+and restore requirements with the product owner. Do not rebuild an old source
+and describe the new digest as the original release.
+
+### Activation gates still owned by the environment
+
+Run a complete UBI 9 build/import/sign/copy in a disposable repository, including
+denied/malformed evidence cases. Confirm archived artifacts survive failed jobs,
+that destination signatures and all required predicates verify, and that canary
+writes cannot reach release storage. Complete licensed database/search/clustering
+and graceful-shutdown tests before treating the product baseline profiles as
+production qualification. FCS API egress is required even when build inputs are
+air-gapped; no offline FCS substitute is implemented here.
+
+Release tags are `<product-version>-<full-sha256>` so a rebuilt product version can coexist with the previous immutable release. Consumers should use the verified digest.
