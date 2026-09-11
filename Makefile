@@ -7,8 +7,8 @@ test:
 	PYTHONPATH=. python3 -m unittest discover -s tests/unit -p 'test_*.py' -v
 
 lint:
-	ruff check factory scripts tests
-	ruff format --check factory scripts tests
+	python3 -m ruff check factory scripts tests
+	python3 -m ruff format --check factory scripts tests
 
 plan:
 	PYTHONPATH=. python3 -m factory.cli plan --catalog catalog/images --all --output generated-jenkins-plan.json
@@ -28,3 +28,7 @@ local-fcs: local-build
 
 package:
 	git archive --format=tar.gz --output=image-hardening-factory.tar.gz HEAD
+
+.PHONY: policy-test
+policy-test:
+	opa test policies/rego -v

@@ -116,17 +116,17 @@ Deliverables:
 
 - Protected quarantine importer.
 - Cosign signatures using environment-local encrypted keys, stored with the
-  subject in Artifactory as OCI referrers, with transparency logging disabled.
+  subject in Artifactory as digest-linked attachments, with transparency logging disabled.
 - Signed in-toto attestations for SBOM, provenance, scans, compliance, tests,
   gate decision and approval.
 - Pull-based promotion script that verifies source signatures and copies the
-  subject plus OCI referrer closure.
+  subject plus OCI referrer closure and Cosign 2.x attachment tags.
 
 Acceptance criteria:
 
 - Build runners cannot push to quarantine or release repositories.
 - Promotion copies the source digest without mutation.
-- Gov1/Gov2 require environment-local `.us` approval and local signing.
+- Gov1/Gov2 require environment-local governed U.S.-person group approval of the exact digest and local signing.
 
 ## Milestone 8 — Read-only AI summaries
 

@@ -37,7 +37,7 @@ dnf reposync --config "${source_repo}" "${repoid_args[@]}" --download-metadata \
   --setopt="logdir=${output}/dnf-log" \
   --arch x86_64 --arch noarch --newest-only --delete
 createrepo_c --update "${output}/content"
-repomd=$(find "${output}/content" -path '*/repodata/repomd.xml' -print -quit)
+repomd="${output}/content/repodata/repomd.xml"
 [[ -s "${repomd}" ]]
 repomd_digest=$(sha256sum "${repomd}" | cut -d' ' -f1)
 snapshot_id="$(date -u +%Y%m%dT%H%M%SZ)-${repomd_digest:0:16}"
@@ -49,7 +49,7 @@ printf 'snapshot size: %s bytes, %s files\n' "${snapshot_bytes}" "${snapshot_fil
 while IFS= read -r -d '' file; do
   relative=${file#"${output}/content/"}
   curl --fail --silent --show-error --request PUT \
-    --header "Authorization: ******" \
+    --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --header "X-Checksum-Sha256: $(sha256sum "${file}" | cut -d' ' -f1)" \
     --upload-file "${file}" \
     "${ARTIFACTORY_URL%/}/artifactory/${repository}/${snapshot_id}/${relative}"
@@ -64,7 +64,7 @@ cosign sign-blob --yes --tlog-upload=false --key "${COSIGN_INTAKE_KEY_REF}" \
   --output-signature "${output}/snapshot.sig" "${output}/snapshot.json"
 for file in snapshot.json snapshot.sig; do
   curl --fail --silent --show-error --request PUT \
-    --header "Authorization: ******" \
+    --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --upload-file "${output}/${file}" \
     "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/rpm-snapshots/${snapshot_id}/${file}"
 done

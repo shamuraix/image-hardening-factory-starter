@@ -35,7 +35,7 @@ class ImageDefinition:
 
 
 def _schema_path() -> Path:
-    return Path(__file__).resolve().parents[1] / "catalog/schema/image.schema.json"
+    return Path(__file__).resolve().parent / "schemas/image.schema.json"
 
 
 def load_image(path: str | Path, schema_path: str | Path | None = None) -> ImageDefinition:
@@ -45,6 +45,13 @@ def load_image(path: str | Path, schema_path: str | Path | None = None) -> Image
     errors = validate(data, schema)
     if errors:
         raise CatalogError("\n".join(f"{path}:{error.path}: {error.message}" for error in errors))
+    for field in ("containerfile", "hardeningManifest", "mirrorPath", "overlay"):
+        value = data["source"].get(field)
+        if value and (Path(value).is_absolute() or ".." in Path(value).parts):
+            raise CatalogError(f"{path}: source.{field} must stay within its root")
+    reserved = {"BASE_REF", "BASE_MAJOR"}.intersection(data["build"].get("buildArgs", {}))
+    if reserved:
+        raise CatalogError(f"{path}: pipeline-owned build arguments: {sorted(reserved)}")
     return ImageDefinition(path=path, data=data)
 
 

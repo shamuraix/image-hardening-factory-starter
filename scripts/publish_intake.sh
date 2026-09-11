@@ -41,7 +41,7 @@ for file in resource-lock.json resource-lock.sig; do
   curl --fail --silent --show-error --request PUT \
     --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --upload-file "${work}/${file}" \
-    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/${file}"
+    "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/${snapshot_id}/${file}"
 done
 
 # OCI archives are imported by digest with Skopeo. The destination name is
@@ -54,6 +54,6 @@ while IFS=$'\t' read -r source digest; do
   [[ -n "${source}" ]] || continue
   source=${source#docker://}
   path=${source%%@*}
-  skopeo copy --all --authfile "${authfile}" "docker://${source}" \
+  skopeo copy --all --preserve-digests --authfile "${authfile}" "docker://${source}" \
     "docker://${ARTIFACTORY_REGISTRY}/${UPSTREAM_OCI_REPOSITORY}/${path#*/}:${digest#sha256:}"
 done < <(jq -r '.resources[] | select(.kind == "oci") | [.source,.declaredDigest] | @tsv' "${work}/resource-lock.json")

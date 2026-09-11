@@ -96,13 +96,24 @@ case "${family}" in
   *) echo "unknown catalog RPM base: ${family}" >&2; exit 2 ;;
 esac
 
+# createrepo_c emits unsigned metadata. Authenticate it against the signed
+# intake lock instead of requiring a nonexistent repomd.xml.asc file.
+: "${RPM_REPOMD_DIGEST:?signed RPM metadata digest is required}"
+metadata=$(mktemp)
+trap 'rm -f "${metadata}"' EXIT
+curl --fail --silent --show-error \
+  --header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}" \
+  --output "${metadata}" \
+  "${ARTIFACTORY_URL%/}/artifactory/${repository}/${snapshot_id}/repodata/repomd.xml"
+printf '%s  %s\n' "${RPM_REPOMD_DIGEST#sha256:}" "${metadata}" | sha256sum --check --status
+
 cat >"${output}" <<EOF
 [factory-snapshot]
 name=Factory immutable UBI snapshot
 baseurl=${ARTIFACTORY_URL%/}/artifactory/${repository}/${snapshot_id}/
 enabled=1
 gpgcheck=1
-repo_gpgcheck=1
+repo_gpgcheck=0
 sslverify=1
 username=oidc
 password=${ARTIFACTORY_READ_TOKEN}

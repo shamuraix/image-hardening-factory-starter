@@ -165,8 +165,23 @@ def runFactoryStage(
         ) {
             inputArtifacts.findAll { it }.each { unstash(it) }
             def execute = {
-                withStageCredentials(credentials) {
-                    sh(command)
+                def approvalEnvironment = []
+                if (stageName == 'attest' && env.FACTORY_RELEASE_ENV in ['gov1', 'gov2']) {
+                    def metadata = new JsonSlurperClassic().parseText(
+                        readFile("work/${image}/image-metadata.json"),
+                    )
+                    def approver = input(
+                        message: "Authorize ${env.FACTORY_RELEASE_ENV} signing of ${image}@${metadata.digest}; review archived gate evidence first",
+                        ok: 'Authorize digest',
+                        submitter: requiredSetting('FACTORY_GOV_APPROVERS'),
+                        submitterParameter: 'FACTORY_APPROVER_ID',
+                    ).toString()
+                    approvalEnvironment = ["FACTORY_APPROVER_ID=${approver}"]
+                }
+                withEnv(approvalEnvironment) {
+                    withStageCredentials(credentials) {
+                        sh(command)
+                    }
                 }
             }
             def executeWithLock = {
@@ -236,7 +251,7 @@ def validateStageDependencies() {
 }
 
 
-def runImage(Map imageDefinition, Set<String> selectedImages, String releaseApprover) {
+def runImage(Map imageDefinition, Set<String> selectedImages) {
     def image = imageDefinition.name as String
     def catalogFile = imageDefinition.catalogFile as String
     def baseImage = imageDefinition.baseImage as String
@@ -428,6 +443,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
             'scripts/evaluate_gate.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [],
             catalogEnvironment,
+            true,
         )
     }
 
@@ -517,7 +533,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
                 importArtifact,
             ],
             "work/${image}/evidence/signing-result.json," +
-                "work/${image}/evidence/provenance.json",
+                "work/${image}/evidence/provenance.json,work/${image}/evidence/approval.json",
             'scripts/sign_and_attest.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [
                 [
@@ -536,7 +552,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
                     variable: 'ARTIFACTORY_SIGN_TOKEN',
                 ],
             ],
-            catalogEnvironment + ["FACTORY_APPROVER_ID=${releaseApprover}"],
+            catalogEnvironment,
         )
     }
 
@@ -551,7 +567,8 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
             'FACTORY_RUNNER_IMAGE',
             [importArtifact, attestArtifact],
             "work/${image}/promotion-result.json",
-            'scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
+            'export FACTORY_APPROVER_ID=$(jq -r .approver "${FACTORY_WORK_DIR}/evidence/signing-result.json"); ' +
+                'scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [
                 [
                     type: 'file',
@@ -564,7 +581,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages, String releaseAppr
                     variable: 'ARTIFACTORY_RELEASE_TOKEN',
                 ],
             ],
-            catalogEnvironment + ["FACTORY_APPROVER_ID=${releaseApprover}"],
+            catalogEnvironment,
             false,
             "${requiredSetting('FACTORY_PROMOTION_LOCK_PREFIX')}-" +
                 "${safeName(parameterText('FACTORY_RELEASE_ENV', 'commercial'))}-" +
@@ -607,17 +624,6 @@ properties([
 
 validateStageDependencies()
 def releaseEnvironment = parameterText('FACTORY_RELEASE_ENV', 'commercial')
-def releaseApprover = ''
-if ((stageEnabled('ATTEST') || stageEnabled('PROMOTE')) && releaseEnvironment.startsWith('gov')) {
-    stage('Release approval') {
-        releaseApprover = input(
-            message: "Authorize ${releaseEnvironment} signing and promotion",
-            ok: 'Authorize',
-            submitter: requiredSetting('FACTORY_GOV_APPROVERS'),
-            submitterParameter: 'FACTORY_APPROVER_ID',
-        ).toString()
-    }
-}
 
 def plan
 stage('plan') {
@@ -644,7 +650,7 @@ plan.waves.eachWithIndex { wave, index ->
         wave.each { imageName ->
             def selectedImage = imagesByName[imageName as String]
             branches[imageName as String] = {
-                runImage(selectedImage as Map, selectedImages, releaseApprover)
+                runImage(selectedImage as Map, selectedImages)
             }
         }
         parallel(branches)

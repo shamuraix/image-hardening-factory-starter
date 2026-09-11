@@ -1,5 +1,5 @@
 /policies/                             @shamuraix
-/catalog/schema/                       @shamuraix
+/factory/schemas/                       @shamuraix
 /Jenkinsfile                           @shamuraix
 /Jenkinsfile.intake                    @shamuraix
 /scripts/sign_and_attest.sh            @shamuraix
@@ -7,3 +7,7 @@
 /scripts/import_image.sh               @shamuraix
 /scripts/publish_remediation_branch.sh @shamuraix
 /agents/                               @shamuraix
+/factory/gate.py                      @shamuraix
+/scripts/verify_release_evidence.sh    @shamuraix
+/scripts/validate_remediation.py       @shamuraix
+/scripts/parse_oscap.py                @shamuraix

@@ -5,6 +5,12 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 # shellcheck disable=SC1090,SC1091
 source "${work_dir}/build.env"
+export RPM_REPOMD_DIGEST
+if ! jq -e '.localDevelopment == true' "${work_dir}/resource-lock.json" >/dev/null; then
+  for override in FACTORY_RPM_BASE_URL FACTORY_RPM_UPSTREAM_UBI_BASE FACTORY_UBI_REPO_PREFIX; do
+    [[ -z ${!override:-} ]] || { echo "${override} is development-only" >&2; exit 2; }
+  done
+fi
 scripts/require_rootless.sh buildah
 
 containerfile=$(yq -r '.source.containerfile' "${catalog}")
@@ -27,7 +33,23 @@ if [[ ${FACTORY_REMOVE_TRANSPORT_SIGNATURES:-false} == true ]]; then
   skopeo_copy_args+=(--remove-signatures)
 fi
 
+if [[ ! -f "${work_dir}/base.oci.tar" ]]; then
+  [[ "${BASE_REF}" == "${ARTIFACTORY_REGISTRY:?}/"*@sha256:* ]] || {
+    echo "remote base must be digest-pinned in the internal registry" >&2; exit 2;
+  }
+  authfile=$(mktemp)
+  trap 'rm -f "${authfile}"' EXIT
+  printf '%s' "${ARTIFACTORY_READ_TOKEN:?}" | skopeo login --authfile "${authfile}" \
+    --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
+  skopeo copy --authfile "${authfile}" --preserve-digests "${skopeo_copy_args[@]}" \
+    "docker://${BASE_REF}" "oci-archive:${work_dir}/base.oci.tar"
+  rm -f "${authfile}"
+fi
 if [[ -f "${work_dir}/base.oci.tar" ]]; then
+  observed_base=$(skopeo inspect "oci-archive:${work_dir}/base.oci.tar" | jq -er '.Digest')
+  [[ "${observed_base}" == "${BASE_DIGEST}" ]] || {
+    echo "base archive digest does not match the selected base" >&2; exit 1;
+  }
   skopeo copy "${skopeo_copy_args[@]}" \
     "oci-archive:${work_dir}/base.oci.tar" "containers-storage:${BASE_REF}"
 fi
@@ -70,6 +92,7 @@ while IFS=$'\t' read -r key value; do
   args+=(--build-arg "${key}=${value}")
 done < <(yq -r '.build.buildArgs // {} | to_entries[] | [.key,.value] | @tsv' "${catalog}")
 
+build_started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 buildah bud "${args[@]}" "${work_dir}/context"
 # Preserve the exact local reference in the archive so downstream jobs can
 # load and select this image deterministically, even when unrelated or dangling
@@ -91,6 +114,9 @@ jq -n \
   --arg rpmSnapshot "${RPM_SNAPSHOT_ID}" \
   --arg rpmRepomdDigest "${RPM_REPOMD_DIGEST}" \
   --arg created "${created}" \
-  '{image:$image,digest:$digest,sourceRevision:$sourceRevision,baseRef:$baseRef,baseDigest:$baseDigest,factoryRevision:$factoryRevision,rpmSnapshot:$rpmSnapshot,rpmRepomdDigest:$rpmRepomdDigest,created:$created}' \
+  --arg startedOn "${build_started}" \
+  --arg finishedOn "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg builder "${FACTORY_RUNNER_ID:-local}" \
+  '{startedOn:$startedOn,finishedOn:$finishedOn,builder:$builder,image:$image,digest:$digest,sourceRevision:$sourceRevision,baseRef:$baseRef,baseDigest:$baseDigest,factoryRevision:$factoryRevision,rpmSnapshot:$rpmSnapshot,rpmRepomdDigest:$rpmRepomdDigest,created:$created}' \
   >"${work_dir}/image-metadata.json"
 printf 'IMAGE_DIGEST=%s\nLOCAL_IMAGE_REF=%s\n' "${digest}" "${local_ref}" >>"${work_dir}/build.env"

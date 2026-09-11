@@ -11,6 +11,7 @@ def main() -> int:
     arf, output, status = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
     failed: list[str] = []
     error: list[str] = []
+    evaluated = 0
     if arf.exists():
         root = ET.parse(arf).getroot()
         for element in root.iter():
@@ -18,12 +19,16 @@ def main() -> int:
                 continue
             result = next((child.text for child in element if child.tag.endswith("result")), None)
             identifier = element.attrib.get("idref", "unknown")
+            if result == "pass":
+                evaluated += 1
             if result == "fail":
+                evaluated += 1
                 failed.append(identifier)
-            elif result in {"error", "unknown"}:
+            elif result not in {"pass", "fail", "notapplicable", "notselected"}:
                 error.append(identifier)
     data = {
-        "passed": status in {0, 2} and not failed and not error,
+        "passed": status == 0 and evaluated > 0 and not failed and not error,
+        "evaluatedRules": evaluated,
         "scannerExitCode": status,
         "failedRules": sorted(failed),
         "errorRules": sorted(error),

@@ -42,10 +42,11 @@ def main() -> int:
             ],
         },
         "runDetails": {
-            "builder": {"id": os.environ.get("FACTORY_RUNNER_ID", "local")},
+            "builder": {"id": build.get("builder", "local")},
             "metadata": {
                 "invocationId": os.environ.get("FACTORY_BUILD_URL", "local"),
-                "startedOn": build["created"],
+                "startedOn": build["startedOn"],
+                "finishedOn": build["finishedOn"],
             },
         },
     }

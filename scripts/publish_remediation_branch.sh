@@ -24,22 +24,12 @@ git switch --create "${branch}"
 # read-only summary phase normally produces no patch, so this fails closed.
 patch="${work_dir}/evidence/remediation/change.patch"
 [[ -s "${patch}" ]] || { echo "agent did not produce a patch proposal" >&2; exit 1; }
-git apply --check "${patch}"
-git apply "${patch}"
+git diff --quiet && git diff --cached --quiet || { echo "broker checkout must be clean" >&2; exit 1; }
+git apply --check --index "${patch}"
+git apply --index "${patch}"
+# Include newly added files in validation and prevent catalog policy changes.
+scripts/validate_remediation.py
 
-changed=$(git diff --name-only)
-if grep -Eq \
-  '^(CODEOWNERS$|policies/|compliance/|catalog/schema/|factory/pipeline\.py$|Jenkinsfile(\.intake)?$|scripts/(catalog_value|render_jenkins_plan|sign_and_attest|promote_image|import_image|publish_remediation_branch)\.sh|.*vex|.*exception)' \
-  <<<"${changed}"; then
-  echo "agent patch touches a protected path" >&2
-  exit 1
-fi
-if grep -Ev '^(overlays/|catalog/images/|tests/profiles/)' <<<"${changed}" | grep -q .; then
-  echo "agent patch contains an unapproved path" >&2
-  exit 1
-fi
-
-git add overlays catalog/images tests/profiles
 git config user.name "${SCM_REMEDIATION_AUTHOR_NAME}"
 git config user.email "${SCM_REMEDIATION_AUTHOR_EMAIL}"
 git commit -m "fix(${image}): propose verified vulnerability remediation"

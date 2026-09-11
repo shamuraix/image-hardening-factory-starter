@@ -30,7 +30,8 @@ if [[ -n "${overlay}" ]]; then
 fi
 scripts/validate_context.py "${catalog}" "${context}"
 
-lock_url="${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/resource-lock.json"
+expected_snapshot=$(scripts/rpm_snapshot_id.sh "${catalog}")
+lock_url="${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/${expected_snapshot}/resource-lock.json"
 curl --fail --silent --show-error --location \
   --header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}" \
   --output "${work_dir}/resource-lock.json" "${lock_url}"
@@ -42,7 +43,6 @@ cosign verify-blob --key "${COSIGN_INTAKE_PUBLIC_KEY}" \
   "${work_dir}/resource-lock.json" >/dev/null
 
 jq -e --arg revision "${revision}" '.source.revision == $revision' "${work_dir}/resource-lock.json" >/dev/null
-expected_snapshot=$(scripts/rpm_snapshot_id.sh "${catalog}")
 jq -e --arg snapshot "${expected_snapshot}" '.rpmSnapshot.snapshotId == $snapshot' \
   "${work_dir}/resource-lock.json" >/dev/null
 rpm_repomd_digest=$(jq -er '.rpmSnapshot.repomdDigest' "${work_dir}/resource-lock.json")
@@ -79,10 +79,7 @@ else
   base_digest=${base_ref##*@}
 fi
 
-cat >"${work_dir}/build.env" <<EOF
-FACTORY_IMAGE=${image}
-SOURCE_REVISION=${revision}
-BASE_REF=${base_ref}
-BASE_DIGEST=${base_digest}
-RPM_REPOMD_DIGEST=${rpm_repomd_digest}
-EOF
+[[ "${base_digest}" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "invalid base digest" >&2; exit 2; }
+# Quote values before sourcing this file in another stage.
+printf 'FACTORY_IMAGE=%q\nSOURCE_REVISION=%q\nBASE_REF=%q\nBASE_DIGEST=%q\nRPM_REPOMD_DIGEST=%q\n' \
+  "${image}" "${revision}" "${base_ref}" "${base_digest}" "${rpm_repomd_digest}" >"${work_dir}/build.env"

@@ -26,10 +26,18 @@ def gate_input(
         "evaluatedAt": datetime.now(UTC).isoformat(),
         "image": image,
         "imageDigest": image_digest,
-        "sbomValid": bool(sbom.get("bomFormat") or sbom.get("spdxVersion")),
-        "findings": findings.get("findings", findings if isinstance(findings, list) else []),
-        "compliancePassed": bool(compliance.get("passed", False)),
-        "testsPassed": bool(tests.get("passed", False)),
+        "sbomValid": isinstance(sbom, dict)
+        and (
+            (
+                sbom.get("bomFormat") == "CycloneDX"
+                and isinstance(sbom.get("specVersion"), str)
+                and isinstance(sbom.get("components"), list)
+            )
+            or (sbom.get("spdxVersion") == "SPDX-2.3" and isinstance(sbom.get("packages"), list))
+        ),
+        "findings": findings if isinstance(findings, list) else findings.get("findings", []),
+        "compliancePassed": compliance.get("passed") is True,
+        "testsPassed": tests.get("passed") is True,
         "database": database,
         "fcs": fcs,
     }
