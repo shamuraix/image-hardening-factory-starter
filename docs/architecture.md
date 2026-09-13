@@ -75,6 +75,19 @@ Relevant upstream interfaces:
 - [ORAS recursive copy](https://oras.land/docs/commands/oras_cp/)
 - [OPA policy language](https://www.openpolicyagent.org/docs/policy-language)
 
+## Konflux workflow alignment
+
+The optional Helmper, Copacetic, and Hummingbird stages follow the same
+high-level separation used by Konflux pipelines:
+
+- Build and evidence stages produce immutable digest-linked artifacts.
+- Policy remains explicit and independent from remediation planning.
+- Remediation and reproducibility checks are additive evidence and can be run as
+  informative stages without granting publish credentials.
+
+This keeps trust boundaries stable while allowing operators to adopt
+Konflux-style task bundles incrementally.
+
 These diagrams are Markdown/Mermaid source for GitHub. For Confluence instances
 without Mermaid support, render to SVG/PNG and attach the image; a Markdown code
 block is not a native Confluence diagram. The retained introduction PPTX is a

@@ -232,11 +232,14 @@ def validateStageDependencies() {
         FCS: ['BUILD'],
         COMPLIANCE: ['BUILD', 'SBOM'],
         TEST: ['BUILD'],
+        HELMPER: ['PREPARE'],
+        COPA: ['BUILD', 'SBOM'],
         GATE: ['BUILD', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST'],
         REMEDIATE: ['GATE', 'SBOM'],
         REMEDIATION_BRANCH: ['REMEDIATE'],
         IMPORT: ['PREPARE', 'BUILD', 'GATE'],
         ATTEST: ['IMPORT', 'GATE', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST'],
+        HUMMINGBIRD: ['BUILD', 'SBOM'],
         PROMOTE: ['IMPORT', 'ATTEST'],
     ]
     dependencies.each { stageName, requirements ->
@@ -264,6 +267,8 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
     def buildArtifact = ''
     def sbomArtifact = ''
     def scanArtifact = ''
+    def helmperArtifact = ''
+    def copaArtifact = ''
     def fcsArtifact = ''
     def complianceArtifact = ''
     def testArtifact = ''
@@ -271,6 +276,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
     def remediationArtifact = ''
     def importArtifact = ''
     def attestArtifact = ''
+    def hummingbirdArtifact = ''
 
     if (stageEnabled('VALIDATE')) {
         validateArtifact = runFactoryStage(
@@ -362,6 +368,36 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             "work/${image}/evidence/scans/**,work/${image}/evidence/findings.json," +
                 "work/${image}/evidence/database-status.json",
             'scripts/scan_image.sh "${FACTORY_WORK_DIR}"',
+            [],
+            catalogEnvironment,
+            true,
+        )
+    }
+
+    if (stageEnabled('HELMPER')) {
+        helmperArtifact = runFactoryStage(
+            image,
+            'helmper',
+            'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
+            'FACTORY_RUNNER_IMAGE',
+            [prepareArtifact],
+            "work/${image}/evidence/helmper/**",
+            'scripts/helmper_inventory.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
+            [],
+            catalogEnvironment,
+            true,
+        )
+    }
+
+    if (stageEnabled('COPA')) {
+        copaArtifact = runFactoryStage(
+            image,
+            'copacetic',
+            'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
+            'FACTORY_RUNNER_IMAGE',
+            [buildArtifact, sbomArtifact],
+            "work/${image}/evidence/copacetic/**",
+            'scripts/copacetic_patch_plan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [],
             catalogEnvironment,
             true,
@@ -556,6 +592,21 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
         )
     }
 
+    if (stageEnabled('HUMMINGBIRD')) {
+        hummingbirdArtifact = runFactoryStage(
+            image,
+            'hummingbird',
+            'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
+            'FACTORY_RUNNER_IMAGE',
+            [buildArtifact, sbomArtifact],
+            "work/${image}/evidence/hummingbird/**",
+            'scripts/hummingbird_verify.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
+            [],
+            catalogEnvironment,
+            true,
+        )
+    }
+
     if (stageEnabled('PROMOTE')) {
         if (!isProtectedBranch()) {
             error('Promotion is allowed only for the configured default branch')
@@ -610,6 +661,8 @@ properties([
         booleanParam(name: 'FACTORY_ENABLE_BUILD', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_SBOM', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_SCAN', defaultValue: false),
+        booleanParam(name: 'FACTORY_ENABLE_HELMPER', defaultValue: false),
+        booleanParam(name: 'FACTORY_ENABLE_COPA', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_FCS', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_COMPLIANCE', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_TEST', defaultValue: false),
@@ -618,6 +671,7 @@ properties([
         booleanParam(name: 'FACTORY_ENABLE_REMEDIATION_BRANCH', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_IMPORT', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_ATTEST', defaultValue: false),
+        booleanParam(name: 'FACTORY_ENABLE_HUMMINGBIRD', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_PROMOTE', defaultValue: false),
     ]),
 ])
