@@ -53,20 +53,20 @@ class PipelineTests(unittest.TestCase):
 
     def test_concept_hook_scripts_emit_status_evidence(self) -> None:
         helmper = (ROOT / "scripts/helmper_inventory.sh").read_text(encoding="utf-8")
-        self.assertIn("status=\"skipped\"", helmper)
-        self.assertIn("status=\"completed\"", helmper)
-        self.assertIn("status=\"failed\"", helmper)
+        self.assertIn('status="skipped"', helmper)
+        self.assertIn('status="completed"', helmper)
+        self.assertIn('status="failed"', helmper)
         self.assertIn("evidence/helmper", helmper)
 
         copa = (ROOT / "scripts/copacetic_patch_plan.sh").read_text(encoding="utf-8")
-        self.assertIn("status=\"skipped\"", copa)
-        self.assertIn("status=\"completed\"", copa)
-        self.assertIn("status=\"failed\"", copa)
+        self.assertIn('status="skipped"', copa)
+        self.assertIn('status="completed"', copa)
+        self.assertIn('status="failed"', copa)
         self.assertIn("FACTORY_COPA_COMMAND", copa)
 
         hummingbird = (ROOT / "scripts/hummingbird_verify.sh").read_text(encoding="utf-8")
-        self.assertIn("status=\"completed\"", hummingbird)
-        self.assertIn("status=\"failed\"", hummingbird)
+        self.assertIn('status="completed"', hummingbird)
+        self.assertIn('status="failed"', hummingbird)
         self.assertIn("verification:{gateAllowed:", hummingbird)
 
     def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
