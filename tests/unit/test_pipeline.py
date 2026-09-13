@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -73,6 +74,67 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(status["status"], "skipped")
             self.assertIn("context directory is missing", status["reason"])
 
+    def test_helmper_hook_writes_skipped_status_without_charts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            (work / "context").mkdir(parents=True)
+            result = subprocess.run(
+                [
+                    str(ROOT / "scripts/helmper_inventory.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            status = json.loads((work / "evidence/helmper/status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "skipped")
+            self.assertIn("no helm charts were found", status["reason"])
+
+    def test_helmper_hook_handles_command_success_and_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            (work / "context/chart").mkdir(parents=True)
+            (work / "context/chart/Chart.yaml").write_text("name: demo\n", encoding="utf-8")
+            env = os.environ.copy()
+            env["FACTORY_HELMPER_COMMAND"] = (
+                'test -d "${FACTORY_HELMPER_CONTEXT}" && test -s "${FACTORY_HELMPER_CHARTS_FILE}"'
+            )
+            success = subprocess.run(
+                [
+                    str(ROOT / "scripts/helmper_inventory.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(success.returncode, 0)
+            status = json.loads((work / "evidence/helmper/status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "completed")
+
+            env["FACTORY_HELMPER_COMMAND"] = "exit 9"
+            failure = subprocess.run(
+                [
+                    str(ROOT / "scripts/helmper_inventory.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(failure.returncode, 1)
+            failed_status = json.loads(
+                (work / "evidence/helmper/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(failed_status["status"], "failed")
+
     def test_copa_hook_writes_skipped_status_without_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "work"
@@ -92,6 +154,47 @@ class PipelineTests(unittest.TestCase):
                 (work / "evidence/copacetic/status.json").read_text(encoding="utf-8")
             )
             self.assertEqual(status["status"], "skipped")
+
+    def test_copa_hook_handles_command_success_and_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            work.mkdir(parents=True)
+            env = os.environ.copy()
+            env["FACTORY_COPA_COMMAND"] = "true"
+            success = subprocess.run(
+                [
+                    str(ROOT / "scripts/copacetic_patch_plan.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(success.returncode, 0)
+            status = json.loads(
+                (work / "evidence/copacetic/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(status["status"], "completed")
+
+            env["FACTORY_COPA_COMMAND"] = "exit 4"
+            failure = subprocess.run(
+                [
+                    str(ROOT / "scripts/copacetic_patch_plan.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(failure.returncode, 1)
+            failed_status = json.loads(
+                (work / "evidence/copacetic/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(failed_status["status"], "failed")
 
     def test_hummingbird_hook_reports_failure_when_required_evidence_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -113,6 +216,50 @@ class PipelineTests(unittest.TestCase):
             )
             self.assertEqual(status["status"], "failed")
             self.assertIn("required image metadata or SBOM evidence is missing", status["reason"])
+
+    def test_hummingbird_hook_handles_command_success_and_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            (work / "evidence").mkdir(parents=True)
+            (work / "image-metadata.json").write_text('{"digest":"sha256:abc"}\n', encoding="utf-8")
+            (work / "evidence/sbom.cdx.json").write_text(
+                '{"bomFormat":"CycloneDX"}\n', encoding="utf-8"
+            )
+
+            success = subprocess.run(
+                [
+                    str(ROOT / "scripts/hummingbird_verify.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(success.returncode, 0)
+            status = json.loads(
+                (work / "evidence/hummingbird/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(status["status"], "completed")
+
+            env = os.environ.copy()
+            env["FACTORY_HUMMINGBIRD_COMMAND"] = "exit 3"
+            failure = subprocess.run(
+                [
+                    str(ROOT / "scripts/hummingbird_verify.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(failure.returncode, 1)
+            failed_status = json.loads(
+                (work / "evidence/hummingbird/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(failed_status["status"], "failed")
 
     def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
         script = (ROOT / "scripts/fcs_scan_image.sh").read_text(encoding="utf-8")
@@ -158,7 +305,8 @@ class PipelineTests(unittest.TestCase):
 
     def test_promotion_downloads_import_identity_and_attestation(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("[importArtifact, attestArtifact]", jenkinsfile)
+        self.assertIn("def promoteInputs = [importArtifact, attestArtifact]", jenkinsfile)
+        self.assertIn("promoteInputs.add(hummingbirdArtifact)", jenkinsfile)
         self.assertIn("FACTORY_PROMOTION_LOCK_PREFIX", jenkinsfile)
 
     def test_change_requests_cannot_publish_to_quarantine(self) -> None:

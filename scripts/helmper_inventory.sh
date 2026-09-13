@@ -17,6 +17,11 @@ elif mapfile -t charts < <(find "${work_dir}/context" -type f -name Chart.yaml -
 elif [[ -z "${FACTORY_HELMPER_COMMAND:-}" ]]; then
   reason="FACTORY_HELMPER_COMMAND is not configured; set it to run helmper"
 else
+  printf '%s\n' "${charts[@]}" >"${output_dir}/charts.txt"
+  export FACTORY_HELMPER_WORK_DIR="${work_dir}"
+  export FACTORY_HELMPER_CONTEXT="${work_dir}/context"
+  export FACTORY_HELMPER_OUTPUT_DIR="${output_dir}"
+  export FACTORY_HELMPER_CHARTS_FILE="${output_dir}/charts.txt"
   if bash -o pipefail -c "${FACTORY_HELMPER_COMMAND}" \
     >"${output_dir}/command.log" 2>&1; then
     status="completed"
