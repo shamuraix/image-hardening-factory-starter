@@ -305,8 +305,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_promotion_downloads_import_identity_and_attestation(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("def promoteInputs = [importArtifact, attestArtifact]", jenkinsfile)
-        self.assertIn("promoteInputs.add(hummingbirdArtifact)", jenkinsfile)
+        self.assertIn("[importArtifact, attestArtifact]", jenkinsfile)
         self.assertIn("FACTORY_PROMOTION_LOCK_PREFIX", jenkinsfile)
 
     def test_change_requests_cannot_publish_to_quarantine(self) -> None:

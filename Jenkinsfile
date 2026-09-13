@@ -611,16 +611,12 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
         if (!isProtectedBranch()) {
             error('Promotion is allowed only for the configured default branch')
         }
-        def promoteInputs = [importArtifact, attestArtifact]
-        if (hummingbirdArtifact) {
-            promoteInputs.add(hummingbirdArtifact)
-        }
         runFactoryStage(
             image,
             'promote',
             'FACTORY_K8S_PROMOTION_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            promoteInputs,
+            [importArtifact, attestArtifact],
             "work/${image}/promotion-result.json",
             'export FACTORY_APPROVER_ID=$(jq -r .approver "${FACTORY_WORK_DIR}/evidence/signing-result.json"); ' +
                 'scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
