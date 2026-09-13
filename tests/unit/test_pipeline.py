@@ -42,7 +42,7 @@ class PipelineTests(unittest.TestCase):
     def test_konflux_concept_stages_have_dependencies(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         self.assertIn("HELMPER: ['PREPARE']", jenkinsfile)
-        self.assertIn("COPA: ['BUILD', 'SBOM', 'SCAN']", jenkinsfile)
+        self.assertIn("COPA: ['BUILD', 'SBOM']", jenkinsfile)
         self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM']", jenkinsfile)
 
     def test_concept_stage_parameters_are_exposed(self) -> None:

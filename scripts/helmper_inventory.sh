@@ -9,8 +9,10 @@ mkdir -p "${output_dir}"
 status="skipped"
 reason=""
 
-mapfile -t charts < <(find "${work_dir}/context" -type f -name Chart.yaml -print | sort)
-if [[ ${#charts[@]} -eq 0 ]]; then
+charts=()
+if [[ ! -d "${work_dir}/context" ]]; then
+  reason="build context directory is missing"
+elif mapfile -t charts < <(find "${work_dir}/context" -type f -name Chart.yaml -print | sort); [[ ${#charts[@]} -eq 0 ]]; then
   reason="no helm charts were found in the build context"
 elif [[ -z "${FACTORY_HELMPER_COMMAND:-}" ]]; then
   reason="FACTORY_HELMPER_COMMAND is not configured; set it to run helmper"

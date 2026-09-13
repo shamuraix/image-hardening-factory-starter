@@ -22,6 +22,14 @@ provenance_sha256=""
 if [[ -s "${work_dir}/evidence/provenance.json" ]]; then
   provenance_sha256=$(sha256sum "${work_dir}/evidence/provenance.json" | awk '{print $1}')
 fi
+image_digest=""
+if [[ -s "${work_dir}/image-metadata.json" ]]; then
+  image_digest=$(jq -r '.digest // ""' "${work_dir}/image-metadata.json")
+fi
+sbom_sha256=""
+if [[ -s "${work_dir}/evidence/sbom.cdx.json" ]]; then
+  sbom_sha256=$(sha256sum "${work_dir}/evidence/sbom.cdx.json" | awk '{print $1}')
+fi
 
 if [[ -n "${FACTORY_HUMMINGBIRD_COMMAND:-}" ]]; then
   export FACTORY_HUMMINGBIRD_WORK_DIR="${work_dir}"
@@ -31,17 +39,21 @@ if [[ -n "${FACTORY_HUMMINGBIRD_COMMAND:-}" ]]; then
     reason="FACTORY_HUMMINGBIRD_COMMAND failed; inspect evidence/hummingbird/command.log"
   fi
 fi
+if [[ -z "${image_digest}" || -z "${sbom_sha256}" ]]; then
+  status="failed"
+  reason="required image metadata or SBOM evidence is missing"
+fi
 
 jq -n \
   --arg image "${FACTORY_IMAGE:-unknown}" \
   --arg catalog "${catalog}" \
-  --arg digest "$(jq -r '.digest' "${work_dir}/image-metadata.json")" \
+  --arg digest "${image_digest}" \
   --arg sourceUrl "${FACTORY_SOURCE_URL:-}" \
   --arg commit "${FACTORY_COMMIT_SHA:-}" \
   --arg gateAllowed "${gate_allowed}" \
   --arg fcsAssessmentPassed "${fcs_assessment}" \
   --arg provenanceSha256 "${provenance_sha256}" \
-  --arg sbomSha256 "$(sha256sum "${work_dir}/evidence/sbom.cdx.json" | awk '{print $1}')" \
+  --arg sbomSha256 "${sbom_sha256}" \
   --arg status "${status}" \
   --arg reason "${reason}" \
   --arg command "${FACTORY_HUMMINGBIRD_COMMAND:-}" \
