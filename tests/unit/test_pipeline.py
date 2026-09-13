@@ -1,3 +1,6 @@
+import json
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -51,23 +54,65 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("FACTORY_ENABLE_COPA", jenkinsfile)
         self.assertIn("FACTORY_ENABLE_HUMMINGBIRD", jenkinsfile)
 
-    def test_concept_hook_scripts_emit_status_evidence(self) -> None:
-        helmper = (ROOT / "scripts/helmper_inventory.sh").read_text(encoding="utf-8")
-        self.assertIn('status="skipped"', helmper)
-        self.assertIn('status="completed"', helmper)
-        self.assertIn('status="failed"', helmper)
-        self.assertIn("evidence/helmper", helmper)
+    def test_helmper_hook_writes_skipped_status_without_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            work.mkdir()
+            result = subprocess.run(
+                [
+                    str(ROOT / "scripts/helmper_inventory.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            status = json.loads((work / "evidence/helmper/status.json").read_text(encoding="utf-8"))
+            self.assertEqual(status["status"], "skipped")
+            self.assertIn("context directory is missing", status["reason"])
 
-        copa = (ROOT / "scripts/copacetic_patch_plan.sh").read_text(encoding="utf-8")
-        self.assertIn('status="skipped"', copa)
-        self.assertIn('status="completed"', copa)
-        self.assertIn('status="failed"', copa)
-        self.assertIn("FACTORY_COPA_COMMAND", copa)
+    def test_copa_hook_writes_skipped_status_without_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            work.mkdir(parents=True)
+            result = subprocess.run(
+                [
+                    str(ROOT / "scripts/copacetic_patch_plan.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0)
+            status = json.loads(
+                (work / "evidence/copacetic/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(status["status"], "skipped")
 
-        hummingbird = (ROOT / "scripts/hummingbird_verify.sh").read_text(encoding="utf-8")
-        self.assertIn('status="completed"', hummingbird)
-        self.assertIn('status="failed"', hummingbird)
-        self.assertIn("verification:{gateAllowed:", hummingbird)
+    def test_hummingbird_hook_reports_failure_when_required_evidence_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp) / "work"
+            (work / "evidence").mkdir(parents=True)
+            result = subprocess.run(
+                [
+                    str(ROOT / "scripts/hummingbird_verify.sh"),
+                    str(ROOT / "catalog/images/ubi9-minimal.yaml"),
+                    str(work),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1)
+            status = json.loads(
+                (work / "evidence/hummingbird/status.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(status["status"], "failed")
+            self.assertIn("required image metadata or SBOM evidence is missing", status["reason"])
 
     def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
         script = (ROOT / "scripts/fcs_scan_image.sh").read_text(encoding="utf-8")

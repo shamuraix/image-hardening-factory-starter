@@ -30,18 +30,18 @@ sbom_sha256=""
 if [[ -s "${work_dir}/evidence/sbom.cdx.json" ]]; then
   sbom_sha256=$(sha256sum "${work_dir}/evidence/sbom.cdx.json" | awk '{print $1}')
 fi
+if [[ -z "${image_digest}" || -z "${sbom_sha256}" ]]; then
+  status="failed"
+  reason="required image metadata or SBOM evidence is missing"
+fi
 
-if [[ -n "${FACTORY_HUMMINGBIRD_COMMAND:-}" ]]; then
+if [[ "${status}" != "failed" && -n "${FACTORY_HUMMINGBIRD_COMMAND:-}" ]]; then
   export FACTORY_HUMMINGBIRD_WORK_DIR="${work_dir}"
   if ! bash -o pipefail -c "${FACTORY_HUMMINGBIRD_COMMAND}" \
     >"${output_dir}/command.log" 2>&1; then
     status="failed"
     reason="FACTORY_HUMMINGBIRD_COMMAND failed; inspect evidence/hummingbird/command.log"
   fi
-fi
-if [[ -z "${image_digest}" || -z "${sbom_sha256}" ]]; then
-  status="failed"
-  reason="required image metadata or SBOM evidence is missing"
 fi
 
 jq -n \
