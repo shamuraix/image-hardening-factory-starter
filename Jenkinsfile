@@ -612,7 +612,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             error('Promotion is allowed only for the configured default branch')
         }
         def promoteInputs = [importArtifact, attestArtifact]
-        if (stageEnabled('HUMMINGBIRD')) {
+        if (hummingbirdArtifact) {
             promoteInputs.add(hummingbirdArtifact)
         }
         runFactoryStage(
