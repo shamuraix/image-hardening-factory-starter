@@ -24,6 +24,7 @@ groups.
 | Recursive promotion | ORAS referrers plus Cosign 2.x attachment copy | Confirm Artifactory OCI 1.1 referrer preservation |
 | AI read-only summary | Implemented | Deploy approved internal model and candidate index |
 | AI remediation branch broker | Guardrails implemented | Add patch-producing agent recipe and keep auto-merge disabled |
+| Helmper/Copacetic/Hummingbird concept stages | Implemented as optional evidence hooks | Configure tool binaries/commands and promote from informative to enforced policy as needed |
 | UBI 10 canary | Catalog/pipeline implemented | Complete vendor compatibility testing before adoption |
 
 The first production activation should stop after UBI 9 quarantine until the

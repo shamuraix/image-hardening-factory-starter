@@ -39,6 +39,18 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("GATE: ['BUILD', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST']", jenkinsfile)
         self.assertIn("fcsArtifact", jenkinsfile)
 
+    def test_konflux_concept_stages_have_dependencies(self) -> None:
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("HELMPER: ['PREPARE']", jenkinsfile)
+        self.assertIn("COPA: ['BUILD', 'SBOM', 'SCAN']", jenkinsfile)
+        self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM', 'FCS', 'GATE', 'ATTEST']", jenkinsfile)
+
+    def test_concept_stage_parameters_are_exposed(self) -> None:
+        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        self.assertIn("FACTORY_ENABLE_HELMPER", jenkinsfile)
+        self.assertIn("FACTORY_ENABLE_COPA", jenkinsfile)
+        self.assertIn("FACTORY_ENABLE_HUMMINGBIRD", jenkinsfile)
+
     def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
         script = (ROOT / "scripts/fcs_scan_image.sh").read_text(encoding="utf-8")
         self.assertIn('export FCS_CLIENT_ID="${FALCON_CLIENT_ID}"', script)

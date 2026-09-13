@@ -88,6 +88,22 @@ Cosign 2.x digest-tagged attachments explicitly. It verifies required signed
 evidence before and after copying. Signing uses environment-local encrypted
 Cosign keys without public Fulcio/Rekor dependencies.
 
+## Konflux-aligned workflow extensions
+
+The pipeline now includes optional stages that map to patterns used in Konflux
+and Project Hummingbird style supply-chain workflows:
+
+- **Helmper concept (`FACTORY_ENABLE_HELMPER`)**: inventory chart inputs as
+  evidence from the prepared build context.
+- **Copacetic concept (`FACTORY_ENABLE_COPA`)**: run patch-planning commands
+  using the candidate image, SBOM, and findings as inputs.
+- **Hummingbird concept (`FACTORY_ENABLE_HUMMINGBIRD`)**: produce
+  reproducibility-focused evidence summarizing digest, provenance, SBOM hashes,
+  and gate/FCS outcomes.
+
+Each concept stage is disabled by default and executes only when explicitly
+enabled and configured.
+
 ## Choose your guide
 
 | Goal | Guide |

@@ -195,6 +195,8 @@ SBOM, FCS, compliance, and test stages.
 | `FACTORY_ENABLE_BUILD` | `false` | Rootless Buildah OCI build |
 | `FACTORY_ENABLE_SBOM` | `false` | Syft SBOM generation |
 | `FACTORY_ENABLE_SCAN` | `false` | Grype/Trivy/OSV/ClamAV informational scans |
+| `FACTORY_ENABLE_HELMPER` | `false` | Helmper-style chart inventory evidence |
+| `FACTORY_ENABLE_COPA` | `false` | Copacetic-style patch planning evidence |
 | `FACTORY_ENABLE_FCS` | `false` | CrowdStrike FCS authoritative assessment |
 | `FACTORY_ENABLE_COMPLIANCE` | `false` | OpenSCAP compliance scan |
 | `FACTORY_ENABLE_TEST` | `false` | Product integration tests |
@@ -203,7 +205,16 @@ SBOM, FCS, compliance, and test stages.
 | `FACTORY_ENABLE_REMEDIATION_BRANCH` | `false` | Protected publication of an agent-proposed branch |
 | `FACTORY_ENABLE_IMPORT` | `false` | Protected quarantine import |
 | `FACTORY_ENABLE_ATTEST` | `false` | Cosign signing and attestation |
+| `FACTORY_ENABLE_HUMMINGBIRD` | `false` | Hummingbird-style reproducibility summary |
 | `FACTORY_ENABLE_PROMOTE` | `false` | Pull-based release promotion |
+
+Optional concept-stage commands are provided through environment settings:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `FACTORY_HELMPER_COMMAND` | unset | Command run by `scripts/helmper_inventory.sh` when Helmper stage is enabled |
+| `FACTORY_COPA_COMMAND` | unset | Command run by `scripts/copacetic_patch_plan.sh` when Copacetic stage is enabled |
+| `FACTORY_HUMMINGBIRD_COMMAND` | unset | Optional extra verification command run by `scripts/hummingbird_verify.sh` |
 
 ## Source-pin management
 

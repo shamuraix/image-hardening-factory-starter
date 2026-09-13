@@ -40,6 +40,18 @@ tools:
     project: https://github.com/google/osv-scanner
     license: Apache-2.0
     version: 2.2.3
+  copacetic:
+    project: https://github.com/project-copacetic/copacetic
+    license: Apache-2.0
+    version: 0.9.2
+  helmper:
+    project: https://github.com/ChristofferNissen/helmper
+    license: MIT
+    version: 0.14.0
+  hummingbird:
+    project: https://developers.redhat.com/articles/2026/03/26/reproducible-builds-project-hummingbird
+    license: Concept reference; implementation-specific
+    version: concept-2026
   opa:
     project: https://github.com/open-policy-agent/opa
     license: Apache-2.0
