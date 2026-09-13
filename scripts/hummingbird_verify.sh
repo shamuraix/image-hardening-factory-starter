@@ -9,8 +9,15 @@ mkdir -p "${output_dir}"
 status="completed"
 reason="generated hummingbird reproducibility summary"
 
-gate_allowed=$(jq -r '.allow // false' "${work_dir}/evidence/gate-result.json")
-fcs_assessment=$(jq -r '.assessmentPassed // false' "${work_dir}/evidence/scans/fcs/status.json")
+gate_allowed="false"
+if [[ -s "${work_dir}/evidence/gate-result.json" ]]; then
+  gate_allowed=$(jq -r '.allow // false' "${work_dir}/evidence/gate-result.json")
+fi
+
+fcs_assessment="false"
+if [[ -s "${work_dir}/evidence/scans/fcs/status.json" ]]; then
+  fcs_assessment=$(jq -r '.assessmentPassed // false' "${work_dir}/evidence/scans/fcs/status.json")
+fi
 provenance_sha256=""
 if [[ -s "${work_dir}/evidence/provenance.json" ]]; then
   provenance_sha256=$(sha256sum "${work_dir}/evidence/provenance.json" | awk '{print $1}')

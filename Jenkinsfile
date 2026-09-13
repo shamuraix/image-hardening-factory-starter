@@ -239,7 +239,7 @@ def validateStageDependencies() {
         REMEDIATION_BRANCH: ['REMEDIATE'],
         IMPORT: ['PREPARE', 'BUILD', 'GATE'],
         ATTEST: ['IMPORT', 'GATE', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST'],
-        HUMMINGBIRD: ['BUILD', 'SBOM', 'FCS', 'GATE'],
+        HUMMINGBIRD: ['BUILD', 'SBOM'],
         PROMOTE: ['IMPORT', 'ATTEST'],
     ]
     dependencies.each { stageName, requirements ->
@@ -598,7 +598,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             'hummingbird',
             'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            [buildArtifact, sbomArtifact, fcsArtifact, gateArtifact],
+            [buildArtifact, sbomArtifact],
             "work/${image}/evidence/hummingbird/**",
             'scripts/hummingbird_verify.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [],

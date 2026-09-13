@@ -43,7 +43,7 @@ class PipelineTests(unittest.TestCase):
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         self.assertIn("HELMPER: ['PREPARE']", jenkinsfile)
         self.assertIn("COPA: ['BUILD', 'SBOM', 'SCAN']", jenkinsfile)
-        self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM', 'FCS', 'GATE']", jenkinsfile)
+        self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM']", jenkinsfile)
 
     def test_concept_stage_parameters_are_exposed(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
