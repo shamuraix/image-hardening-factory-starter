@@ -11,6 +11,10 @@ reason="generated hummingbird reproducibility summary"
 
 gate_allowed=$(jq -r '.allow // false' "${work_dir}/evidence/gate-result.json")
 fcs_assessment=$(jq -r '.assessmentPassed // false' "${work_dir}/evidence/scans/fcs/status.json")
+provenance_sha256=""
+if [[ -s "${work_dir}/evidence/provenance.json" ]]; then
+  provenance_sha256=$(sha256sum "${work_dir}/evidence/provenance.json" | awk '{print $1}')
+fi
 
 if [[ -n "${FACTORY_HUMMINGBIRD_COMMAND:-}" ]]; then
   export FACTORY_HUMMINGBIRD_WORK_DIR="${work_dir}"
@@ -29,7 +33,7 @@ jq -n \
   --arg commit "${FACTORY_COMMIT_SHA:-}" \
   --arg gateAllowed "${gate_allowed}" \
   --arg fcsAssessmentPassed "${fcs_assessment}" \
-  --arg provenanceSha256 "$(sha256sum "${work_dir}/evidence/provenance.json" | awk '{print $1}')" \
+  --arg provenanceSha256 "${provenance_sha256}" \
   --arg sbomSha256 "$(sha256sum "${work_dir}/evidence/sbom.cdx.json" | awk '{print $1}')" \
   --arg status "${status}" \
   --arg reason "${reason}" \

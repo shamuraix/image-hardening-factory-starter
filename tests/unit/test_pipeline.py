@@ -43,13 +43,31 @@ class PipelineTests(unittest.TestCase):
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         self.assertIn("HELMPER: ['PREPARE']", jenkinsfile)
         self.assertIn("COPA: ['BUILD', 'SBOM', 'SCAN']", jenkinsfile)
-        self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM', 'FCS', 'GATE', 'ATTEST']", jenkinsfile)
+        self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM', 'FCS', 'GATE']", jenkinsfile)
 
     def test_concept_stage_parameters_are_exposed(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         self.assertIn("FACTORY_ENABLE_HELMPER", jenkinsfile)
         self.assertIn("FACTORY_ENABLE_COPA", jenkinsfile)
         self.assertIn("FACTORY_ENABLE_HUMMINGBIRD", jenkinsfile)
+
+    def test_concept_hook_scripts_emit_status_evidence(self) -> None:
+        helmper = (ROOT / "scripts/helmper_inventory.sh").read_text(encoding="utf-8")
+        self.assertIn("status=\"skipped\"", helmper)
+        self.assertIn("status=\"completed\"", helmper)
+        self.assertIn("status=\"failed\"", helmper)
+        self.assertIn("evidence/helmper", helmper)
+
+        copa = (ROOT / "scripts/copacetic_patch_plan.sh").read_text(encoding="utf-8")
+        self.assertIn("status=\"skipped\"", copa)
+        self.assertIn("status=\"completed\"", copa)
+        self.assertIn("status=\"failed\"", copa)
+        self.assertIn("FACTORY_COPA_COMMAND", copa)
+
+        hummingbird = (ROOT / "scripts/hummingbird_verify.sh").read_text(encoding="utf-8")
+        self.assertIn("status=\"completed\"", hummingbird)
+        self.assertIn("status=\"failed\"", hummingbird)
+        self.assertIn("verification:{gateAllowed:", hummingbird)
 
     def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
         script = (ROOT / "scripts/fcs_scan_image.sh").read_text(encoding="utf-8")
