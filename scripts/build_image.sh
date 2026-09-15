@@ -11,11 +11,12 @@ if ! jq -e '.localDevelopment == true' "${work_dir}/resource-lock.json" >/dev/nu
     [[ -z ${!override:-} ]] || { echo "${override} is development-only" >&2; exit 2; }
   done
 fi
-scripts/require_rootless.sh buildah
+scripts/require_rootless.sh buildkit
 
 containerfile=$(yq -r '.source.containerfile' "${catalog}")
 platform=$(yq -r '.build.platforms[0]' "${catalog}")
 created=$(git -C "${work_dir}/context" show -s --format=%cI "${SOURCE_REVISION}")
+source_epoch=$(date --date="${created}" +%s)
 build_id=${FACTORY_BUILD_ID:-local}
 [[ "${build_id}" =~ ^[A-Za-z0-9_.-]+$ ]] || {
   echo "FACTORY_BUILD_ID contains characters that are invalid in an OCI tag" >&2
@@ -23,25 +24,43 @@ build_id=${FACTORY_BUILD_ID:-local}
 }
 local_image_namespace=${FACTORY_LOCAL_IMAGE_NAMESPACE:-localhost/factory}
 local_ref="${local_image_namespace}/${FACTORY_IMAGE}:${build_id}"
-isolation=${BUILDAH_ISOLATION:-rootless}
-[[ "${isolation}" == rootless ]] || {
-  echo "BUILDAH_ISOLATION must be rootless" >&2
-  exit 2
-}
+build_network=${FACTORY_BUILD_NETWORK:-default}
+case "${build_network}" in
+  default|none|host) ;;
+  *) echo "FACTORY_BUILD_NETWORK must be one of: default, none, host" >&2; exit 2 ;;
+esac
+export FACTORY_BUILD_NETWORK="${build_network}"
 skopeo_copy_args=(--retry-times 5)
 if [[ ${FACTORY_REMOVE_TRANSPORT_SIGNATURES:-false} == true ]]; then
   skopeo_copy_args+=(--remove-signatures)
 fi
+private_parent=${FACTORY_PRIVATE_TMPDIR:-${PWD}/.factory-private}
+private_parent_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${private_parent}")
+work_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${work_dir}")
+context_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${work_dir}/context")
+case "${private_parent_abs}/" in
+  "${work_abs}/"*|"${context_abs}/"*)
+    echo "FACTORY_PRIVATE_TMPDIR must not be inside the build work directory or context" >&2
+    exit 2
+    ;;
+esac
+mkdir -p "${private_parent_abs}"
+chmod 700 "${private_parent_abs}"
+private_dir=$(mktemp -d "${private_parent_abs}/build-image.XXXXXX")
+cleanup_private() {
+  rm -rf "${private_dir}"
+  rmdir "${private_parent_abs}" >/dev/null 2>&1 || true
+}
+trap cleanup_private EXIT
 
 if [[ ! -f "${work_dir}/base.oci.tar" ]]; then
   [[ "${BASE_REF}" == "${ARTIFACTORY_REGISTRY:?}/"*@sha256:* ]] || {
     echo "remote base must be digest-pinned in the internal registry" >&2; exit 2;
   }
-  authfile=$(mktemp)
-  trap 'rm -f "${authfile}"' EXIT
+  authfile=$(mktemp "${private_dir}/auth.XXXXXX")
   printf '%s' "${ARTIFACTORY_READ_TOKEN:?}" | skopeo login --authfile "${authfile}" \
     --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
-  skopeo copy --authfile "${authfile}" --preserve-digests "${skopeo_copy_args[@]}" \
+  skopeo copy --authfile "${authfile}" --all --preserve-digests "${skopeo_copy_args[@]}" \
     "docker://${BASE_REF}" "oci-archive:${work_dir}/base.oci.tar"
   rm -f "${authfile}"
 fi
@@ -50,22 +69,32 @@ if [[ -f "${work_dir}/base.oci.tar" ]]; then
   [[ "${observed_base}" == "${BASE_DIGEST}" ]] || {
     echo "base archive digest does not match the selected base" >&2; exit 1;
   }
-  skopeo copy "${skopeo_copy_args[@]}" \
-    "oci-archive:${work_dir}/base.oci.tar" "containers-storage:${BASE_REF}"
+else
+  echo "base OCI archive was not acquired" >&2
+  exit 1
 fi
+base_layout="${private_dir}/base-layout"
+dockerfile_dir="${private_dir}/dockerfile"
+mkdir -p "${dockerfile_dir}"
+mkdir -p "${base_layout}"
+skopeo copy --all --preserve-digests "${skopeo_copy_args[@]}" \
+  "oci-archive:${work_dir}/base.oci.tar" "oci:${base_layout}:factory-base"
+base_layout_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${base_layout}")
 
 args=(
-  --file "${work_dir}/context/${containerfile}"
-  --tag "${local_ref}"
-  --isolation "${isolation}"
-  --network "${FACTORY_BUILD_NETWORK:-slirp4netns}"
-  --pull=never
-  --platform "${platform}"
-  --timestamp "$(date --date="${created}" +%s)"
-  --build-arg "BASE_REF=${BASE_REF}"
-  --label "org.opencontainers.image.revision=${SOURCE_REVISION}"
-  --label "org.opencontainers.image.created=${created}"
-  --label "org.opencontainers.image.source=${FACTORY_SOURCE_URL:-local}"
+  --frontend dockerfile.v0
+  --local "context=${work_dir}/context"
+  --local "dockerfile=${dockerfile_dir}"
+  --opt "filename=Dockerfile"
+  --oci-layout "base=${base_layout_abs}"
+  --opt "context:factory-base=oci-layout://base@${observed_base}"
+  --opt "build-arg:BASE_REF=factory-base"
+  --opt "build-arg:SOURCE_DATE_EPOCH=${source_epoch}"
+  --opt "platform=${platform}"
+  --opt "label:org.opencontainers.image.revision=${SOURCE_REVISION}"
+  --opt "label:org.opencontainers.image.created=${created}"
+  --opt "label:org.opencontainers.image.source=${FACTORY_SOURCE_URL:-local}"
+  --no-cache
 )
 
 if [[ -n ${FACTORY_BASE_MAJOR:-} ]]; then
@@ -76,32 +105,38 @@ elif [[ $(yq -r '.build.base.kind' "${catalog}") == catalog ]]; then
 else
   base_major=$(yq -r '.product.version | split(".")[0]' "${catalog}")
 fi
-args+=(--build-arg "BASE_MAJOR=${base_major}")
+args+=(--opt "build-arg:BASE_MAJOR=${base_major}")
 
-repo_dir=$(mktemp -d)
-trap 'rm -rf "${repo_dir}"' EXIT
-RPM_SNAPSHOT_ID=$(scripts/write_repo_config.sh "${catalog}" "${repo_dir}/factory.repo")
+repo_file="${private_dir}/factory.repo"
+RPM_SNAPSHOT_ID=$(scripts/write_repo_config.sh "${catalog}" "${repo_file}")
 export RPM_SNAPSHOT_ID
-# Mask the base image's repository files so package operations cannot fall back
-# to Red Hat's public CDN. Keep the replacement directory writable because
-# librhsm may create redhat.repo while microdnf initializes; the directory is
-# temporary and contains only the generated internal repository configuration.
-args+=(--volume "${repo_dir}:/etc/yum.repos.d:Z")
+chmod 600 "${repo_file}"
+args+=(--secret "id=factory-repo,src=${repo_file}")
 
 while IFS=$'\t' read -r key value; do
-  args+=(--build-arg "${key}=${value}")
+  case "${key}" in
+    BASE_REF|BASE_MAJOR|SOURCE_DATE_EPOCH)
+      echo "catalog build arg ${key} is reserved by the BuildKit migration" >&2
+      exit 2
+      ;;
+  esac
+  args+=(--opt "build-arg:${key}=${value}")
 done < <(yq -r '.build.buildArgs // {} | to_entries[] | [.key,.value] | @tsv' "${catalog}")
 
+PYTHONPATH="${PWD}${PYTHONPATH:+:${PYTHONPATH}}" python3 -m factory.buildkit adapt-dockerfile \
+  "${work_dir}/context/${containerfile}" \
+  | sed 's/__FACTORY_BUILDKIT_REPO_MOUNT_TYPE__/secret/g' >"${dockerfile_dir}/Dockerfile"
 build_started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-buildah bud "${args[@]}" "${work_dir}/context"
-# Preserve the exact local reference in the archive so downstream jobs can
-# load and select this image deterministically, even when unrelated or dangling
-# images exist in container storage.
-skopeo copy "${skopeo_copy_args[@]}" \
-  "containers-storage:${local_ref}" "oci-archive:${work_dir}/image.oci.tar:${local_ref}"
+buildkit_archive="${private_dir}/image.buildkit.oci.tar"
+args+=(--output "type=oci,dest=${buildkit_archive},rewrite-timestamp=true")
+SOURCE_DATE_EPOCH="${source_epoch}" scripts/run_buildkit.sh build "${args[@]}"
+# Preserve the exact local reference in the archive handed to scanners and
+# importers. The normalization copy is local and does not use a container store.
+skopeo copy --all "${skopeo_copy_args[@]}" \
+  "oci-archive:${buildkit_archive}" "oci-archive:${work_dir}/image.oci.tar:${local_ref}"
 # The archive is the candidate handed to every scanner and importer, so record
-# its manifest digest rather than assuming a storage-to-archive copy preserved
-# the source manifest byte-for-byte.
+# its final manifest digest rather than assuming exporter normalization
+# preserved the BuildKit manifest byte-for-byte.
 digest=$(skopeo inspect "oci-archive:${work_dir}/image.oci.tar:${local_ref}" | jq -er '.Digest')
 
 jq -n \

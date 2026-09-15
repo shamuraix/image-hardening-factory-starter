@@ -6,6 +6,17 @@ case "${tool}" in
   buildah)
     rootless=$(buildah info --format '{{.host.rootless}}')
     ;;
+  buildkit)
+    [[ $(id -u) != 0 ]] || {
+      echo "buildkit must run as a non-root user via scripts/run_buildkit.sh" >&2
+      exit 1
+    }
+    command -v buildctl >/dev/null || {
+      echo "required command is missing: buildctl" >&2
+      exit 2
+    }
+    rootless=true
+    ;;
   podman)
     rootless=$(podman info --format '{{.Host.Security.Rootless}}')
     ;;

@@ -1,7 +1,7 @@
 # Image Hardening Factory
 
 Rebuild pinned Iron Bank UBI and Atlassian sources with Jenkins, rootless
-Buildah, and internal Artifactory repositories. The factory produces OCI images,
+BuildKit, and internal Artifactory repositories. The factory produces OCI images,
 SBOMs, assessment evidence, and key-signed release artifacts. It does not deploy
 applications or confer a STIG/FedRAMP compliance designation.
 
@@ -62,7 +62,7 @@ also selected. Only one platform per catalog entry is currently implemented.
 flowchart TD
     Upstream["Approved upstream sources"] --> Intake["Connected intake: mirror, hash, snapshot"]
     Intake --> Inputs["Internal Git and signed Artifactory locks"]
-    Inputs --> Build["Rootless Buildah: OCI candidate"]
+    Inputs --> Build["Rootless BuildKit: OCI candidate"]
     Build --> Checks["SBOM, FCS, compliance and baseline tests"]
     Checks --> Gate{"OPA permits release?"}
     Gate -->|No| Review["Evidence review and optional AI summary"]

@@ -9,12 +9,13 @@ intake. Both use the Jenkins Kubernetes plugin and add a `factory` container to
 an administrator-managed pod template. Every template must set
 `privileged: false`; it must not mount host paths, container-engine sockets,
 host devices, or add Linux capabilities. The runner executes as UID 10001,
-uses subordinate IDs for rootless Buildah and Podman, stores containers with
-VFS, and lets the outer pod enforce cgroup limits.
+uses subordinate IDs for rootless BuildKit and Podman, and lets the outer pod
+enforce cgroup limits. BuildKit uses its native snapshotter; VFS remains only
+for Podman's scanner and product-test storage.
 
 Runner nodes must allow unprivileged user namespaces. `/tmp` and
 `/home/factory` must be writable, and the runtime seccomp profile must permit
-the user-namespace operations used by rootless Buildah and Podman. ClamAV and
+the user-namespace operations used by rootless BuildKit and Podman. ClamAV and
 OpenSCAP inspect an ownership-preserving Umoci unpack inside Podman's rootless
 user namespace. FCS uses a job-local rootless Podman socket; no host socket is
 mounted.
@@ -27,7 +28,7 @@ environment settings:
 |---|---|
 | `FACTORY_K8S_INTAKE_POD_TEMPLATE` | Approved upstream and intake-only writes |
 | `FACTORY_K8S_OFFLINE_POD_TEMPLATE` | Internal read-only analysis |
-| `FACTORY_K8S_BUILDAH_POD_TEMPLATE` | Rootless, internal-only build |
+| `FACTORY_K8S_BUILDKIT_POD_TEMPLATE` | Rootless, internal-only build |
 | `FACTORY_K8S_FIPS_POD_TEMPLATE` | FIPS-node compliance |
 | `FACTORY_K8S_TEST_POD_TEMPLATE` | Rootless product tests |
 | `FACTORY_K8S_FCS_POD_TEMPLATE` | Falcon-only protected egress |
@@ -43,6 +44,69 @@ Configure an object-storage-backed Jenkins Artifact Manager because OCI archives
 passed between ephemeral pods are too large for controller-local stashes.
 Required Jenkins plugins are Kubernetes, Credentials Binding, Lockable
 Resources, Pipeline: Input Step, and the selected Artifact Manager.
+
+### BuildKit pod template
+
+Register [the BuildKit pod YAML](../toolchain/jenkins-buildkit-pod.yaml) as the
+administrator-managed template named by `FACTORY_K8S_BUILDKIT_POD_TEMPLATE`.
+Replace its image placeholder and ServiceAccount with deployment values; the
+pipeline overrides the `factory` image with the digest-pinned
+`FACTORY_RUNNER_IMAGE`. Use Kubernetes 1.30+ for the structured AppArmor field
+(older clusters require the equivalent container AppArmor annotation).
+Size the pod's disk-backed `/tmp` and Jenkins workspace for unpacked base
+layers, native snapshots and the candidate archive. The Jenkins agent and
+`factory` container must share the workspace and compatible UID/GID 10001.
+
+The build runs an ephemeral `buildkitd` **inside the factory container**, not a
+shared service or privileged sidecar. `scripts/run_buildkit.sh` starts it in a
+RootlessKit user namespace, waits for readiness over a private Unix socket,
+and stops it and removes its native snapshots on success, failure or termination.
+No Docker daemon, containerd, host socket, `/dev/fuse`, or persistent cache is
+required. Pod eviction/SIGKILL relies on pod teardown to reclaim the `emptyDir`.
+`BUILDKIT_HOST` and user daemon configuration are not used.
+
+The example needs an explicit admission-policy exception: it is neither
+Baseline nor Restricted Pod Security compliant. `newuidmap` and
+`newgidmap` need their setuid bits, `allowPrivilegeEscalation: true`, and the
+runtime's default SETUID/SETGID capability bounding set; do not drop all
+capabilities or add capabilities. The example uses unconfined seccomp and
+AppArmor profiles to allow nested user namespaces and mounts; substitute
+audited localhost profiles only after testing the full build. Do not enable
+privileged mode or host PID/network namespaces. Nodes must allow unprivileged
+user namespaces, including any distribution-specific AppArmor userns policy.
+
+Jenkins sets `FACTORY_BUILDKIT_NO_PROCESS_SANDBOX=true` only in the build stage.
+This upstream BuildKit mode avoids nested `/proc` mounts denied by many
+container runtimes, but build processes can signal or inspect other processes
+in the factory container. In this mode RootlessKit also omits `--pidns`, because
+that would remount `/proc` and reintroduce the same runtime restriction.
+The container's PID namespace remains separate from Jenkins' `jnlp` container.
+Only local sandboxed mode creates an extra RootlessKit PID namespace. A fresh
+pod per stage and mandatory pod teardown contain lingering build processes;
+they do not make a shared daemon safe for hostile tenants. Build only reviewed sources in the build trust class, bind only
+read-only intake/RPM credentials there, and never place signing or promotion
+credentials in the pod.
+
+`FACTORY_BUILD_NETWORK` accepts `default` (production), `none`, or `host`.
+RootlessKit shares its parent's network: in Jenkins that is the pod network,
+not the node network; locally it permits the loopback RPM server. BuildKit's
+rootless worker uses host networking within that namespace. Only explicit
+`host` requests enable the `network.host` entitlement. Enforce internal-only
+egress with the build trust class's NetworkPolicy, including DNS and required
+Jenkins connectivity; a frontend network setting is not an egress firewall.
+
+Build inputs use a digest-verified OCI layout supplied through a BuildKit
+session, including bases produced by earlier Jenkins stages. The embedded
+Dockerfile frontend does not need an external syntax image. Each build uses
+fresh state rather than an untrusted/shared cache. RPM configuration is passed
+as a native secret into a writable tmpfs masking `/etc/yum.repos.d` for each
+`RUN`, never copied into a layer. OCI output is handed to the unchanged
+scanner/import/signing stages using its inspected final archive digest.
+The source commit supplies `SOURCE_DATE_EPOCH` and the OCI creation/revision
+labels. BuildKit's native `rewrite-timestamp=true` clamps newer layer timestamps
+and preserves eligible base layers; it is not a guarantee of byte-for-byte
+equivalence with the previous builder. Skopeo normalizes the archive reference
+so downstream Podman and Skopeo select the exact `LOCAL_IMAGE_REF`.
 
 ## Jenkins settings and credentials
 
@@ -192,7 +256,7 @@ SBOM, FCS, compliance, and test stages.
 |---|---|---|
 | `FACTORY_ENABLE_VALIDATE` | `true` | Schema and context validation |
 | `FACTORY_ENABLE_PREPARE` | `false` | Resource-lock resolution and build context assembly |
-| `FACTORY_ENABLE_BUILD` | `false` | Rootless Buildah OCI build |
+| `FACTORY_ENABLE_BUILD` | `false` | Rootless BuildKit OCI build |
 | `FACTORY_ENABLE_SBOM` | `false` | Syft SBOM generation |
 | `FACTORY_ENABLE_SCAN` | `false` | Grype/Trivy/OSV/ClamAV informational scans |
 | `FACTORY_ENABLE_HELMPER` | `false` | Helmper-style chart inventory evidence |
@@ -238,10 +302,17 @@ FACTORY_UPSTREAM_BRANCH="${FACTORY_UPSTREAM_BRANCH:?}" make update-pins
 ## Toolchain pinning
 
 `tools/versions.lock.yaml` records the pinned version and upstream project URL
-for every tool embedded in the factory runner images (Buildah, Skopeo, Umoci,
+for every tool embedded in the factory runner images (BuildKit, RootlessKit, Skopeo, Umoci,
 ORAS, Cosign, Syft, Grype, Trivy, OSV Scanner, OPA, OpenSCAP,
 ComplianceAsCode, and the FCS CLI). Update this file when bumping a tool version
 and rebuild and re-sign both toolchain images.
+
+Bootstrap must checksum-verify the pinned platform-specific BuildKit and
+RootlessKit release bundles, then stage their executables in `dist/tools/`.
+Include `buildctl`, `buildkitd`, `buildkit-runc` (the runtime bundled with
+BuildKit), and `rootlesskit`; the factory runner build fails if they are absent.
+Keep the bundled runtime and client/daemon versions together. Podman and its
+setuid ID-mapping helpers remain installed for downstream tests and scanners.
 
 ## Legacy policy settings
 

@@ -34,7 +34,7 @@ Kubernetes trust class:
 |---|---|---|---|
 | `FACTORY_K8S_INTAKE_POD_TEMPLATE` | Approved upstream + internal | Intake-only writes | Connected pool |
 | `FACTORY_K8S_OFFLINE_POD_TEMPLATE` | Internal only | Artifact read | Offline pool |
-| `FACTORY_K8S_BUILDAH_POD_TEMPLATE` | Internal mirrors only | Artifact read | Rootless build pool |
+| `FACTORY_K8S_BUILDKIT_POD_TEMPLATE` | Internal mirrors only | Artifact read | Rootless build pool |
 | `FACTORY_K8S_FIPS_POD_TEMPLATE` | Internal only | Artifact read | FIPS-node pool |
 | `FACTORY_K8S_TEST_POD_TEMPLATE` | Internal only | Test registry read | Rootless test pool |
 | `FACTORY_K8S_FCS_POD_TEMPLATE` | Falcon API + candidate | Falcon assessment only | Connected protected pool |
@@ -48,12 +48,20 @@ Give every class its own Kubernetes ServiceAccount and least-privilege
 NetworkPolicy. Pods must run unprivileged without added capabilities, host
 paths, host devices, or container-engine sockets. Nodes must allow unprivileged
 user namespaces; `/tmp` and `/home/factory` must be writable. The runtime
-seccomp profile must permit rootless Buildah and Podman user-namespace
+seccomp profile must permit rootless BuildKit and Podman user-namespace
 operations. FIPS jobs require FIPS-enabled nodes.
 
-The factory image runs as UID 10001 with subordinate IDs and VFS storage.
+The factory image runs as UID 10001 with subordinate IDs. BuildKit uses an
+ephemeral native snapshotter; Podman retains VFS storage.
 ClamAV and OpenSCAP consume an ownership-preserving Umoci unpack inside
 Podman's user namespace. FCS creates a rootless, job-local Podman socket.
+
+Use `toolchain/jenkins-buildkit-pod.yaml` for the build template and follow the
+[BuildKit security and sizing requirements](configuration.md#buildkit-pod-template).
+Register the new `FACTORY_K8S_BUILDKIT_POD_TEMPLATE` setting when migrating;
+the previous builder-specific template setting is no longer consumed.
+BuildKit runs inside each build-stage container and requires no daemon service
+deployment. A build never shares a cache or socket with another job.
 
 Configure an object-storage-backed Jenkins Artifact Manager. The pipeline uses
 stashes to transfer OCI archives between ephemeral pods; controller-local stash
@@ -102,6 +110,16 @@ controller-wide static secrets.
 9. Build the UBI 9 lineage, stopping after quarantine until evidence is
    independently reviewed.
 10. Approve signing and digest-preserving promotion.
+
+Before enabling releases, exercise a UBI build and an application build on the
+actual Kubernetes build template. Confirm a selected UBI dependency is consumed
+from its stashed OCI archive, RPM access is internal-only, and product tests,
+FCS, SBOM and import consume the exact named candidate digest. Test cancellation
+and a failing `RUN`, checking that the daemon terminates and pod storage is
+reclaimed. Verify that generated repository credentials are absent from image
+layers and archived artifacts. Repeat with loopback snapshot and corporate-CA
+local modes where used. Unit tests cover command wiring and cleanup but cannot
+validate a cluster's kernel, LSM, admission policy or registry permissions.
 
 Build `toolchain/Containerfile.factory-fcs-runner` from the signed factory
 runner image by passing its digest as `FACTORY_RUNNER_REF` and supplying the

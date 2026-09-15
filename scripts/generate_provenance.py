@@ -19,7 +19,7 @@ def main() -> int:
     predicate = {
         "buildDefinition": {
             "buildType": os.environ.get(
-                "FACTORY_BUILD_TYPE_URI", "urn:image-hardening-factory:build:buildah:v1"
+                "FACTORY_BUILD_TYPE_URI", "urn:image-hardening-factory:build:buildkit:v1"
             ),
             "externalParameters": {
                 "sourceRevision": build["sourceRevision"],

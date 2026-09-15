@@ -131,7 +131,6 @@ def inFactoryPod(
                     'XDG_RUNTIME_DIR=/tmp/factory-runtime',
                     'CONTAINERS_STORAGE_CONF=/home/factory/.config/containers/storage.conf',
                     'STORAGE_DRIVER=vfs',
-                    'BUILDAH_ISOLATION=rootless',
                 ] + additionalEnvironment) {
                     sh 'mkdir -p "${FACTORY_WORK_DIR}" "${XDG_RUNTIME_DIR}" && chmod 0700 "${XDG_RUNTIME_DIR}"'
                     body()
@@ -328,7 +327,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
         buildArtifact = runFactoryStage(
             image,
             'build',
-            'FACTORY_K8S_BUILDAH_POD_TEMPLATE',
+            'FACTORY_K8S_BUILDKIT_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
             [prepareArtifact],
             "work/${image}/image.oci.tar,work/${image}/image-metadata.json," +
@@ -339,7 +338,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
                 idVariable: 'ARTIFACTORY_READ_CREDENTIAL_ID',
                 variable: 'ARTIFACTORY_READ_TOKEN',
             ]],
-            catalogEnvironment,
+            catalogEnvironment + ['FACTORY_BUILDKIT_NO_PROCESS_SANDBOX=true'],
         )
     }
 

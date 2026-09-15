@@ -1,0 +1,48 @@
+# Administrator-managed Jenkins Kubernetes pod-template YAML.
+# Jenkinsfile replaces the factory image with FACTORY_RUNNER_IMAGE (digest-pinned).
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    factory-trust-class: buildkit
+spec:
+  serviceAccountName: factory-buildkit
+  automountServiceAccountToken: false
+  hostNetwork: false
+  hostPID: false
+  hostIPC: false
+  shareProcessNamespace: false
+  securityContext:
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+  containers:
+    - name: factory
+      image: REPLACE_WITH_SIGNED_FACTORY_RUNNER_IMAGE_AT_SHA256
+      command: ["sleep"]
+      args: ["99d"]
+      securityContext:
+        runAsNonRoot: true
+        privileged: false
+        # Required by setuid newuidmap/newgidmap; retain default capabilities.
+        allowPrivilegeEscalation: true
+        seccompProfile:
+          type: Unconfined
+        appArmorProfile:
+          type: Unconfined
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          ephemeral-storage: 10Gi
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          ephemeral-storage: 60Gi
+      volumeMounts:
+        - name: buildkit-tmp
+          mountPath: /tmp
+  volumes:
+    - name: buildkit-tmp
+      emptyDir:
+        sizeLimit: 50Gi
