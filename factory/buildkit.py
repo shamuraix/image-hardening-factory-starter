@@ -5,6 +5,7 @@ import json
 import re
 import shlex
 import sys
+import csv
 from pathlib import Path
 
 REPO_TMPFS_MOUNT = "--mount=type=tmpfs,target=/etc/yum.repos.d"
@@ -102,6 +103,20 @@ def _read_instruction(lines: list[str], index: int) -> tuple[list[str], int, str
     return collected, index, keyword
 
 
+def _instruction_prefix_lines(lines: list[str]) -> list[str]:
+    prefix = [lines[0]]
+    continued = _continues(lines[0])
+    index = 1
+    while continued and index < len(lines):
+        next_line = lines[index]
+        prefix.append(next_line)
+        index += 1
+        if not next_line.strip() or next_line.lstrip().startswith("#"):
+            continue
+        continued = _continues(next_line)
+    return prefix
+
+
 def _tokens(text: str, instruction: str) -> list[str]:
     try:
         return shlex.split(text, comments=False, posix=True)
@@ -186,12 +201,68 @@ def _validate_add(text: str) -> None:
             raise DockerfileAdaptationError("remote ADD sources are not allowed")
 
 
+def _mount_options(value: str) -> dict[str, str]:
+    try:
+        fields = next(csv.reader([value]))
+    except csv.Error as exc:
+        raise DockerfileAdaptationError(f"unsupported RUN mount syntax: {exc}") from exc
+    options: dict[str, str] = {}
+    for field in fields:
+        key, has_value, field_value = field.partition("=")
+        options[key.strip().lower()] = field_value.strip() if has_value else ""
+    return options
+
+
+def _leading_run_mounts(lines: list[str]) -> list[dict[str, str]]:
+    logical = _logical_text(_instruction_prefix_lines(lines))
+    match = re.match(r"\s*RUN(?:\s+|$)(.*)", logical, flags=re.IGNORECASE)
+    if not match:
+        raise DockerfileAdaptationError("internal parser error while adapting RUN")
+    lexer = shlex.shlex(match.group(1), posix=True)
+    lexer.whitespace_split = True
+    lexer.commenters = ""
+    mounts: list[dict[str, str]] = []
+    while True:
+        try:
+            token = lexer.get_token()
+        except ValueError as exc:
+            raise DockerfileAdaptationError(f"unsupported RUN syntax: {exc}") from exc
+        if token == lexer.eof:
+            break
+        if token == "--mount":
+            try:
+                mount_value = lexer.get_token()
+            except ValueError as exc:
+                raise DockerfileAdaptationError(f"unsupported RUN syntax: {exc}") from exc
+            if mount_value == lexer.eof:
+                raise DockerfileAdaptationError("RUN --mount is missing a value")
+            mounts.append(_mount_options(mount_value))
+        elif token.startswith("--mount="):
+            mounts.append(_mount_options(token.split("=", 1)[1]))
+        elif token in {"--network", "--security"}:
+            try:
+                option_value = lexer.get_token()
+            except ValueError as exc:
+                raise DockerfileAdaptationError(f"unsupported RUN syntax: {exc}") from exc
+            if option_value == lexer.eof:
+                raise DockerfileAdaptationError(f"{token} is missing a value")
+        elif token.startswith("--network=") or token.startswith("--security="):
+            continue
+        elif token.startswith("--"):
+            raise DockerfileAdaptationError(f"unsupported leading RUN option {token}")
+        else:
+            break
+    return mounts
+
+
 def _inject_run_mounts(lines: list[str]) -> list[str]:
-    logical = _logical_text(lines)
-    if "id=factory-repo" in logical or "/etc/yum.repos.d/factory.repo" in logical:
-        raise DockerfileAdaptationError("Dockerfile RUN already uses the reserved repo secret")
-    if "target=/etc/yum.repos.d" in logical:
-        raise DockerfileAdaptationError("Dockerfile RUN already mounts /etc/yum.repos.d")
+    for mount in _leading_run_mounts(lines):
+        if any(mount.get(key) == "factory-repo" for key in ("id", "src", "source")):
+            raise DockerfileAdaptationError("Dockerfile RUN already uses the reserved repo secret")
+        for key in ("target", "dst", "destination"):
+            target = mount.get(key, "")
+            if target == "/etc/yum.repos.d" or target.startswith("/etc/yum.repos.d/"):
+                raise DockerfileAdaptationError("Dockerfile RUN already mounts /etc/yum.repos.d")
 
     first = lines[0]
     match = re.match(r"(\s*RUN)(\s*)(.*)", first, flags=re.IGNORECASE)

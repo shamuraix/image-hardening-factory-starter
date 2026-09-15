@@ -118,13 +118,15 @@ args=(
   --opt "build-arg:BASE_REF=factory-base"
   --opt "build-arg:SOURCE_DATE_EPOCH=${source_epoch}"
   --opt "platform=${platform}"
-  --opt "force-network-mode=${build_network}"
   --opt "label:org.opencontainers.image.revision=${SOURCE_REVISION}"
   --opt "label:org.opencontainers.image.created=${created}"
   --opt "label:org.opencontainers.image.source=${FACTORY_SOURCE_URL:-local}"
   --source-policy-file "${source_policy}"
   --no-cache
 )
+if [[ "${build_network}" != default ]]; then
+  args+=(--opt "force-network-mode=${build_network}")
+fi
 if [[ "${build_network}" == host ]]; then
   args+=(--allow network.host)
 fi

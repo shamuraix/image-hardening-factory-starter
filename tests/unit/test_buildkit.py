@@ -86,10 +86,39 @@ class DockerfileAdaptationTests(unittest.TestCase):
         self.assertEqual(adapted.count("--mount=type=tmpfs,target=/etc/yum.repos.d"), 1)
 
     def test_rejects_reserved_repo_mounts(self) -> None:
-        with self.assertRaises(DockerfileAdaptationError):
-            adapt_dockerfile_text(
-                "FROM ${BASE_REF}\nRUN --mount=type=secret,id=factory-repo,target=/x echo unsafe\n"
+        cases = [
+            "RUN --mount=type=secret,id=factory-repo,target=/x echo unsafe\n",
+            "RUN --mount=type=secret,src=factory-repo,target=/x echo unsafe\n",
+            "RUN --mount=type=secret,source=factory-repo,target=/x echo unsafe\n",
+            "RUN --mount=type=cache,dst=/etc/yum.repos.d echo unsafe\n",
+            "RUN --mount=type=tmpfs,destination=/etc/yum.repos.d/factory.repo echo unsafe\n",
+        ]
+        for run in cases:
+            with self.subTest(run=run):
+                with self.assertRaises(DockerfileAdaptationError):
+                    adapt_dockerfile_text(f"FROM ${{BASE_REF}}\n{run}")
+
+    def test_does_not_parse_run_shell_body_for_reserved_words(self) -> None:
+        adapted = adapt_dockerfile_text(
+            "FROM ${BASE_REF}\nRUN echo source=factory-repo # user's comment with unmatched quote\n"
+        )
+
+        self.assertIn("RUN --mount=type=tmpfs,target=/etc/yum.repos.d", adapted)
+
+    def test_does_not_parse_heredoc_body_for_reserved_words_or_quotes(self) -> None:
+        adapted = adapt_dockerfile_text(
+            textwrap.dedent(
+                """\
+                FROM ${BASE_REF}
+                RUN <<EOF
+                echo "unterminated source=factory-repo
+                EOF
+                """
             )
+        )
+
+        self.assertIn('echo "unterminated source=factory-repo\n', adapted)
+        self.assertIn("RUN --mount=type=tmpfs,target=/etc/yum.repos.d", adapted)
 
 
 class BuildImageBuildKitTests(unittest.TestCase):
@@ -320,7 +349,8 @@ class BuildImageBuildKitTests(unittest.TestCase):
         self.assertIn("build-arg:BASE_MAJOR=9", run_args)
         self.assertIn("build-arg:SOURCE_DATE_EPOCH=1704164645", run_args)
         self.assertIn("build-arg:APP_VERSION=1.2.3", run_args)
-        self.assertIn("force-network-mode=default", run_args)
+        self.assertNotIn("force-network-mode=default", run_args)
+        self.assertFalse(any(arg.startswith("force-network-mode=") for arg in run_args))
         self.assertIn("--source-policy-file", run_args)
         source_policy = self.project / "source-policy.json"
         source_rules = json.loads(source_policy.read_text(encoding="utf-8"))["rules"]
@@ -360,6 +390,14 @@ class BuildImageBuildKitTests(unittest.TestCase):
         build_env = (self.work / "build.env").read_text(encoding="utf-8")
         self.assertIn("IMAGE_DIGEST=sha256:final", build_env)
         self.assertIn("LOCAL_IMAGE_REF=localhost/factory/test:local", build_env)
+
+    def test_build_image_requests_no_network_when_explicit(self) -> None:
+        result = self._run_build({"FACTORY_BUILD_NETWORK": "none"})
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run_args = (self.project / "run-buildkit.log").read_text(encoding="utf-8").splitlines()
+        self.assertIn("force-network-mode=none", run_args)
+        self.assertNotIn("network.host", run_args)
 
     def test_build_image_requests_host_network_only_when_explicit(self) -> None:
         result = self._run_build({"FACTORY_BUILD_NETWORK": "host"})
