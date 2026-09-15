@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import sys
 from pathlib import Path
 
 REPO_TMPFS_MOUNT = "--mount=type=tmpfs,target=/etc/yum.repos.d"
-BUILDKIT_MOUNT_TYPE_TOKEN = "__FACTORY_BUILDKIT_REPO_MOUNT_TYPE__"
 REPO_CONFIG_MOUNT = (
-    "--mount=type="
-    + BUILDKIT_MOUNT_TYPE_TOKEN
-    + ",id=factory-repo,target=/etc/yum.repos.d/factory.repo,required=true"
+    "--mount=type=secret,id=factory-repo,target=/etc/yum.repos.d/factory.repo,required=true"
 )
 BASE_CONTEXT_NAME = "factory-base"
-RESERVED_BUILD_ARGS = frozenset({"BASE_REF", "BASE_MAJOR", "SOURCE_DATE_EPOCH"})
+RESERVED_BUILD_ARGS = frozenset({"BASE_REF", "BASE_MAJOR", "SOURCE_DATE_EPOCH", "BUILDKIT_SYNTAX"})
 
 
 class DockerfileAdaptationError(ValueError):
@@ -25,6 +23,8 @@ def _logical_text(lines: list[str]) -> str:
     parts: list[str] = []
     for line in lines:
         text = line.rstrip("\r\n")
+        if not text.strip() or text.lstrip().startswith("#"):
+            continue
         stripped = text.rstrip()
         if stripped.endswith("\\"):
             parts.append(stripped[:-1])
@@ -72,11 +72,16 @@ def _read_instruction(lines: list[str], index: int) -> tuple[list[str], int, str
 
     collected = [first]
     index += 1
-    while _continues(collected[-1]):
+    continued = _continues(first)
+    while continued:
         if index >= len(lines):
             raise DockerfileAdaptationError("unterminated Dockerfile line continuation")
-        collected.append(lines[index])
+        next_line = lines[index]
+        collected.append(next_line)
         index += 1
+        if not next_line.strip() or next_line.lstrip().startswith("#"):
+            continue
+        continued = _continues(next_line)
 
     if keyword in {"RUN", "ADD", "COPY"}:
         for delimiter, allow_tabs in _heredoc_delimiters(_logical_text(collected)):
@@ -158,10 +163,24 @@ def _validate_copy(text: str, stage_aliases: set[str]) -> None:
 
 def _validate_add(text: str) -> None:
     tokens = _tokens(text, "ADD")
-    sources: list[str] = []
-    non_options = [token for token in tokens[1:] if not token.startswith("--")]
-    if len(non_options) >= 2:
-        sources = non_options[:-1]
+    body = text.split(None, 1)[1].strip() if len(text.split(None, 1)) == 2 else ""
+    while body.startswith("--"):
+        option, _, remainder = body.partition(" ")
+        body = remainder.strip()
+        if not option or not body:
+            break
+    sources: list[str]
+    if body.startswith("["):
+        try:
+            add_args = json.loads(body)
+        except json.JSONDecodeError as exc:
+            raise DockerfileAdaptationError(f"unsupported ADD JSON syntax: {exc}") from exc
+        if not isinstance(add_args, list) or not all(isinstance(item, str) for item in add_args):
+            raise DockerfileAdaptationError("unsupported ADD JSON syntax")
+        sources = add_args[:-1]
+    else:
+        non_options = [token for token in tokens[1:] if not token.startswith("--")]
+        sources = non_options[:-1] if len(non_options) >= 2 else []
     for source in sources:
         if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", source) or source.startswith("git@"):
             raise DockerfileAdaptationError("remote ADD sources are not allowed")

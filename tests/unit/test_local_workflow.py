@@ -36,9 +36,10 @@ class LocalWorkflowTests(unittest.TestCase):
         buildkit = (ROOT / "factory/buildkit.py").read_text(encoding="utf-8")
 
         self.assertIn("--mount=type=tmpfs,target=/etc/yum.repos.d", buildkit)
-        self.assertIn("BUILDKIT_MOUNT_TYPE_TOKEN", buildkit)
-        self.assertIn("s/__FACTORY_BUILDKIT_REPO_MOUNT_TYPE__/secret/g", build)
-        self.assertIn(",id=factory-repo,target=/etc/yum.repos.d/factory.repo", buildkit)
+        self.assertIn(
+            "--mount=type=secret,id=factory-repo,target=/etc/yum.repos.d/factory.repo",
+            buildkit,
+        )
         self.assertIn('--secret "id=factory-repo,src=${repo_file}"', build)
         self.assertNotIn("containers-storage", build)
 

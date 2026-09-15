@@ -34,24 +34,39 @@ skopeo_copy_args=(--retry-times 5)
 if [[ ${FACTORY_REMOVE_TRANSPORT_SIGNATURES:-false} == true ]]; then
   skopeo_copy_args+=(--remove-signatures)
 fi
-private_parent=${FACTORY_PRIVATE_TMPDIR:-${PWD}/.factory-private}
-private_parent_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${private_parent}")
 work_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${work_dir}")
 context_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${work_dir}/context")
-case "${private_parent_abs}/" in
-  "${work_abs}/"*|"${context_abs}/"*)
-    echo "FACTORY_PRIVATE_TMPDIR must not be inside the build work directory or context" >&2
-    exit 2
-    ;;
-esac
-mkdir -p "${private_parent_abs}"
-chmod 700 "${private_parent_abs}"
-private_dir=$(mktemp -d "${private_parent_abs}/build-image.XXXXXX")
+private_parent_abs=
+if [[ -n ${FACTORY_PRIVATE_TMPDIR:-} ]]; then
+  private_parent_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${FACTORY_PRIVATE_TMPDIR}")
+  case "${private_parent_abs}/" in
+    "${work_abs}/"*|"${context_abs}/"*)
+      echo "FACTORY_PRIVATE_TMPDIR must not be inside the build work directory or context" >&2
+      exit 2
+      ;;
+  esac
+  mkdir -p "${private_parent_abs}"
+  chmod 700 "${private_parent_abs}"
+  private_dir=$(mktemp -d "${private_parent_abs}/build-image.XXXXXX")
+else
+  private_dir=$(mktemp -d /tmp/factory-build-inputs.XXXXXX)
+fi
+chmod 700 "${private_dir}"
 cleanup_private() {
   rm -rf "${private_dir}"
-  rmdir "${private_parent_abs}" >/dev/null 2>&1 || true
+  if [[ -n ${private_parent_abs} ]]; then
+    rmdir "${private_parent_abs}" >/dev/null 2>&1 || true
+  fi
+}
+cleanup_private_and_exit() {
+  local status=${1:?status is required}
+  trap - EXIT INT TERM
+  cleanup_private
+  exit "${status}"
 }
 trap cleanup_private EXIT
+trap 'cleanup_private_and_exit 130' INT
+trap 'cleanup_private_and_exit 143' TERM
 
 if [[ ! -f "${work_dir}/base.oci.tar" ]]; then
   [[ "${BASE_REF}" == "${ARTIFACTORY_REGISTRY:?}/"*@sha256:* ]] || {
@@ -75,8 +90,20 @@ else
 fi
 base_layout="${private_dir}/base-layout"
 dockerfile_dir="${private_dir}/dockerfile"
+source_policy="${private_dir}/source-policy.json"
 mkdir -p "${dockerfile_dir}"
 mkdir -p "${base_layout}"
+cat >"${source_policy}" <<'EOF'
+{
+  "rules": [
+    {"action": "DENY", "selector": {"identifier": "docker-image://*"}},
+    {"action": "DENY", "selector": {"identifier": "http://*"}},
+    {"action": "DENY", "selector": {"identifier": "https://*"}},
+    {"action": "DENY", "selector": {"identifier": "git://*"}},
+    {"action": "DENY", "selector": {"identifier": "ssh://*"}}
+  ]
+}
+EOF
 skopeo copy --all --preserve-digests "${skopeo_copy_args[@]}" \
   "oci-archive:${work_dir}/base.oci.tar" "oci:${base_layout}:factory-base"
 base_layout_abs=$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve())' "${base_layout}")
@@ -91,11 +118,16 @@ args=(
   --opt "build-arg:BASE_REF=factory-base"
   --opt "build-arg:SOURCE_DATE_EPOCH=${source_epoch}"
   --opt "platform=${platform}"
+  --opt "force-network-mode=${build_network}"
   --opt "label:org.opencontainers.image.revision=${SOURCE_REVISION}"
   --opt "label:org.opencontainers.image.created=${created}"
   --opt "label:org.opencontainers.image.source=${FACTORY_SOURCE_URL:-local}"
+  --source-policy-file "${source_policy}"
   --no-cache
 )
+if [[ "${build_network}" == host ]]; then
+  args+=(--allow network.host)
+fi
 
 if [[ -n ${FACTORY_BASE_MAJOR:-} ]]; then
   base_major=${FACTORY_BASE_MAJOR}
@@ -115,7 +147,7 @@ args+=(--secret "id=factory-repo,src=${repo_file}")
 
 while IFS=$'\t' read -r key value; do
   case "${key}" in
-    BASE_REF|BASE_MAJOR|SOURCE_DATE_EPOCH)
+    BASE_REF|BASE_MAJOR|SOURCE_DATE_EPOCH|BUILDKIT_SYNTAX)
       echo "catalog build arg ${key} is reserved by the BuildKit migration" >&2
       exit 2
       ;;
@@ -124,8 +156,10 @@ while IFS=$'\t' read -r key value; do
 done < <(yq -r '.build.buildArgs // {} | to_entries[] | [.key,.value] | @tsv' "${catalog}")
 
 PYTHONPATH="${PWD}${PYTHONPATH:+:${PYTHONPATH}}" python3 -m factory.buildkit adapt-dockerfile \
-  "${work_dir}/context/${containerfile}" \
-  | sed 's/__FACTORY_BUILDKIT_REPO_MOUNT_TYPE__/secret/g' >"${dockerfile_dir}/Dockerfile"
+  "${work_dir}/context/${containerfile}" >"${dockerfile_dir}/Dockerfile"
+if [[ -f "${work_dir}/context/${containerfile}.dockerignore" ]]; then
+  cp "${work_dir}/context/${containerfile}.dockerignore" "${dockerfile_dir}/Dockerfile.dockerignore"
+fi
 build_started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 buildkit_archive="${private_dir}/image.buildkit.oci.tar"
 args+=(--output "type=oci,dest=${buildkit_archive},rewrite-timestamp=true")

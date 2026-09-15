@@ -98,7 +98,11 @@ Jenkins connectivity; a frontend network setting is not an egress firewall.
 Build inputs use a digest-verified OCI layout supplied through a BuildKit
 session, including bases produced by earlier Jenkins stages. The embedded
 Dockerfile frontend does not need an external syntax image. Each build uses
-fresh state rather than an untrusted/shared cache. RPM configuration is passed
+fresh state rather than an untrusted/shared cache. A native source policy denies
+remote image, HTTP and Git sources during the solve; download locked inputs
+during preparation instead. `BASE_REF`, `BASE_MAJOR`, `SOURCE_DATE_EPOCH`, and
+`BUILDKIT_SYNTAX` are reserved and cannot be overridden by catalog build args.
+RPM configuration is passed
 as a native secret into a writable tmpfs masking `/etc/yum.repos.d` for each
 `RUN`, never copied into a layer. OCI output is handed to the unchanged
 scanner/import/signing stages using its inspected final archive digest.

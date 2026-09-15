@@ -3,9 +3,6 @@ set -euo pipefail
 
 tool=${1:?container tool is required}
 case "${tool}" in
-  buildah)
-    rootless=$(buildah info --format '{{.host.rootless}}')
-    ;;
   buildkit)
     [[ $(id -u) != 0 ]] || {
       echo "buildkit must run as a non-root user via scripts/run_buildkit.sh" >&2
