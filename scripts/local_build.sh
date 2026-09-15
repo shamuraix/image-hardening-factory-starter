@@ -12,11 +12,11 @@ if [[ -n ${LOCAL_RPM_REPO_DIR:-} && ! -d ${LOCAL_RPM_REPO_DIR}/repodata ]]; then
   echo "${LOCAL_RPM_REPO_DIR}/repodata is missing" >&2
   exit 2
 fi
-for command in git curl python3 podman buildah skopeo yq jq; do
+for command in git curl python3 podman buildctl skopeo yq jq; do
   command -v "${command}" >/dev/null || { echo "required command is missing: ${command}" >&2; exit 2; }
 done
 scripts/require_rootless.sh podman
-scripts/require_rootless.sh buildah
+scripts/require_rootless.sh buildkit
 
 local_root=${LOCAL_FACTORY_ROOT:-.local-factory}
 registry=${LOCAL_REGISTRY:-127.0.0.1:5000}
@@ -233,6 +233,7 @@ RPM_REPOMD_DIGEST=${repomd_digest}
 EOF
 
 export FACTORY_IMAGE="${image}"
+export FACTORY_LOCAL_IMAGE_NAMESPACE="${local_image_namespace}"
 export FACTORY_RPM_BASE_URL="${rpm_base_url}"
 if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
   export FACTORY_RPM_UPSTREAM_UBI_BASE="${upstream_cdn_base}"

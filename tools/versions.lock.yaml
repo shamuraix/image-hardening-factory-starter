@@ -1,9 +1,13 @@
 schemaVersion: "1.0"
 tools:
-  buildah:
-    project: https://github.com/containers/buildah
+  buildkit:
+    project: https://github.com/moby/buildkit
     license: Apache-2.0
-    version: 1.41.4
+    version: 0.33.0
+  rootlesskit:
+    project: https://github.com/rootless-containers/rootlesskit
+    license: Apache-2.0
+    version: 3.1.0
   skopeo:
     project: https://github.com/containers/skopeo
     license: Apache-2.0

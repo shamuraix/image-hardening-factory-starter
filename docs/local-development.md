@@ -4,7 +4,7 @@
 
 ## Build modes
 
-The local development workflow uses rootless Podman and Buildah with a temporary
+The local development workflow uses rootless Podman and BuildKit with a temporary
 loopback OCI registry. Three RPM source modes are available:
 
 | Mode | Flag | Credentials required |
@@ -28,13 +28,26 @@ manifest resources, generates a clearly marked development resource lock, and
 publishes the result to both an OCI archive and the local registry.  Catalog
 base images are built automatically before an application image.
 
-Prerequisites are Python 3.11+, Git, Curl, Podman, Buildah, Skopeo, `yq`, and
-`jq`. Umoci is also required for malware and compliance scans. Podman and
-Buildah must run rootless.  For snapshot-based testing,
+Prerequisites are Python 3.11+, Git, Curl, Podman, Skopeo, `yq`, `jq`, BuildKit
+(`buildctl`, `buildkitd`, and bundled `buildkit-runc`), and RootlessKit.
+Use the versions recorded in `tools/versions.lock.yaml`. Umoci is also required
+for malware and compliance scans. Podman and BuildKit must run rootless.
+Provide subordinate UID/GID ranges and working `newuidmap`/`newgidmap` helpers.
+For snapshot-based testing,
 `LOCAL_RPM_REPO_DIR` must point to a complete RPM repository containing
 `repodata/repomd.xml`. Signature checking remains enabled by default, so the
 repository must also contain valid RPM and repository signatures trusted by
 the source image.
+
+No prestarted BuildKit service is needed: each invocation starts a private
+rootless daemon with the native snapshotter and removes it afterwards.
+The local workflow requests host networking to reach its loopback services;
+this is the local user's network, not a privileged container network.
+Local builds retain BuildKit's process sandbox by default. When executing
+inside an unprivileged container, the administrator may need
+`FACTORY_BUILDKIT_NO_PROCESS_SANDBOX=true` and the security-profile exceptions
+described in [configuration](configuration.md#buildkit-pod-template).
+Do not run the build as root to work around missing user-namespace support.
 
 ```bash
 make local-build IMAGE=ubi9-minimal
@@ -93,9 +106,10 @@ and weakens parity with the production build. `LOCAL_RPM_SSLVERIFY=0` also
 disables repository TLS verification and should be used only as a last-resort
 diagnostic override.
 
-On an SELinux-enforcing host such as the Fedora CoreOS guest used by Podman
-Machine, the generated repository file is privately relabeled for the build
-container. Newer Skopeo releases may also refuse to copy upstream transport
+The generated repository configuration is transferred using a BuildKit secret,
+not a host bind mount requiring SELinux `:Z` relabeling. The host's SELinux and
+AppArmor policies must still permit rootless BuildKit. Newer Skopeo releases
+may also refuse to copy upstream transport
 signatures into local registries or OCI archives that cannot store them; the
 local workflow explicitly removes those transport signatures while retaining
 digest verification and retries transient registry failures.
@@ -156,8 +170,8 @@ The workflow selects UBI 9 or UBI 10 from the catalog dependency and requests
 BaseOS and AppStream only from the authenticated internal cache. It downloads
 and hashes both `repomd.xml` documents and records a composite metadata digest
 in the local development lock. The generated repo file enables both channels
-and its temporary directory is bind-mounted over `/etc/yum.repos.d` during the
-Buildah build. This masks repository files inherited from the upstream UBI base
+and is mounted as a required BuildKit secret inside a tmpfs over
+`/etc/yum.repos.d` during every `RUN`. This masks repository files inherited from the upstream UBI base
 image while leaving the directory writable for `librhsm` initialization. RPM
 operations therefore cannot fall back to Red Hat's public CDN or other
 repository files inherited from the base image.  Because pull-through metadata
@@ -191,4 +205,3 @@ verification ignores timestamp-only changes caused by reproducible layer
 timestamps, combines the application allowlist with the base allowlist, and
 adds the reviewed UBI 10 hardening deviations from
 `tests/profiles/base/rpm-verify.ubi10.allow`.
-

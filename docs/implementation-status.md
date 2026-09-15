@@ -13,7 +13,7 @@ groups.
 | Resource checksum/digest locks | Implemented and tested | Configure upstream allowlist and Artifactory |
 | Immutable RPM snapshots | Implemented | Supply UBI-only source repository files |
 | UBI/Atlassian overlays | Implemented; recheck against each pinned revision | Review and approve patch MRs |
-| Rootless Buildah OCI build | Implemented | Build and sign runner image; enable unprivileged user namespaces and enforce egress ACL |
+| Rootless BuildKit OCI build | Implemented | Build and sign runner image with BuildKit/RootlessKit; configure the BuildKit pod template, user namespaces and security profiles; enforce egress ACL |
 | SBOM and layered scanning | Implemented; Grype/Trivy/OSV/ClamAV informational | Populate signed security-data bundle |
 | CrowdStrike FCS assessment | Implemented as authoritative image-security gate | Build dedicated runner with pinned CLI and configure tenant assessment policy/API credentials |
 | OpenSCAP compliance | Implemented | Validate RHEL 9/10 tailoring and rule applicability |

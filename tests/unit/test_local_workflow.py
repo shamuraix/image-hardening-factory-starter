@@ -33,11 +33,15 @@ class LocalWorkflowTests(unittest.TestCase):
 
     def test_repo_mount_masks_upstream_repositories_and_remains_writable(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
+        buildkit = (ROOT / "factory/buildkit.py").read_text(encoding="utf-8")
 
-        self.assertIn('"${repo_dir}:/etc/yum.repos.d:Z"', build)
-        self.assertNotIn("repo_dir}:/etc/yum.repos.d:ro", build)
-        self.assertNotIn("/factory.repo:/etc/yum.repos.d/factory.repo", build)
-        self.assertIn("cannot fall back", build)
+        self.assertIn("--mount=type=tmpfs,target=/etc/yum.repos.d", buildkit)
+        self.assertIn(
+            "--mount=type=secret,id=factory-repo,target=/etc/yum.repos.d/factory.repo",
+            buildkit,
+        )
+        self.assertIn('--secret "id=factory-repo,src=${repo_file}"', build)
+        self.assertNotIn("containers-storage", build)
 
     def test_local_build_handles_new_skopeo_and_selinux_hosts(self) -> None:
         local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
@@ -76,18 +80,22 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertEqual(cache_config.count("password=${FACTORY_RPM_REPO_PASSWORD}"), 2)
         self.assertNotIn("cdn-ubi.redhat.com", cache_config)
 
-    def test_ci_container_tools_are_rootless_and_use_vfs(self) -> None:
+    def test_ci_buildkit_is_rootless_and_podman_retains_vfs(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
+        launcher = (ROOT / "scripts/run_buildkit.sh").read_text(encoding="utf-8")
         runner = (ROOT / "toolchain/Containerfile.factory-runner").read_text(encoding="utf-8")
         storage = (ROOT / "toolchain/storage.conf").read_text(encoding="utf-8")
 
-        self.assertIn("'BUILDAH_ISOLATION=rootless'", jenkinsfile)
+        self.assertIn("'FACTORY_K8S_BUILDKIT_POD_TEMPLATE'", jenkinsfile)
+        self.assertIn("'FACTORY_BUILDKIT_NO_PROCESS_SANDBOX=true'", jenkinsfile)
         self.assertIn("'STORAGE_DRIVER=vfs'", jenkinsfile)
-        self.assertIn('--isolation "${isolation}"', build)
-        self.assertNotIn("--isolation chroot", build)
+        self.assertIn("--oci-worker-snapshotter=native", launcher)
+        self.assertIn("--containerd-worker=false", launcher)
+        self.assertIn("--oci-worker-no-process-sandbox", launcher)
         self.assertIn("USER ${FACTORY_UID}", runner)
         self.assertIn("/etc/subuid", runner)
+        for tool in ("buildctl", "buildkitd", "buildkit-runc", "rootlesskit"):
+            self.assertIn(f"test -x /usr/local/bin/{tool}", runner)
         self.assertIn('driver = "vfs"', storage)
 
     def test_rootfs_scans_do_not_mount_container_storage(self) -> None:
@@ -126,6 +134,7 @@ class LocalWorkflowTests(unittest.TestCase):
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
         test_runner = (ROOT / "scripts/run_tests.sh").read_text(encoding="utf-8")
 
+        self.assertIn('"oci-archive:${buildkit_archive}"', build)
         self.assertIn("oci-archive:${work_dir}/image.oci.tar:${local_ref}", build)
         self.assertIn(
             'skopeo inspect "oci-archive:${work_dir}/image.oci.tar:${local_ref}"',
