@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate staged agent changes without executing the proposed code."""
 
+import os
 import subprocess
 from pathlib import PurePosixPath
 
@@ -8,6 +9,10 @@ import yaml
 
 
 def main():
+    catalog_directory = PurePosixPath(os.environ.get("FACTORY_CATALOG_DIR", "catalog/images"))
+    if catalog_directory.is_absolute() or ".." in catalog_directory.parts:
+        raise SystemExit("remediation catalog directory must be relative to the repository")
+    catalog_prefix = str(catalog_directory) + "/"
     names = (
         subprocess.check_output(["git", "diff", "--cached", "--name-only", "-z"])
         .decode()
@@ -15,14 +20,14 @@ def main():
     )
     for name in filter(None, names):
         path = PurePosixPath(name)
-        if not name.startswith(("overlays/", "catalog/images/", "tests/profiles/")):
+        if not name.startswith(("overlays/", catalog_prefix, "tests/profiles/")):
             raise SystemExit(f"agent patch contains an unapproved path: {name}")
         if any(word in name.lower() for word in ("vex", "exception")):
             raise SystemExit(f"agent patch touches protected evidence: {name}")
         entry = subprocess.check_output(["git", "ls-files", "--stage", "--", name]).decode()
         if not entry.startswith(("100644 ", "100755 ")):
             raise SystemExit(f"agent patch cannot delete files or introduce links: {name}")
-        if name.startswith("catalog/images/"):
+        if name.startswith(catalog_prefix):
             before = yaml.safe_load(subprocess.check_output(["git", "show", f"HEAD:{name}"]))
             after = yaml.safe_load(subprocess.check_output(["git", "show", f":{name}"]))
             # Only versions, checksums (in overlays), source revision, and build

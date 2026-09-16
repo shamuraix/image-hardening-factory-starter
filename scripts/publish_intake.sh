@@ -2,7 +2,7 @@
 set -euo pipefail
 
 image=${1:?image name is required}
-catalog="catalog/images/${image}.yaml"
+catalog="${FACTORY_CATALOG_DIR:-catalog/images}/${image}.yaml"
 revision=$(yq -r '.source.revision' "${catalog}")
 work="work/${image}"
 source_repository=${FACTORY_SOURCE_REPOSITORY:?FACTORY_SOURCE_REPOSITORY is required}
@@ -46,10 +46,13 @@ done
 
 # OCI archives are imported by digest with Skopeo. The destination name is
 # derived from the source repository while the digest remains authoritative.
-authfile=$(mktemp)
-trap 'rm -f "${authfile}"' EXIT
-skopeo login --authfile "${authfile}" --username oidc \
-  --password "${ARTIFACTORY_WRITE_TOKEN}" "${ARTIFACTORY_REGISTRY}"
+authdir=$(mktemp -d)
+trap 'rm -rf "${authdir}"' EXIT
+source scripts/lib/registry_auth.sh
+factory_registry_auth "${authdir}"
+authfile="${authdir}/config.json"
+printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | skopeo login --authfile "${authfile}" --username oidc \
+  --password-stdin "${ARTIFACTORY_REGISTRY}"
 while IFS=$'\t' read -r source digest; do
   [[ -n "${source}" ]] || continue
   source=${source#docker://}

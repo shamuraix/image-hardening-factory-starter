@@ -35,7 +35,7 @@ tools:
   grype:
     project: https://github.com/anchore/grype
     license: Apache-2.0
-    version: 0.95.0
+    version: 0.118.0
   trivy:
     project: https://github.com/aquasecurity/trivy
     license: Apache-2.0

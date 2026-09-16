@@ -31,9 +31,12 @@ build_id=${FACTORY_BUILD_ID:?FACTORY_BUILD_ID is required for protected publicat
 }
 destination="${ARTIFACTORY_REGISTRY}/${repository}/${path}:${version}-${build_id}"
 candidate_digest=$(jq -er '.digest' "${work_dir}/image-metadata.json")
-authfile=$(mktemp)
-trap 'rm -f "${authfile}"' EXIT
-skopeo login --authfile "${authfile}" --username oidc --password "${ARTIFACTORY_WRITE_TOKEN}" "${ARTIFACTORY_REGISTRY}"
+authdir=$(mktemp -d)
+trap 'rm -rf "${authdir}"' EXIT
+source scripts/lib/registry_auth.sh
+factory_registry_auth "${authdir}"
+authfile="${authdir}/config.json"
+printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | skopeo login --authfile "${authfile}" --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
 skopeo copy --preserve-digests --authfile "${authfile}" \
   "oci-archive:${work_dir}/image.oci.tar" "docker://${destination}"
 digest=$(skopeo inspect --authfile "${authfile}" "docker://${destination}" | jq -er '.Digest')

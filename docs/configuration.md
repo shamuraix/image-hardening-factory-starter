@@ -164,9 +164,24 @@ loaded from the default branch; repository guards alone cannot protect a
 Jenkinsfile modified by an untrusted change request. The Gov `input` step must
 use folder-level RBAC backed by the configured U.S.-person group.
 
+## Scanner evidence configuration
+
+Grype uses `GRYPE_DB_CACHE_DIR` and `FACTORY_KEV_PATH` (defaults under
+`/opt/security-data`). Both database and KEV feed must satisfy the catalog's
+freshness limit. An optional `FACTORY_GRYPE_BASELINE` needs an adjacent `.sig`
+and trusted `FACTORY_BASELINE_PUBLIC_KEY`; see the
+[baseline contract](reviews/harness-remediation-plan.md#remediation-progress-2026-09-15).
+
+FCS requires `FACTORY_FCS_REPORT_SCHEMA`, a local reviewed JSON Schema for its
+pinned CLI report. Bundle schema references locally. The schema setting is part of Jenkins backend selection. An unset setting uses
+Grype; a selected FCS backend with an unreadable or invalid schema fails closed
+and does not switch scanners after selection.
+
 ## CrowdStrike FCS assessment
 
-CrowdStrike FCS CLI 4.x is the authoritative image-security assessment. It runs
+CrowdStrike FCS CLI 4.x is the preferred assessment when enabled and configured.
+Otherwise Jenkins automatically schedules Syft/Grype for the release gate.
+See [selection settings and offline prerequisites](reviews/harness-remediation-plan.md#immediate-change-fcs-preference-with-syftgrype-fallback). It runs
 on the protected Kubernetes pod template named by
 `FACTORY_K8S_FCS_POD_TEMPLATE` against the exact candidate loaded from
 `image.oci.tar` into rootless Podman. The CLI uses the
@@ -178,8 +193,8 @@ FCS produces its native JSON assessment and a CycloneDX JSON SBOM. CrowdStrike's
 public FCS image-scan interface does not support SPDX output; the existing Syft
 job remains responsible for `sbom.spdx.json`. Grype, Trivy, OSV, and ClamAV
 continue to publish informational evidence (the first three in the normalized
-finding document and ClamAV in its native text report) but no longer make release
-decisions. Compliance, product tests, SBOM validity, approvals, and evidence
+finding document and ClamAV in its native text report) in the optional SCAN stage. A separate Grype assessment becomes authoritative
+when FCS is disabled or unconfigured. Compliance, product tests, SBOM validity, approvals, and evidence
 signatures remain independently blocking.
 
 The FCS job uses a dedicated runner image built by
@@ -254,7 +269,7 @@ oras discover "${ARTIFACTORY_REGISTRY}/${FACTORY_QUARANTINE_REPOSITORY}/${FACTOR
 Each pipeline stage is controlled by a Jenkins boolean parameter. Only catalog
 validation is enabled by default. The Jenkinsfile rejects combinations that
 omit a required predecessor; for example, the policy gate requires build,
-SBOM, FCS, compliance, and test stages.
+SBOM, compliance, and test stages, plus an automatically selected assessment.
 
 | Variable | Default | Stage controlled |
 |---|---|---|
@@ -265,7 +280,7 @@ SBOM, FCS, compliance, and test stages.
 | `FACTORY_ENABLE_SCAN` | `false` | Grype/Trivy/OSV/ClamAV informational scans |
 | `FACTORY_ENABLE_HELMPER` | `false` | Helmper-style chart inventory evidence |
 | `FACTORY_ENABLE_COPA` | `false` | Copacetic-style patch planning evidence |
-| `FACTORY_ENABLE_FCS` | `false` | CrowdStrike FCS authoritative assessment |
+| `FACTORY_ENABLE_FCS` | `false` | Prefer FCS when configured; otherwise schedule Grype |
 | `FACTORY_ENABLE_COMPLIANCE` | `false` | OpenSCAP compliance scan |
 | `FACTORY_ENABLE_TEST` | `false` | Product integration tests |
 | `FACTORY_ENABLE_GATE` | `false` | OPA policy gate |

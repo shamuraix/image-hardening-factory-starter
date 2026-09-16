@@ -8,9 +8,8 @@ applications or confer a STIG/FedRAMP compliance designation.
 **Status: integration reference implementation.** Local validation runs without
 registries. Production requires configured Jenkins trust classes, immutable RPM
 snapshots, tool images, signing keys, and licensed product test environments.
-The build path is internal-only; the authoritative CrowdStrike FCS assessment
-requires the selected Falcon API. A fully disconnected release cannot currently
-complete that gate. See [implementation status](docs/implementation-status.md).
+The build path is internal-only. Enabled and configured CrowdStrike FCS requires
+the selected Falcon API; otherwise the gate uses offline Syft/Grype. See [implementation status](docs/implementation-status.md).
 
 ## Start here
 
@@ -72,7 +71,8 @@ flowchart TD
     Promote --> Release["Release or isolated canary repository"]
 ```
 
-FCS is the scanner authority. Grype, Trivy, OSV and ClamAV image reports are
+FCS is preferred when enabled and configured; otherwise Syft/Grype supplies the
+scanner assessment using catalog thresholds. The optional legacy SCAN stage is
 informational; OpenSCAP, baseline tests, and required evidence also block release.
 Catalog vulnerability thresholds and exception records do **not** override the
 Falcon tenant assessment policy. See [evidence model](docs/evidence-model.md).
@@ -136,3 +136,6 @@ enabled and configured.
 `work/`, `dist/`, downloaded vendor files, OCI archives, and generated plans are
 build outputs. Do not commit them. No license is assigned to factory code;
 confirm distribution terms with the repository owner before redistribution.
+
+See the [harness remediation plan](docs/reviews/harness-remediation-plan.md) for
+scanner selection details and [Rancher Desktop setup](docs/local-kubernetes-testing.md).

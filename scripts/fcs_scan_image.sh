@@ -77,7 +77,13 @@ set -e
 
 report_valid=false
 sbom_valid=false
-jq -e 'type == "object" and length > 0' "${assessment}" >/dev/null 2>&1 && report_valid=true
+if [[ -n ${FACTORY_FCS_REPORT_SCHEMA:-} ]]; then
+  python3 -m factory.fcs_report "${assessment}" "${FACTORY_FCS_REPORT_SCHEMA}" \
+    >"${output}/report-validation.log" 2>&1 && report_valid=true
+else
+  echo 'FACTORY_FCS_REPORT_SCHEMA must name a reviewed schema for the pinned CLI version' \
+    >"${output}/report-validation.log"
+fi
 jq -e '.bomFormat == "CycloneDX" and (.specVersion | type == "string") and (.components | type == "array")' "${sbom}" >/dev/null 2>&1 && sbom_valid=true
 version=$(fcs version 2>&1 | head -n1 || fcs --version 2>&1 | head -n1 || true)
 assessment_passed=false

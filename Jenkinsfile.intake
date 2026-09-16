@@ -160,9 +160,9 @@ stage('snapshot and mirror') {
                             "${ubi9_repo_file}" \
                             "${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY}" \
                             work/rpm-ubi9 \
-                            ${ubi9_repo_ids} |
-                          tail -n1
+                            ${ubi9_repo_ids} > work/intake/ubi9-snapshot.log
                         )
+                        snapshot_id=$(tail -n1 work/intake/ubi9-snapshot.log)
                         printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" > work/intake/ubi9.env
                     '''
                 }
@@ -181,9 +181,9 @@ stage('snapshot and mirror') {
                             "${ubi10_repo_file}" \
                             "${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY}" \
                             work/rpm-ubi10 \
-                            ${ubi10_repo_ids} |
-                          tail -n1
+                            ${ubi10_repo_ids} > work/intake/ubi10-snapshot.log
                         )
+                        snapshot_id=$(tail -n1 work/intake/ubi10-snapshot.log)
                         printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" > work/intake/ubi10.env
                     '''
                 }

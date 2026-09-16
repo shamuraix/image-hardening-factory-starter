@@ -38,9 +38,9 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown changed images"):
             render_plan(self.images, {"unknown-image"})
 
-    def test_fcs_is_required_by_gate(self) -> None:
+    def test_gate_requires_build_evidence_and_selects_assessment(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("GATE: ['BUILD', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST']", jenkinsfile)
+        self.assertIn("GATE: ['BUILD', 'SBOM', 'COMPLIANCE', 'TEST']", jenkinsfile)
         self.assertIn("fcsArtifact", jenkinsfile)
 
     def test_konflux_concept_stages_have_dependencies(self) -> None:
@@ -158,7 +158,8 @@ class PipelineTests(unittest.TestCase):
     def test_copa_hook_handles_command_success_and_failure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp) / "work"
-            work.mkdir(parents=True)
+            (work / "evidence").mkdir(parents=True)
+            (work / "evidence/findings.json").write_text('{"findings":[]}')
             env = os.environ.copy()
             env["FACTORY_COPA_COMMAND"] = "true"
             success = subprocess.run(
@@ -276,11 +277,12 @@ class PipelineTests(unittest.TestCase):
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         self.assertIn("'FACTORY_K8S_FCS_POD_TEMPLATE'", jenkinsfile)
         self.assertIn("'FACTORY_FCS_RUNNER_IMAGE'", jenkinsfile)
-        self.assertIn("catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE')", jenkinsfile)
+        self.assertIn("catchInterruptions: false", jenkinsfile)
+        self.assertIn("stageName == 'gate' ? 'FAILURE' : 'SUCCESS'", jenkinsfile)
 
         policy = (ROOT / "policies/rego/factory/release/release.rego").read_text(encoding="utf-8")
         self.assertIn("input.fcs.assessmentPassed", policy)
-        self.assertNotIn("input.findings", policy)
+        self.assertIn('backend == "grype"', policy)
 
         gate_script = (ROOT / "scripts/evaluate_gate.sh").read_text(encoding="utf-8")
         self.assertIn('(.findings | type == "array")', gate_script)

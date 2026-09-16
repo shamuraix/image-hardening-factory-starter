@@ -5,6 +5,24 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 evidence="${work_dir}/evidence"
 
+backend=${FACTORY_SCANNER_BACKEND:-fcs}
+case "${backend}" in
+  fcs) status="${evidence}/scans/fcs/status.json" ;;
+  grype)
+    status="${evidence}/scans/grype/status.json"
+    # Authoritative scanner data must never take the informational fallback.
+    jq -e 'type == "object" and (.findings | type == "array")' \
+      "${evidence}/scans/grype/findings.json" >/dev/null
+    jq -e 'type == "object" and .valid == true and (.error | not)' \
+      "${evidence}/scans/grype/database.json" >/dev/null
+    cp "${evidence}/scans/grype/findings.json" "${evidence}/findings.json"
+    cp "${evidence}/scans/grype/database.json" "${evidence}/database-status.json"
+    ;;
+  *) echo "Unknown scanner backend: ${backend}" >&2; exit 1 ;;
+esac
+
+jq -e --arg backend "${backend}" '(.backend // "fcs") == $backend' "${status}" >/dev/null
+
 # Legacy scanners are informational. Preserve their evidence when available,
 # but do not prevent the authoritative FCS assessment from reaching policy.
 if ! jq -e 'type == "object" and (.findings | type == "array")' \
@@ -24,7 +42,7 @@ python3 -m factory.cli gate-input \
   --compliance "${evidence}/compliance/result.json" \
   --tests "${evidence}/tests/result.json" \
   --database-status "${evidence}/database-status.json" \
-  --fcs-status "${evidence}/scans/fcs/status.json" \
+  --fcs-status "${status}" \
   --output "${evidence}/gate-input.json"
 
 yq -o=json '.policy' "${catalog}" >"${work_dir}/policy.json"

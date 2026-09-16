@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
 from __future__ import annotations
 
+import csv
 import json
 import re
 import shlex
 import sys
-import csv
 from pathlib import Path
 
 REPO_TMPFS_MOUNT = "--mount=type=tmpfs,target=/etc/yum.repos.d"
@@ -246,7 +245,7 @@ def _leading_run_mounts(lines: list[str]) -> list[dict[str, str]]:
                 raise DockerfileAdaptationError(f"unsupported RUN syntax: {exc}") from exc
             if option_value == lexer.eof:
                 raise DockerfileAdaptationError(f"{token} is missing a value")
-        elif token.startswith("--network=") or token.startswith("--security="):
+        elif token.startswith(("--network=", "--security=")):
             continue
         elif token.startswith("--"):
             raise DockerfileAdaptationError(f"unsupported leading RUN option {token}")

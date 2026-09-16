@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: factory-harness
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: jenkins}
+  template:
+    metadata:
+      labels: {app: jenkins}
+    spec:
+      serviceAccountName: jenkins
+      securityContext: {fsGroup: 1000}
+      containers:
+        - name: jenkins
+          image: localhost/factory-review-jenkins:review
+          imagePullPolicy: Never
+          env:
+            - name: HARNESS_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: jenkins-login, key: password}
+            - name: JAVA_OPTS
+              value: -Djenkins.install.runSetupWizard=false -Xmx1024m
+          ports: [{containerPort: 8080}, {containerPort: 50000}]
+          resources:
+            requests: {cpu: 500m, memory: 1Gi}
+            limits: {cpu: "2", memory: 2Gi}
+          startupProbe:
+            httpGet: {path: /login, port: 8080}
+            failureThreshold: 120
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: {path: /login, port: 8080}
+          volumeMounts:
+            - {name: home, mountPath: /var/jenkins_home}
+            - {name: init, mountPath: /var/jenkins_home/init.groovy.d, readOnly: true}
+            - {name: pipeline, mountPath: /harness, readOnly: true}
+      volumes:
+        - name: home
+          emptyDir: {}
+        - name: init
+          configMap: {name: jenkins-init}
+        - name: pipeline
+          configMap: {name: harness-pipeline}

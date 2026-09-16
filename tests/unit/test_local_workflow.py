@@ -147,7 +147,9 @@ class LocalWorkflowTests(unittest.TestCase):
         local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
 
         self.assertIn("catalog_base_image=$(yq -r '.build.base.image'", local_build)
-        self.assertIn('rpm_catalog="catalog/images/${base_image}.yaml"', local_build)
+        self.assertIn(
+            'rpm_catalog="${FACTORY_CATALOG_DIR:-catalog/images}/${base_image}.yaml"', local_build
+        )
         self.assertIn('export RPM_SNAPSHOT_UBI9_ID="${snapshot_id}"', local_build)
         self.assertIn('export RPM_SNAPSHOT_UBI10_ID="${snapshot_id}"', local_build)
         self.assertNotIn('.product.version\' "${catalog}") == 10.*', local_build)

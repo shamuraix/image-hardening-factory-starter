@@ -39,6 +39,8 @@ def gate_input(
         "compliancePassed": compliance.get("passed") is True,
         "testsPassed": tests.get("passed") is True,
         "database": database,
+        "scannerBackend": fcs.get("backend", "fcs"),
+        "assessment": fcs,
         "fcs": fcs,
     }
 

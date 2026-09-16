@@ -13,7 +13,7 @@ mkdir -p "work/${image}"
 if [[ $(yq -r '.metadata.track' "${catalog}") == release ]] && \
    [[ $(yq -r '.build.base.kind' "${catalog}") == catalog ]]; then
   base=$(yq -r '.build.base.image' "${catalog}")
-  [[ $(yq -r '.metadata.track' "catalog/images/${base}.yaml") == release ]]
+  [[ $(yq -r '.metadata.track' "$(dirname "${catalog}")/${base}.yaml") == release ]]
 fi
 
 jq -n \

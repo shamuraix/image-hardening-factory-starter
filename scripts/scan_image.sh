@@ -6,9 +6,9 @@ evidence="${work_dir}/evidence"
 scans="${evidence}/scans"
 mkdir -p "${scans}"
 
-: "${GRYPE_DB_CACHE_DIR:=/opt/security-data/grype}"
-: "${TRIVY_CACHE_DIR:=/opt/security-data/trivy}"
-: "${OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY:=/opt/security-data/osv}"
+export GRYPE_DB_CACHE_DIR=${GRYPE_DB_CACHE_DIR:-/opt/security-data/grype}
+export TRIVY_CACHE_DIR=${TRIVY_CACHE_DIR:-/opt/security-data/trivy}
+export OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=${OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY:-/opt/security-data/osv}
 
 GRYPE_DB_AUTO_UPDATE=false grype "sbom:${evidence}/sbom.cdx.json" -o json >"${scans}/grype.json"
 trivy image --skip-db-update --skip-java-db-update --input "${work_dir}/image.oci.tar" \

@@ -272,6 +272,7 @@ that destination signatures and all required predicates verify, and that canary
 writes cannot reach release storage. Complete licensed database/search/clustering
 and graceful-shutdown tests before treating the product baseline profiles as
 production qualification. FCS API egress is required even when build inputs are
-air-gapped; no offline FCS substitute is implemented here.
+air-gapped. When FCS is disabled or unconfigured, the gate instead uses offline
+Syft/Grype with a populated security bundle; see [scanner selection](reviews/harness-remediation-plan.md).
 
 Release tags are `<product-version>-<full-sha256>` so a rebuilt product version can coexist with the previous immutable release. Consumers should use the verified digest.

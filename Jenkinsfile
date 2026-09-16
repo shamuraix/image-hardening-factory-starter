@@ -41,6 +41,14 @@ def stageEnabled(String name) {
 }
 
 
+def scannerBackend() {
+    def configured = ['FACTORY_K8S_FCS_POD_TEMPLATE', 'FACTORY_FCS_RUNNER_IMAGE',
+        'FALCON_REGION', 'FALCON_CLIENT_ID_CREDENTIAL_ID',
+        'FALCON_CLIENT_SECRET_CREDENTIAL_ID', 'FACTORY_FCS_REPORT_SCHEMA'].every { env[it]?.trim() }
+    return stageEnabled('FCS') && configured ? 'fcs' : 'grype'
+}
+
+
 def artifactName(String image, String stageName) {
     return safeName("${env.BUILD_TAG}-${image}-${stageName}")
 }
@@ -192,24 +200,34 @@ def runFactoryStage(
                     execute()
                 }
             }
-            if (nonBlocking) {
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+            def failed = false
+            try {
+                if (nonBlocking) {
+                    catchError(buildResult: stageName == 'gate' ? 'FAILURE' : 'SUCCESS',
+                               stageResult: stageName == 'gate' ? 'FAILURE' : 'UNSTABLE',
+                               catchInterruptions: false) {
+                        executeWithLock()
+                    }
+                } else {
                     executeWithLock()
                 }
-            } else {
-                executeWithLock()
+            } catch (Throwable failure) {
+                failed = true
+                throw failure
+            } finally {
+                // Evidence collection must not hide the original failure or cancellation.
+                try {
+                    archiveArtifacts(artifacts: outputPatterns, allowEmptyArchive: true,
+                        fingerprint: stageName in ['build', 'import', 'attest'])
+                    if (!failed) {
+                        stash(name: outputArtifact, includes: outputPatterns,
+                            allowEmpty: nonBlocking, useDefaultExcludes: false)
+                    }
+                } catch (Throwable collectionFailure) {
+                    if (!failed) { throw collectionFailure }
+                    echo("Evidence collection failed: ${collectionFailure.message}")
+                }
             }
-            stash(
-                name: outputArtifact,
-                includes: outputPatterns,
-                allowEmpty: nonBlocking,
-                useDefaultExcludes: false,
-            )
-            archiveArtifacts(
-                artifacts: outputPatterns,
-                allowEmptyArchive: nonBlocking,
-                fingerprint: stageName in ['build', 'import', 'attest'],
-            )
         }
     }
     return outputArtifact
@@ -228,16 +246,16 @@ def validateStageDependencies() {
         BUILD: ['PREPARE'],
         SBOM: ['BUILD'],
         SCAN: ['BUILD', 'SBOM'],
-        FCS: ['BUILD'],
+        FCS: scannerBackend() == 'grype' ? ['BUILD', 'SBOM'] : ['BUILD'],
         COMPLIANCE: ['BUILD', 'SBOM'],
         TEST: ['BUILD'],
         HELMPER: ['PREPARE'],
         COPA: ['BUILD', 'SBOM'],
-        GATE: ['BUILD', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST'],
+        GATE: ['BUILD', 'SBOM', 'COMPLIANCE', 'TEST'],
         REMEDIATE: ['GATE', 'SBOM'],
         REMEDIATION_BRANCH: ['REMEDIATE'],
         IMPORT: ['PREPARE', 'BUILD', 'GATE'],
-        ATTEST: ['IMPORT', 'GATE', 'SBOM', 'FCS', 'COMPLIANCE', 'TEST'],
+        ATTEST: ['IMPORT', 'GATE', 'SBOM', 'COMPLIANCE', 'TEST'],
         HUMMINGBIRD: ['BUILD', 'SBOM'],
         PROMOTE: ['IMPORT', 'ATTEST'],
     ]
@@ -257,7 +275,10 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
     def image = imageDefinition.name as String
     def catalogFile = imageDefinition.catalogFile as String
     def baseImage = imageDefinition.baseImage as String
+    def backend = scannerBackend()
+    echo("${image}: authoritative scanner backend=${backend}")
     def catalogEnvironment = [
+        "FACTORY_SCANNER_BACKEND=${backend}",
         "FACTORY_CATALOG_FILE=${catalogFile}",
         "FACTORY_RELEASE_ENV=${parameterText('FACTORY_RELEASE_ENV', 'commercial')}",
     ]
@@ -331,8 +352,9 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             'FACTORY_RUNNER_IMAGE',
             [prepareArtifact],
             "work/${image}/image.oci.tar,work/${image}/image-metadata.json," +
-                "work/${image}/build.env",
-            'scripts/build_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
+                "work/${image}/build.env,work/${image}/evidence/runtime/**",
+            'scripts/runtime_preflight.sh "${FACTORY_WORK_DIR}/evidence/runtime" && ' +
+                'scripts/build_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [[
                 type: 'string',
                 idVariable: 'ARTIFACTORY_READ_CREDENTIAL_ID',
@@ -363,7 +385,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             'scan',
             'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            [buildArtifact, sbomArtifact],
+            [prepareArtifact, buildArtifact, sbomArtifact],
             "work/${image}/evidence/scans/**,work/${image}/evidence/findings.json," +
                 "work/${image}/evidence/database-status.json",
             'scripts/scan_image.sh "${FACTORY_WORK_DIR}"',
@@ -394,7 +416,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             'copacetic',
             'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            [buildArtifact, sbomArtifact],
+            [buildArtifact, sbomArtifact, scanArtifact],
             "work/${image}/evidence/copacetic/**",
             'scripts/copacetic_patch_plan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [],
@@ -403,7 +425,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
         )
     }
 
-    if (stageEnabled('FCS')) {
+    if (backend == 'fcs' && (stageEnabled('FCS') || stageEnabled('GATE'))) {
         fcsArtifact = runFactoryStage(
             image,
             'fcs',
@@ -424,6 +446,20 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
                     variable: 'FALCON_CLIENT_SECRET',
                 ],
             ],
+            catalogEnvironment,
+        )
+    }
+
+    if (backend == 'grype' && (stageEnabled('FCS') || stageEnabled('GATE'))) {
+        fcsArtifact = runFactoryStage(
+            image,
+            'grype-assessment',
+            'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
+            'FACTORY_RUNNER_IMAGE',
+            [buildArtifact, sbomArtifact],
+            "work/${image}/evidence/scans/grype/**",
+            'scripts/grype_scan_image.sh "${FACTORY_WORK_DIR}"',
+            [],
             catalogEnvironment,
         )
     }
@@ -597,7 +633,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             'hummingbird',
             'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            [buildArtifact, sbomArtifact],
+            [buildArtifact, sbomArtifact, fcsArtifact, gateArtifact, attestArtifact],
             "work/${image}/evidence/hummingbird/**",
             'scripts/hummingbird_verify.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [],

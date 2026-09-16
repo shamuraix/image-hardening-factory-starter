@@ -48,9 +48,8 @@ class DockerfileAdaptationTests(unittest.TestCase):
             'FROM ${BASE_REF}\nADD ["https://example.invalid/file", "/file"]\n',
         ]
         for dockerfile in cases:
-            with self.subTest(dockerfile=dockerfile):
-                with self.assertRaises(DockerfileAdaptationError):
-                    adapt_dockerfile_text(dockerfile)
+            with self.subTest(dockerfile=dockerfile), self.assertRaises(DockerfileAdaptationError):
+                adapt_dockerfile_text(dockerfile)
 
     def test_allows_local_multistage_copy(self) -> None:
         adapted = adapt_dockerfile_text(
@@ -94,9 +93,8 @@ class DockerfileAdaptationTests(unittest.TestCase):
             "RUN --mount=type=tmpfs,destination=/etc/yum.repos.d/factory.repo echo unsafe\n",
         ]
         for run in cases:
-            with self.subTest(run=run):
-                with self.assertRaises(DockerfileAdaptationError):
-                    adapt_dockerfile_text(f"FROM ${{BASE_REF}}\n{run}")
+            with self.subTest(run=run), self.assertRaises(DockerfileAdaptationError):
+                adapt_dockerfile_text(f"FROM ${{BASE_REF}}\n{run}")
 
     def test_does_not_parse_run_shell_body_for_reserved_words(self) -> None:
         adapted = adapt_dockerfile_text(
@@ -130,6 +128,7 @@ class BuildImageBuildKitTests(unittest.TestCase):
         self.bin = self.project / "bin"
         self.bin.mkdir()
         (self.project / "scripts").mkdir()
+        shutil.copytree(ROOT / "scripts/lib", self.project / "scripts/lib")
         (self.project / "catalog/images").mkdir(parents=True)
         shutil.copy2(ROOT / "scripts/build_image.sh", self.project / "scripts/build_image.sh")
         os.chmod(self.project / "scripts/build_image.sh", 0o755)
@@ -144,15 +143,13 @@ class BuildImageBuildKitTests(unittest.TestCase):
             json.dumps({"localDevelopment": True}), encoding="utf-8"
         )
         (self.work / "build.env").write_text(
-            "\n".join(
-                [
-                    "FACTORY_IMAGE=test",
-                    "SOURCE_REVISION=abc123",
-                    "BASE_REF=localhost/factory/base:local",
-                    "BASE_DIGEST=sha256:base",
-                    "RPM_REPOMD_DIGEST=sha256:repomd",
-                    "",
-                ]
+            (
+                "FACTORY_IMAGE=test\n"
+                "SOURCE_REVISION=abc123\n"
+                "BASE_REF=localhost/factory/base:local\n"
+                "BASE_DIGEST=sha256:base\n"
+                "RPM_REPOMD_DIGEST=sha256:repomd\n"
+                ""
             ),
             encoding="utf-8",
         )
@@ -448,15 +445,13 @@ class BuildImageBuildKitTests(unittest.TestCase):
     def test_build_image_acquires_missing_base_with_private_auth_cleanup(self) -> None:
         (self.work / "base.oci.tar").unlink()
         (self.work / "build.env").write_text(
-            "\n".join(
-                [
-                    "FACTORY_IMAGE=test",
-                    "SOURCE_REVISION=abc123",
-                    "BASE_REF=registry.internal.example/factory/base@sha256:base",
-                    "BASE_DIGEST=sha256:base",
-                    "RPM_REPOMD_DIGEST=sha256:repomd",
-                    "",
-                ]
+            (
+                "FACTORY_IMAGE=test\n"
+                "SOURCE_REVISION=abc123\n"
+                "BASE_REF=registry.internal.example/factory/base@sha256:base\n"
+                "BASE_DIGEST=sha256:base\n"
+                "RPM_REPOMD_DIGEST=sha256:repomd\n"
+                ""
             ),
             encoding="utf-8",
         )

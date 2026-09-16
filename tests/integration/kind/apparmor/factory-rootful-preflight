@@ -1,0 +1,9 @@
+# Local diagnostic profile. Applied explicitly to the test container only.
+# Matches its existing unconfined profile, with an explicit userns grant to
+# avoid Ubuntu's restricted-unprivileged-userns transition.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile factory-rootful-preflight flags=(unconfined) {
+  userns,
+}

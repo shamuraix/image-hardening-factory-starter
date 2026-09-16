@@ -33,10 +33,14 @@ path=${FACTORY_IMAGE_PATH:-$(scripts/catalog_value.sh "${catalog}" '.publication
 version=$(yq -r '.product.version' "${catalog}")
 destination="${ARTIFACTORY_REGISTRY}/${release_repository}/${path}:${version}-${IMPORTED_IMAGE_DIGEST#sha256:}"
 
-oras cp --registry-config "${REGISTRY_AUTH_FILE}" --recursive "${source_ref}" "${destination}"
+oras cp --from-plain-http=false --to-plain-http=false --from-registry-config "${REGISTRY_AUTH_FILE}" --to-registry-config "${REGISTRY_AUTH_FILE}" --recursive "${source_ref}" "${destination}"
 # Cosign 2.x stores signatures/attestations under digest-derived tags, which
 # ORAS recursive referrer discovery alone does not copy.
-cosign copy --only=sig,att,sbom "${source_ref}" "${destination}"
+# A retry may encounter a complete, already verified destination. Do not force
+# overwrite existing signatures from another signer or an incomplete release.
+if ! scripts/verify_release_evidence.sh "${destination}@${IMPORTED_IMAGE_DIGEST}" >/dev/null 2>&1; then
+  cosign copy --only=sig,att,sbom "${source_ref}" "${destination}"
+fi
 observed=$(skopeo inspect --authfile "${REGISTRY_AUTH_FILE}" "docker://${destination}" | jq -er '.Digest')
 [[ "${observed}" == "${IMPORTED_IMAGE_DIGEST}" ]] || {
   echo "digest changed during promotion: ${IMPORTED_IMAGE_DIGEST} -> ${observed}" >&2

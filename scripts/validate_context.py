@@ -32,7 +32,7 @@ def main() -> int:
             fail(f"containerfile argument {key} does not match catalog value {value}")
     if catalog["build"]["base"]["kind"] == "catalog":
         base_name = catalog["build"]["base"]["image"]
-        base_catalog = yaml.safe_load(Path(f"catalog/images/{base_name}.yaml").read_text())
+        base_catalog = yaml.safe_load((Path(sys.argv[1]).parent / f"{base_name}.yaml").read_text())
         expected = str(base_catalog["product"]["version"])
         if str(manifest.get("args", {}).get("BASE_TAG")) != expected:
             fail(f"manifest BASE_TAG must match {base_name} version {expected}")

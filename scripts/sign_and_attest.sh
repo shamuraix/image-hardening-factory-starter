@@ -52,13 +52,23 @@ declare -A predicates=(
   ["${evidence}/sbom.spdx.json"]="https://spdx.dev/Document"
   ["${evidence}/provenance.json"]="https://slsa.dev/provenance/v1"
   ["${evidence}/findings.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:vulnerability:v1"
-  ["${evidence}/scans/fcs/assessment.json"]="https://crowdstrike.com/fcs/image-assessment/v1"
-  ["${evidence}/scans/fcs/sbom.cdx.json"]="https://cyclonedx.org/bom"
-  ["${evidence}/scans/fcs/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:fcs-decision:v1"
   ["${evidence}/compliance/result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:compliance:v1"
   ["${evidence}/tests/result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:test:v1"
   ["${evidence}/gate-result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:gate:v1"
 )
+backend=$(jq -er '.scannerBackend // "fcs"' "${evidence}/gate-result.json")
+case "${backend}" in
+  fcs)
+    predicates["${evidence}/scans/fcs/assessment.json"]="https://crowdstrike.com/fcs/image-assessment/v1"
+    predicates["${evidence}/scans/fcs/sbom.cdx.json"]="https://cyclonedx.org/bom"
+    predicates["${evidence}/scans/fcs/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:fcs-decision:v1"
+    ;;
+  grype)
+    predicates["${evidence}/scans/grype/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-decision:v1"
+    predicates["${evidence}/scans/grype/report.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-report:v1"
+    ;;
+  *) echo "Unknown signed scanner backend" >&2; exit 1 ;;
+esac
 for predicate in "${!predicates[@]}"; do
   cosign attest --yes --tlog-upload=false --key "${COSIGN_KEY_PATH}" \
     --type "${predicates[${predicate}]}" --predicate "${predicate}" "${subject}"

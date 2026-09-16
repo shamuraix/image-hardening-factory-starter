@@ -72,7 +72,9 @@ if [[ ! -f "${work_dir}/base.oci.tar" ]]; then
   [[ "${BASE_REF}" == "${ARTIFACTORY_REGISTRY:?}/"*@sha256:* ]] || {
     echo "remote base must be digest-pinned in the internal registry" >&2; exit 2;
   }
-  authfile=$(mktemp "${private_dir}/auth.XXXXXX")
+  source scripts/lib/registry_auth.sh
+  factory_registry_auth "${private_dir}/auth"
+  authfile="${private_dir}/auth/config.json"
   printf '%s' "${ARTIFACTORY_READ_TOKEN:?}" | skopeo login --authfile "${authfile}" \
     --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
   skopeo copy --authfile "${authfile}" --all --preserve-digests "${skopeo_copy_args[@]}" \
@@ -134,7 +136,7 @@ fi
 if [[ -n ${FACTORY_BASE_MAJOR:-} ]]; then
   base_major=${FACTORY_BASE_MAJOR}
 elif [[ $(yq -r '.build.base.kind' "${catalog}") == catalog ]]; then
-  base_catalog="catalog/images/$(yq -r '.build.base.image' "${catalog}").yaml"
+  base_catalog="$(dirname "${catalog}")/$(yq -r '.build.base.image' "${catalog}").yaml"
   base_major=$(yq -r '.product.version | split(".")[0]' "${base_catalog}")
 else
   base_major=$(yq -r '.product.version | split(".")[0]' "${catalog}")

@@ -16,6 +16,7 @@ else
   export FACTORY_COPA_SBOM="${work_dir}/evidence/sbom.cdx.json"
   export FACTORY_COPA_FINDINGS="${work_dir}/evidence/findings.json"
   export FACTORY_COPA_OUTPUT_DIR="${output_dir}"
+  [[ -s "${FACTORY_COPA_FINDINGS}" ]] || { echo "Copacetic requires scan findings" >&2; exit 1; }
   if bash -o pipefail -c "${FACTORY_COPA_COMMAND}" \
     >"${output_dir}/command.log" 2>&1; then
     status="completed"

@@ -18,7 +18,7 @@ groups.
 | CrowdStrike FCS assessment | Implemented as authoritative image-security gate | Build dedicated runner with pinned CLI and configure tenant assessment policy/API credentials |
 | OpenSCAP compliance | Implemented | Validate RHEL 9/10 tailoring and rule applicability |
 | Product tests | Implemented baseline | Add licensed PostgreSQL/OpenSearch cluster tests |
-| OPA gate | Implemented; FCS is the sole scanner authority | Govern tenant image-assessment policies and review policy changes |
+| OPA gate | Implemented; configured/enabled FCS preferred, otherwise Syft/Grype | Govern tenant image-assessment policies and review policy changes |
 | Quarantine import | Implemented | Configure OIDC token exchange and permissions |
 | Cosign/Artifactory OCI signing | Implemented | Configure environment-local key pairs, Kubernetes workload identity mapping and public keys |
 | Recursive promotion | ORAS referrers plus Cosign 2.x attachment copy | Confirm Artifactory OCI 1.1 referrer preservation |

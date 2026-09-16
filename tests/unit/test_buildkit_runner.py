@@ -83,6 +83,7 @@ class BuildkitRunnerTests(unittest.TestCase):
     def run_build(self, **settings: str) -> subprocess.CompletedProcess:
         return subprocess.run(
             [str(LAUNCHER), "build", "--frontend", "dockerfile.v0"],
+            check=False,
             env={**self.env, **settings},
             text=True,
             capture_output=True,

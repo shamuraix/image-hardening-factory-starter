@@ -2,7 +2,7 @@
 set -euo pipefail
 
 image=${1:?usage: scripts/local_build.sh IMAGE}
-catalog="catalog/images/${image}.yaml"
+catalog="${FACTORY_CATALOG_DIR:-catalog/images}/${image}.yaml"
 [[ -f "${catalog}" ]] || { echo "unknown image: ${image}" >&2; exit 2; }
 
 # LOCAL_USE_UPSTREAM_UBI_REPOS=true: development-only direct public CDN mode.
@@ -35,15 +35,15 @@ base_kind=$(yq -r '.build.base.kind' "${catalog}")
 if [[ ${base_kind} == catalog ]]; then
   catalog_base_image=$(yq -r '.build.base.image' "${catalog}")
   base_image=${LOCAL_BASE_IMAGE_OVERRIDE:-${catalog_base_image}}
-  [[ -f "catalog/images/${base_image}.yaml" ]] || {
+  [[ -f "${FACTORY_CATALOG_DIR:-catalog/images}/${base_image}.yaml" ]] || {
     echo "unknown LOCAL_BASE_IMAGE_OVERRIDE: ${base_image}" >&2
     exit 2
   }
-  [[ $(yq -r '.build.base.kind' "catalog/images/${base_image}.yaml") == upstream ]] || {
+  [[ $(yq -r '.build.base.kind' "${FACTORY_CATALOG_DIR:-catalog/images}/${base_image}.yaml") == upstream ]] || {
     echo "LOCAL_BASE_IMAGE_OVERRIDE must name a catalog base image" >&2
     exit 2
   }
-  rpm_catalog="catalog/images/${base_image}.yaml"
+  rpm_catalog="${FACTORY_CATALOG_DIR:-catalog/images}/${base_image}.yaml"
 else
   if [[ -n ${LOCAL_BASE_IMAGE_OVERRIDE:-} ]]; then
     echo "LOCAL_BASE_IMAGE_OVERRIDE is valid only for application images" >&2
