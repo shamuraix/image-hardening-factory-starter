@@ -1,0 +1,11 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -18,6 +18,8 @@
+     microdnf repolist && \
+     microdnf --setopt install_weak_deps=0 update -y && \
+     microdnf install -y crypto-policies-scripts && \
++    # Restore payload files pruned from the minimal upstream image.
++    microdnf reinstall -y tzdata gnupg2 libpeas rpm && \
+     # Do not use loops to iterate through shell scripts, this allows for scripts to fail
+     # but the build to still be successful. Be explicit when executing scripts and ensure
+     # that all scripts have "set -e" at the top of the bash file!

@@ -11,8 +11,8 @@ index da9d360..bbd1b33 100644
 +ARG BASE_REF
 +FROM ${BASE_REF}
 
- ARG JIRA_VERSION=11.3.10
- ARG JSM_VERSION=11.3.10
+ ARG JIRA_VERSION=11.3.11
+ ARG JSM_VERSION=11.3.11
 @@ -50,8 +48,8 @@ RUN microdnf -y update && microdnf -y upgrade \
      && chmod +x /usr/bin/tini \
      && microdnf clean all \

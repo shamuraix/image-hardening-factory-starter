@@ -11,7 +11,7 @@ index 24c2b12..119c9d8 100644
 +ARG BASE_REF
 +FROM ${BASE_REF}
 
- ARG CONFLUENCE_VERSION=10.2.15
+ ARG CONFLUENCE_VERSION=10.2.18
 
 diff --git a/hardening_manifest.yaml b/hardening_manifest.yaml
 index d8d59ec..d99e1b5 100644

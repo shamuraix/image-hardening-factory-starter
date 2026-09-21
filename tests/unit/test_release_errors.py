@@ -28,6 +28,9 @@ exit "$RPM_STATUS"
                 (1, "", "", False),
                 (1, "S.5......  c /etc/allowed\n", "error: database corrupt", False),
                 (1, "S.5......  c /etc/unexpected\n", "", False),
+                (1, "missing     /usr/share/zoneinfo/UTC\n", "", False),
+                (1, "Unsatisfied dependencies for java:\n\tcups-libs is needed\n", "", False),
+                (3, "S.5......  c /etc/allowed\n", "", False),
             ]
             for status, output, error, expected in cases:
                 with self.subTest(status=status, output=output, error=error):

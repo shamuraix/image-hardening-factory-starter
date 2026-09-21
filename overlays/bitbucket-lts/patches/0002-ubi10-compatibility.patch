@@ -4,7 +4,7 @@ diff --git a/Dockerfile b/Dockerfile
 @@ -2,6 +2,7 @@ ARG BASE_REF
  FROM ${BASE_REF}
 
- ARG BITBUCKET_VERSION=10.2.6
+ ARG BITBUCKET_VERSION=10.2.7
 +ARG BASE_MAJOR=9
 
  ENV APP_NAME=bitbucket

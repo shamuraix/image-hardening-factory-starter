@@ -4,7 +4,7 @@ diff --git a/Dockerfile b/Dockerfile
 @@ -2,6 +2,7 @@ ARG BASE_REF
  FROM ${BASE_REF}
 
- ARG CONFLUENCE_VERSION=10.2.15
+ ARG CONFLUENCE_VERSION=10.2.18
 +ARG BASE_MAJOR=9
 
  ENV APP_NAME=confluence

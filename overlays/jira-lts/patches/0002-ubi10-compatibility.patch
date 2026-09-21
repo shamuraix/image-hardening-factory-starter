@@ -3,8 +3,8 @@ diff --git a/Dockerfile b/Dockerfile
 +++ b/Dockerfile
 @@ -3,6 +3,7 @@ FROM ${BASE_REF}
 
- ARG JIRA_VERSION=11.3.10
- ARG JSM_VERSION=11.3.10
+ ARG JIRA_VERSION=11.3.11
+ ARG JSM_VERSION=11.3.11
 +ARG BASE_MAJOR=9
  ARG ARTEFACT_NAME=atlassian-jira-software
 

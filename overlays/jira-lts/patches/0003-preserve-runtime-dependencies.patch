@@ -1,0 +1,11 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -52,7 +52,7 @@
+     && rm -rf /opt/jira-servicedesk-application-${JSM_VERSION}.obr \
+     && rm -rf /opt/jsm/ \
+     && microdnf -y remove unzip gzip tar \
+-    && if [ "${BASE_MAJOR}" = "9" ]; then rpm -e --nodeps avahi-libs cups-libs; fi
++    && rpm -q cups-libs avahi-libs >/dev/null
+ 
+ # Must be declared after setting perms
+ VOLUME ["${JIRA_HOME}"]

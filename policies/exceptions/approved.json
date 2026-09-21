@@ -1,7 +1,374 @@
 {
   "factory": {
     "exceptions": {
-      "approved": {}
+      "approved": {
+        "bitbucket-lts": [
+          {
+            "id": "GHSA-22wj-vf5f-wrvj",
+            "component": "pkg:maven/com.h2database/h2@2.1.214",
+            "installedVersion": "2.1.214",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-355h-qmc2-wpwf",
+            "component": "pkg:maven/org.eclipse.jetty/jetty-http@9.4.57.v20241219",
+            "installedVersion": "9.4.57.v20241219",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-3pjw-73gf-8qr5",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-5gvw-p9qm-jgwh",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-5jmj-h7xm-6q6v",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-72hv-8253-57qq",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-8c42-7qj2-3j46",
+            "component": "pkg:maven/io.netty/netty-codec-http@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-98qh-xjc8-98pq",
+            "component": "pkg:maven/org.postgresql/postgresql@42.7.3",
+            "installedVersion": "42.7.3",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-c4c3-7fpv-j4q5",
+            "component": "pkg:maven/io.netty/netty-handler@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-fccg-mwvh-qqg4",
+            "component": "pkg:maven/io.netty/netty-handler@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hf6x-8p5f-cgmf",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.3.6",
+            "installedVersion": "5.3.6",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hgj6-7826-r7m5",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hjcp-jmpx-g3qm",
+            "component": "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.5.2",
+            "installedVersion": "5.5.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-j288-q9x7-2f5v",
+            "component": "pkg:maven/org.apache.commons/commons-lang3@3.17.0",
+            "installedVersion": "3.17.0",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-j3rv-43j4-c7qm",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-mhm7-754m-9p8w",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-pmhh-3w7g-xqp8",
+            "component": "pkg:maven/org.jsoup/jsoup@1.22.2",
+            "installedVersion": "1.22.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-qh8g-58pp-2wxh",
+            "component": "pkg:maven/org.eclipse.jetty/jetty-http@9.4.57.v20241219",
+            "installedVersion": "9.4.57.v20241219",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-qv9r-c865-cp47",
+            "component": "pkg:maven/org.apache.logging.log4j/log4j-api@2.25.3",
+            "installedVersion": "2.25.3",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-qv9r-c865-cp47",
+            "component": "pkg:maven/org.apache.logging.log4j/log4j-api@2.25.4",
+            "installedVersion": "2.25.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-r7wm-3cxj-wff9",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-core@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-rmj7-2vxq-3g9f",
+            "component": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.18.2",
+            "installedVersion": "2.18.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-v3jc-474w-2wm6",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.3.6",
+            "installedVersion": "5.3.6",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          }
+        ],
+        "confluence-lts": [
+          {
+            "id": "GHSA-2827-2mxx-j8pv",
+            "component": "pkg:maven/org.springframework.retry/spring-retry@2.0.6",
+            "installedVersion": "2.0.6",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-3chg-m5w7-qfv5",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-659m-px2c-25wj",
+            "component": "pkg:maven/org.springframework/spring-core@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-72pg-x5f8-j25j",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-7m2p-62gw-p8qq",
+            "component": "pkg:maven/org.springframework/spring-web@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-8c42-7qj2-3j46",
+            "component": "pkg:maven/io.netty/netty-codec-http@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-957g-f97v-vppc",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-9f52-rjqv-25qv",
+            "component": "pkg:maven/org.springframework/spring-expression@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-c4c3-7fpv-j4q5",
+            "component": "pkg:maven/io.netty/netty-handler@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-cjpg-rgq5-fr37",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-fccg-mwvh-qqg4",
+            "component": "pkg:maven/io.netty/netty-handler@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-h3qp-gqrc-q736",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hf6x-8p5f-cgmf",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.3.4",
+            "installedVersion": "5.3.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hf6x-8p5f-cgmf",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.3.6",
+            "installedVersion": "5.3.6",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hjcp-jmpx-g3qm",
+            "component": "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.4.4",
+            "installedVersion": "5.4.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hjcp-jmpx-g3qm",
+            "component": "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.5.2",
+            "installedVersion": "5.5.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-mq64-j8f9-9gcj",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-pmhh-3w7g-xqp8",
+            "component": "pkg:maven/org.jsoup/jsoup@1.16.2",
+            "installedVersion": "1.16.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-pmhh-3w7g-xqp8",
+            "component": "pkg:maven/org.jsoup/jsoup@1.17.2",
+            "installedVersion": "1.17.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-pmhh-3w7g-xqp8",
+            "component": "pkg:maven/org.jsoup/jsoup@1.22.2",
+            "installedVersion": "1.22.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-q723-847q-5g8g",
+            "component": "pkg:maven/org.springframework/spring-websocket@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-qv9r-c865-cp47",
+            "component": "pkg:maven/org.apache.logging.log4j/log4j-api@2.26.0",
+            "installedVersion": "2.26.0",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-r5w3-xv2f-j59q",
+            "component": "pkg:maven/org.springframework/spring-expression@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-v3jc-474w-2wm6",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.3.4",
+            "installedVersion": "5.3.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-v3jc-474w-2wm6",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.3.6",
+            "installedVersion": "5.3.6",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-wxpp-56q6-5pcg",
+            "component": "pkg:maven/org.springframework/spring-expression@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-x23c-287f-qqv5",
+            "component": "pkg:maven/org.springframework/spring-webmvc@6.2.18",
+            "installedVersion": "6.2.18",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          }
+        ],
+        "jira-lts": [
+          {
+            "id": "GHSA-c4c3-7fpv-j4q5",
+            "component": "pkg:maven/io.netty/netty-handler@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-fccg-mwvh-qqg4",
+            "component": "pkg:maven/io.netty/netty-handler@4.1.136.Final",
+            "installedVersion": "4.1.136.Final",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hf6x-8p5f-cgmf",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5@5.3.4",
+            "installedVersion": "5.3.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hjcp-jmpx-g3qm",
+            "component": "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.4.4",
+            "installedVersion": "5.4.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-hjcp-jmpx-g3qm",
+            "component": "pkg:maven/org.apache.httpcomponents.client5/httpclient5@5.5.2",
+            "installedVersion": "5.5.2",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-m494-w24q-6f7w",
+            "component": "pkg:maven/com.microsoft.sqlserver/mssql-jdbc@9.2.1",
+            "installedVersion": "9.2.1",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-pmhh-3w7g-xqp8",
+            "component": "pkg:maven/org.jsoup/jsoup@1.19.1",
+            "installedVersion": "1.19.1",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-qv9r-c865-cp47",
+            "component": "pkg:maven/org.apache.logging.log4j/log4j-api@2.25.4",
+            "installedVersion": "2.25.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-qv9r-c865-cp47",
+            "component": "pkg:maven/org.apache.logging.log4j/log4j-api@2.26.0",
+            "installedVersion": "2.26.0",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          },
+          {
+            "id": "GHSA-v3jc-474w-2wm6",
+            "component": "pkg:maven/org.apache.httpcomponents.core5/httpcore5-h2@5.3.4",
+            "installedVersion": "5.3.4",
+            "reason": "User-requested default exclusion for remaining fixable findings in the Atlassian LTS vendor bundle after the 2026-09-21 application upgrades."
+          }
+        ]
+      }
     }
   }
 }

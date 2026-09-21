@@ -7,13 +7,13 @@ metadata:
 source:
   upstream: https://repo1.dso.mil/dsop/atlassian/confluence-data-center/confluence-lts.git
   mirrorPath: mirrors/repo1/atlassian/confluence-lts
-  revision: 235fbd55719a89a6128ff5819e023935724ae9ed
+  revision: 9fcf1b3eaf43f47dc06f7f87244644b797b2d608
   containerfile: Dockerfile
   hardeningManifest: hardening_manifest.yaml
   overlay: overlays/confluence-lts/patches
 product:
   name: Confluence Data Center LTS
-  version: 10.2.15
+  version: 10.2.18
   vendor: Atlassian
   license: proprietary
 build:
@@ -24,7 +24,7 @@ build:
     image: ubi9-minimal
   testProfile: confluence
   buildArgs:
-    CONFLUENCE_VERSION: 10.2.15
+    CONFLUENCE_VERSION: 10.2.18
 policy:
   profile: atlassian-rhel9-container
   maximumDatabaseAgeHours: 72

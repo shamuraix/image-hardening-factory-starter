@@ -7,13 +7,13 @@ metadata:
 source:
   upstream: https://repo1.dso.mil/dsop/atlassian/bitbucket-data-center/bitbucket-lts.git
   mirrorPath: mirrors/repo1/atlassian/bitbucket-lts
-  revision: 0accb8f319027a0de3a020e53c14efaf0de8568c
+  revision: af750f62df2325dde68ea83ff64974c5a4d9cd75
   containerfile: Dockerfile
   hardeningManifest: hardening_manifest.yaml
   overlay: overlays/bitbucket-lts/patches
 product:
   name: Bitbucket Data Center LTS
-  version: 10.2.6
+  version: 10.2.7
   vendor: Atlassian
   license: proprietary
 build:
@@ -24,7 +24,7 @@ build:
     image: ubi9-minimal
   testProfile: bitbucket
   buildArgs:
-    BITBUCKET_VERSION: 10.2.6
+    BITBUCKET_VERSION: 10.2.7
 policy:
   profile: atlassian-rhel9-container
   maximumDatabaseAgeHours: 72

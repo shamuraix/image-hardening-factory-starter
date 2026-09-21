@@ -10,13 +10,14 @@ raw=$(mktemp)
 errors=$(mktemp)
 trap 'rm -f "${raw}" "${errors}"' EXIT
 
+# Ghost entries (such as host-mounted /proc and /sys) have no RPM payload.
 # Timestamps are normalized for reproducible OCI layers and are not content
 # integrity signals. Root inside rootless Podman maps to the unprivileged
 # factory user on the Kubernetes node.
 scripts/require_rootless.sh podman
 status=0
 podman run --rm --cgroups=disabled --user 0 --entrypoint /bin/bash "${image}" \
-  -c 'rpm -q rpm >/dev/null || exit 2; rpm -Va --nomtime' >"${raw}" 2>"${errors}" || status=$?
+  -c 'rpm -q rpm >/dev/null || exit 2; rpm -Va --nomtime --noghost' >"${raw}" 2>"${errors}" || status=$?
 cat "${raw}" "${errors}" >"${output}"
 if [[ ${status} -gt 1 || -s ${errors} ]] || { [[ ${status} -ne 0 && ! -s ${raw} ]]; }; then
   echo "RPM verification could not complete (exit ${status})" >&2

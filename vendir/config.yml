@@ -6,15 +6,15 @@ directories:
       - path: bitbucket-lts
         git:
           url: https://repo1.dso.mil/dsop/atlassian/bitbucket-data-center/bitbucket-lts.git
-          ref: 0accb8f319027a0de3a020e53c14efaf0de8568c
+          ref: af750f62df2325dde68ea83ff64974c5a4d9cd75
       - path: confluence-lts
         git:
           url: https://repo1.dso.mil/dsop/atlassian/confluence-data-center/confluence-lts.git
-          ref: 235fbd55719a89a6128ff5819e023935724ae9ed
+          ref: 9fcf1b3eaf43f47dc06f7f87244644b797b2d608
       - path: jira-lts
         git:
           url: https://repo1.dso.mil/dsop/atlassian/jira-data-center/jira-lts.git
-          ref: 2f40abe1b329296b96d4ac02a6d774d079e23b88
+          ref: 3df2bc1801cf6f9dd285f9cfd33203903f38741d
       - path: ubi9-minimal
         git:
           url: https://repo1.dso.mil/dsop/redhat/ubi/9.x/ubi9-minimal.git

@@ -333,13 +333,21 @@ BuildKit), and `rootlesskit`; the factory runner build fails if they are absent.
 Keep the bundled runtime and client/daemon versions together. Podman and its
 setuid ID-mapping helpers remain installed for downstream tests and scanners.
 
-## Legacy policy settings
+## Grype vulnerability exclusions
 
-`policies/exceptions/approved.json` is retained for compatibility but is not read
-by the active Rego rules. Catalog `policy.block` and database-age values describe
-legacy scanner intent; they do not enforce Falcon tenant policy or grant an
-exception. Govern vulnerability exceptions in the authoritative assessment
-system. Never assume editing the empty JSON file authorizes a release.
+`policies/exceptions/approved.json` supplies default Grype vulnerability exclusions.
+Entries match the catalog image name, advisory ID, component identity (PURL when
+available), and installed version exactly, and apply only while a fix is available.
+The checked-in Atlassian entries cover the remaining Java findings observed after
+the 2026-09-21 LTS upgrades (Bitbucket 10.2.7, Confluence 10.2.18, Jira/JSM 11.3.11).
+Duplicate copies share an entry when their identities and versions match.
+New advisories, different versions, and other images require separate entries.
+
+Excluded findings remain in raw and normalized scan evidence. These entries bypass
+Grype vulnerability threshold denials, including critical/high and KEV thresholds,
+but do not bypass database freshness, evidence identity, compliance, or test checks.
+They record accepted findings, not remediations. FCS assessments are unaffected;
+Falcon exceptions must be governed in the authoritative assessment system.
 
 ## Cosign storage and promotion compatibility
 

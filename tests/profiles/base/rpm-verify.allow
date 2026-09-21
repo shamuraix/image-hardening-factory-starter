@@ -4,3 +4,19 @@
 /etc/pki/ca-trust/extracted/pem/email-ca-bundle.pem
 /etc/pki/ca-trust/extracted/pem/objsign-ca-bundle.pem
 /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+# Explicit upstream hardening: login banner, umask, FIPS policy, OpenSSL config.
+/etc/issue
+/etc/bashrc
+/etc/csh.cshrc
+/etc/profile
+/usr/share/crypto-policies/FIPS/gnutls.txt
+/usr/share/crypto-policies/FIPS/java.txt
+/usr/share/crypto-policies/back-ends/FIPS/gnutls.config
+/etc/pki/tls/openssl.cnf
+# Minimal UBI omits systemd presets and the unused BPF cache directory.
+/usr/lib/systemd/system-preset/85-display-manager.preset
+/usr/lib/systemd/system-preset/90-default.preset
+/usr/lib/systemd/system-preset/99-default-disable.preset
+/usr/lib/systemd/user-preset/90-default-user.preset
+/usr/lib/systemd/user-preset/99-default-disable.preset
+/var/cache/bpf

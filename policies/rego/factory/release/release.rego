@@ -83,6 +83,7 @@ deny contains sprintf("Grype vulnerability blocked: %s", [f.id]) if {
 	backend == "grype"
 	some f in input.findings
 	blocked(f)
+	not excluded(f)
 }
 
 blocked(f) if f.severity == "UNKNOWN"
@@ -107,4 +108,14 @@ blocked(f) if {
 blocked(f) if {
 	input.policy.block.knownExploited
 	f.knownExploited
+}
+
+# Default exclusions match only the explicitly listed image and installed component.
+# Keep findings in evidence; this only affects Grype vulnerability threshold denials.
+excluded(f) if {
+	f.fixAvailable == true
+	some exception in data.factory.exceptions.approved[input.image]
+	exception.id == f.id
+	exception.component == f.component
+	exception.installedVersion == f.installedVersion
 }

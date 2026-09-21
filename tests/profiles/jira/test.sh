@@ -13,7 +13,7 @@ podman run --rm --cgroups=disabled --entrypoint /bin/bash "${FACTORY_TEST_IMAGE}
   test -x /entrypoint.py
   test "$(id -u)" = 2001
   find /var/atlassian/application-data/jira/plugins/installed-plugins -name "*.jar" -print -quit | grep -q .
-  ! test -e /opt/jira-servicedesk-application-${JSM_VERSION:-11.3.10}.obr
+  ! compgen -G "/opt/jira-servicedesk-application-*.obr" >/dev/null
 '
 base_major=$(podman run --rm --cgroups=disabled --entrypoint /bin/bash "${FACTORY_TEST_IMAGE}" \
   -c '. /etc/os-release; printf "%s" "${VERSION_ID%%.*}"')

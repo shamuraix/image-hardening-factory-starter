@@ -205,3 +205,31 @@ verification ignores timestamp-only changes caused by reproducible layer
 timestamps, combines the application allowlist with the base allowlist, and
 adds the reviewed UBI 10 hardening deviations from
 `tests/profiles/base/rpm-verify.ubi10.allow`.
+
+## Image integrity and local scan results
+
+The base test uses `update-ca-trust extract` and verifies that the generated TLS
+bundle is nonempty and contains certificates. `check` is not a supported
+`update-ca-trust` command on these UBI releases.
+
+The UBI 9 overlay reinstalls `tzdata`, `gnupg2`, `libpeas`, and `rpm` to restore
+package payloads pruned from the upstream minimal image. RPM verification still
+checks file contents, permissions, and dependencies. It ignores normalized
+modification times and RPM ghost entries (which have no package payload and
+include host-mounted `/proc` and `/sys`). Explicit path allowlists cover the
+reviewed login banner, shell umasks, crypto-policy changes, and omitted systemd
+presets; arbitrary missing files and dependency failures remain errors.
+
+Application overlays retain RPM runtime dependencies, including `cups-libs`
+for Java and `freetype` for font rendering. They do not force-remove these
+packages with `rpm --nodeps`. Bitbucket restores `/usr/bin` to its RPM mode
+after the source installation of Git. Confluence restores the RPM-owned `/opt`
+directory to `root:root` after setting application file ownership.
+
+A successful image test does not mean an image has no vulnerabilities. The
+standard SBOM covers all layers, including packages replaced in later layers.
+For runtime triage, generate an additional Syft SBOM with `--scope squashed`
+and scan that separately. Keep both reports and identify the exact image digest
+and vulnerability database date. Neither a completed scan nor its
+`assessmentPassed` evidence field means the release vulnerability thresholds
+passed; the policy gate evaluates findings separately.

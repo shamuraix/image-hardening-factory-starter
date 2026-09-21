@@ -7,13 +7,13 @@ metadata:
 source:
   upstream: https://repo1.dso.mil/dsop/atlassian/jira-data-center/jira-lts.git
   mirrorPath: mirrors/repo1/atlassian/jira-lts
-  revision: 2f40abe1b329296b96d4ac02a6d774d079e23b88
+  revision: 3df2bc1801cf6f9dd285f9cfd33203903f38741d
   containerfile: Dockerfile
   hardeningManifest: hardening_manifest.yaml
   overlay: overlays/jira-lts/patches
 product:
   name: Jira Data Center LTS
-  version: 11.3.10
+  version: 11.3.11
   vendor: Atlassian
   license: proprietary
 build:
@@ -24,8 +24,8 @@ build:
     image: ubi9-minimal
   testProfile: jira
   buildArgs:
-    JIRA_VERSION: 11.3.10
-    JSM_VERSION: 11.3.10
+    JIRA_VERSION: 11.3.11
+    JSM_VERSION: 11.3.11
 policy:
   profile: atlassian-rhel9-container
   maximumDatabaseAgeHours: 72

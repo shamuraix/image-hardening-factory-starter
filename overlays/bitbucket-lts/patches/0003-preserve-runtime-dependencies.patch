@@ -1,0 +1,20 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -62,15 +62,8 @@
+     && microdnf -y remove gcc make diffutils gettext libcurl-devel openssl-devel zlib-devel expat-devel \
+     && microdnf clean all \
+     && microdnf -y remove tar \
+-    #Package Removal
+-    && if [ "${BASE_MAJOR}" = "9" ]; then \
+-         rpm -e --nodeps freetype libpng avahi-libs cups-libs \
+-         && { ! rpm -q ncurses-base >/dev/null 2>&1 || rpm -e --nodeps ncurses-base; } \
+-         && { ! rpm -q ncurses >/dev/null 2>&1 || rpm -e --nodeps ncurses; } \
+-         && { ! rpm -q emacs-filesystem >/dev/null 2>&1 || rpm -e --nodeps emacs-filesystem; } \
+-         && { ! rpm -q openssh >/dev/null 2>&1 || rpm -e --nodeps openssh; } \
+-         && { ! rpm -q openssh-clients >/dev/null 2>&1 || rpm -e --nodeps openssh-clients; }; \
+-       fi
++    # Keep runtime libraries required by the installed RPMs.
++    && chmod 0555 /usr/bin
+ 
+ # Must be declared after setting perms
+ VOLUME ["${BITBUCKET_HOME}"]

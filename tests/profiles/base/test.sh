@@ -9,7 +9,9 @@ podman run --rm --cgroups=disabled --entrypoint /bin/bash "${FACTORY_TEST_IMAGE}
   test -f /etc/crypto-policies/config
   test "$(stat -c %a /tmp)" = 1777
   test "$(stat -c %a /var/tmp)" = 1777
-  update-ca-trust check
+  update-ca-trust extract
+  test -s /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+  grep -q "BEGIN CERTIFICATE" /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
 '
 base_major=$(podman run --rm --cgroups=disabled --entrypoint /bin/bash "${FACTORY_TEST_IMAGE}" \
   -c '. /etc/os-release; printf "%s" "${VERSION_ID%%.*}"')

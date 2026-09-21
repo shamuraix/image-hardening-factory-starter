@@ -47,9 +47,9 @@ Source pins describe reviewed baselines, not a claim to track the latest release
 |---|---|---|---|
 | UBI 9 Minimal | 9.8 | Locked upstream UBI | Release |
 | UBI 10 Minimal | 10.2 | Locked upstream UBI | Canary |
-| Bitbucket LTS | 10.2.6 | Internal UBI 9 | Release |
-| Confluence LTS | 10.2.15 | Internal UBI 9 | Release |
-| Jira LTS | 11.3.10 | Internal UBI 9 | Release |
+| Bitbucket LTS | 10.2.7 | Internal UBI 9 | Release |
+| Confluence LTS | 10.2.18 | Internal UBI 9 | Release |
+| Jira LTS | 11.3.11 | Internal UBI 9 | Release |
 
 A UBI 9 change selects all three applications. A UBI 10 change selects only
 UBI 10. Selecting one application reuses its released base unless that base is

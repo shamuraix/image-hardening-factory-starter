@@ -27,20 +27,16 @@ test_informational_legacy_findings_do_not_deny if {
 }
 
 test_fcs_policy_denial_blocks_release if {
-	candidate := object.union(passing_input, {
-		"fcs": object.union(passing_input.fcs, {
-			"exitCode": 2,
-			"assessmentPassed": false,
-		}),
-	})
+	candidate := object.union(passing_input, {"fcs": object.union(passing_input.fcs, {
+		"exitCode": 2,
+		"assessmentPassed": false,
+	})})
 	result := decision with input as candidate
 	not result.allow
 }
 
 test_fcs_digest_mismatch_blocks_release if {
-	candidate := object.union(passing_input, {
-		"fcs": object.union(passing_input.fcs, {"digest": "sha256:def"}),
-	})
+	candidate := object.union(passing_input, {"fcs": object.union(passing_input.fcs, {"digest": "sha256:def"})})
 	result := decision with input as candidate
 	not result.allow
 }
@@ -72,9 +68,7 @@ grype_input := object.union(passing_input, {
 	"evaluatedAt": "2026-09-15T12:00:00Z",
 	"database": {"built": "2026-09-15T00:00:00Z"},
 	"findings": [],
-	"policy": {"maximumDatabaseAgeHours": 72, "block": {
-		"critical": true, "fixableHigh": true, "newHigh": true, "knownExploited": true,
-	}},
+	"policy": {"maximumDatabaseAgeHours": 72, "block": {"critical": true, "fixableHigh": true, "newHigh": true, "knownExploited": true}},
 })
 
 test_grype_without_fcs_passes if {
@@ -107,4 +101,31 @@ test_grype_missing_status_and_digest_mismatch_denied if {
 
 test_unknown_backend_denied if {
 	not allow with input as object.union(grype_input, {"scannerBackend": "other"})
+}
+
+exception_finding := {"id": "GHSA-example", "component": "pkg:maven/example/library@1", "installedVersion": "1", "fixAvailable": true, "severity": "CRITICAL", "knownExploited": true}
+exception_data := {"jira-lts": [object.union(exception_finding, {"reason": "test"})]}
+
+test_exact_default_exclusion_allows_vulnerability if {
+	candidate := object.union(grype_input, {"findings": [exception_finding]})
+	allow with input as candidate with data.factory.exceptions.approved as exception_data
+}
+
+test_exclusions_do_not_match_other_id_component_version_or_unfixable if {
+	every change in [{"id": "GHSA-other"}, {"component": "other"}, {"installedVersion": "2"}, {"fixAvailable": false}] {
+		candidate := object.union(grype_input, {"findings": [object.union(exception_finding, change)]})
+		not allow with input as candidate with data.factory.exceptions.approved as exception_data
+	}
+}
+
+test_exclusions_do_not_match_other_image if {
+	candidate := object.union(grype_input, {"image": "ubi9-minimal", "findings": [exception_finding]})
+	not allow with input as candidate with data.factory.exceptions.approved as exception_data
+}
+
+test_exclusions_do_not_bypass_tests_or_fcs if {
+	candidate := object.union(grype_input, {"testsPassed": false, "findings": [exception_finding]})
+	not allow with input as candidate with data.factory.exceptions.approved as exception_data
+	fcs_candidate := object.union(passing_input, {"findings": [exception_finding], "fcs": object.union(passing_input.fcs, {"assessmentPassed": false})})
+	not allow with input as fcs_candidate with data.factory.exceptions.approved as exception_data
 }

@@ -1,0 +1,11 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -48,7 +48,7 @@
+     && chown -R ${RUN_USER}:${RUN_GROUP} /opt/ /entrypoint.py /entrypoint_helpers.py \
+     && chmod 0750 ${CONFLUENCE_HOME} \
+     && microdnf remove -y tar gzip \
+-    && if [ "${BASE_MAJOR}" = "9" ]; then rpm -e --nodeps avahi-libs cups-libs; fi \
++    && rpm -q cups-libs avahi-libs >/dev/null \
+     && microdnf clean all \
+     && rm -rf /opt/atlassian-confluence-${CONFLUENCE_VERSION}.tar.gz
+ 

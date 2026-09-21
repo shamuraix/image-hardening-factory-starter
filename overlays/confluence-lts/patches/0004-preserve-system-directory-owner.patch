@@ -1,0 +1,10 @@
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -46,6 +46,7 @@
+     && ln -sf /usr/share/fonts/truetype/noto/* /opt/java/openjdk/lib/fonts/fallback/ \
+     && chmod a+x /entrypoint.py /usr/bin/tini \
+     && chown -R ${RUN_USER}:${RUN_GROUP} /opt/ /entrypoint.py /entrypoint_helpers.py \
++    && chown root:root /opt \
+     && chmod 0750 ${CONFLUENCE_HOME} \
+     && microdnf remove -y tar gzip \
+     && rpm -q cups-libs avahi-libs >/dev/null \
