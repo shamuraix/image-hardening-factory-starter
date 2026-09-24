@@ -239,5 +239,7 @@ class LocalWorkflowTests(unittest.TestCase):
     def test_resource_lock_path_no_longer_uses_snapshot_segment(self) -> None:
         prepare = (ROOT / "scripts/prepare_context.sh").read_text(encoding="utf-8")
         publish = (ROOT / "scripts/publish_intake.sh").read_text(encoding="utf-8")
+        local_build = (ROOT / "scripts/local_build.sh").read_text(encoding="utf-8")
         self.assertIn("/locks/${image}/${revision}/resource-lock.json", prepare)
         self.assertIn("/locks/${image}/${revision}/${file}", publish)
+        self.assertIn('rpmSource:{type:"development"', local_build)

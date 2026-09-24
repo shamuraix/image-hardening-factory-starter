@@ -6,7 +6,7 @@ work_dir=${2:?work directory is required}
 # shellcheck disable=SC1090,SC1091
 source "${work_dir}/build.env"
 if ! jq -e '.localDevelopment == true' "${work_dir}/resource-lock.json" >/dev/null; then
-  for override in FACTORY_RPM_BASE_URL FACTORY_RPM_UPSTREAM_UBI_BASE FACTORY_UBI_REPO_PREFIX FACTORY_RPM_SOURCE_MODE; do
+  for override in FACTORY_RPM_BASE_URL FACTORY_RPM_UPSTREAM_UBI_BASE FACTORY_UBI_REPO_PREFIX; do
     [[ -z ${!override:-} ]] || { echo "${override} is development-only" >&2; exit 2; }
   done
 fi

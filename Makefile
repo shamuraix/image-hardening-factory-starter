@@ -24,7 +24,7 @@ local-test: local-build
 	scripts/run_tests.sh "catalog/images/$(IMAGE).yaml" "work/$(IMAGE)"
 
 local-assessment: local-build
-	scripts/scan_image.sh "work/$(IMAGE)"
+	scripts/scan_image.sh "catalog/images/$(IMAGE).yaml" "work/$(IMAGE)"
 
 package:
 	git archive --format=tar.gz --output=image-hardening-factory.tar.gz HEAD

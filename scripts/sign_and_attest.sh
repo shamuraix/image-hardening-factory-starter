@@ -60,9 +60,10 @@ backend=$(jq -er '.scannerBackend // "delegated-scanners"' "${evidence}/gate-res
 case "${backend}" in
   delegated-scanners)
     predicates["${evidence}/scans/delegated/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:delegated-scanners-decision:v1"
-    predicates["${evidence}/scans/grype.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-report:v1"
-    predicates["${evidence}/scans/trivy.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:trivy-report:v1"
-    predicates["${evidence}/scans/osv.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:osv-report:v1"
+    [[ -s "${evidence}/scans/grype.json" ]] && predicates["${evidence}/scans/grype.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-report:v1"
+    [[ -s "${evidence}/scans/trivy.json" ]] && predicates["${evidence}/scans/trivy.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:trivy-report:v1"
+    [[ -s "${evidence}/scans/osv.json" ]] && predicates["${evidence}/scans/osv.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:osv-report:v1"
+    [[ -s "${evidence}/scans/syft.version.txt" ]] && predicates["${evidence}/scans/syft.version.txt"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:syft-version:v1"
     ;;
   *) echo "Unknown signed scanner backend" >&2; exit 1 ;;
 esac

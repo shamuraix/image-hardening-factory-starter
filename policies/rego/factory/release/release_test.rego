@@ -32,6 +32,23 @@ test_unknown_backend_denied if {
   not allow with input as object.union(passing_input, {"scannerBackend": "other"})
 }
 
+test_digest_mismatch_denied if {
+  candidate := object.union(passing_input, {
+    "assessment": object.union(passing_input.assessment, {"digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}),
+  })
+  not allow with input as candidate
+}
+
+test_stale_future_and_missing_database_denied if {
+  every db in [{"generatedAt": "2026-09-01T00:00:00Z"}, {"generatedAt": "2026-09-16T00:00:00Z"}, {}] {
+    not allow with input as object.union(object.remove(passing_input, {"database"}), {"database": db})
+  }
+}
+
+test_missing_assessment_denied if {
+  not allow with input as object.remove(passing_input, {"assessment"})
+}
+
 test_fixable_high_outside_archive_warns_without_deny if {
   candidate := object.union(passing_input, {
     "findings": [{"id": "CVE-1", "component": "pkg:rpm/openssl@1", "severity": "HIGH", "fixAvailable": true, "inApplicationArchive": false}],

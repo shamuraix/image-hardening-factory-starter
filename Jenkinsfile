@@ -423,7 +423,21 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
     }
 
     if (stageEnabled('ASSESSMENT') || stageEnabled('GATE')) {
-        assessmentArtifact = scanArtifact
+        assessmentArtifact = runFactoryStage(
+            image,
+            'assessment',
+            'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
+            'FACTORY_RUNNER_IMAGE',
+            [scanArtifact],
+            "work/${image}/evidence/scans/delegated/status.json," +
+                "work/${image}/evidence/scans/grype.json," +
+                "work/${image}/evidence/scans/trivy.json," +
+                "work/${image}/evidence/scans/osv.json," +
+                "work/${image}/evidence/scans/syft.version.txt",
+            'test -f "${FACTORY_WORK_DIR}/evidence/scans/delegated/status.json"',
+            [],
+            catalogEnvironment,
+        )
     }
 
     if (stageEnabled('COMPLIANCE')) {

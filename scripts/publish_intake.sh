@@ -15,7 +15,7 @@ while IFS=$'\t' read -r filename path digest; do
   clamscan --database=/opt/security-data/clamav --infected "${work}/cache/${filename}" \
     >"${work}/cache/${filename}.clamav.txt"
   curl --fail --silent --show-error --request PUT \
-    --header "Authorization: ******" \
+    --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --header "X-Checksum-Sha256: ${digest#sha256:}" \
     --upload-file "${work}/cache/${filename}" \
     "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/${path}"
@@ -25,7 +25,7 @@ cosign sign-blob --yes --tlog-upload=false --key "${COSIGN_INTAKE_KEY_REF}" \
   --output-signature "${work}/resource-lock.sig" "${work}/resource-lock.json"
 for file in resource-lock.json resource-lock.sig; do
   curl --fail --silent --show-error --request PUT \
-    --header "Authorization: ******" \
+    --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --upload-file "${work}/${file}" \
     "${ARTIFACTORY_URL%/}/artifactory/${source_repository}/locks/${image}/${revision}/${file}"
 done

@@ -15,8 +15,8 @@ done
 gate=$(cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --insecure-ignore-tlog \
   --type "${prefix}:gate:v1" "${subject}" | \
   jq -se '[.[] | (.payload | @base64d | fromjson).predicate | select(.allow == true)] | if length == 1 then .[0] else error("expected one approving gate") end')
-backend=$(jq -er '.scannerBackend // "delegated-scanners"' <<<"${gate}")
-case "${backend}" in delegated-scanners) ;; *) echo "Unknown signed scanner backend" >&2; exit 1 ;; esac
+backend=$(jq -er '.scannerBackend // "fcs"' <<<"${gate}")
+case "${backend}" in fcs|delegated-scanners) ;; *) echo "Unknown signed scanner backend" >&2; exit 1 ;; esac
 cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --insecure-ignore-tlog \
   --type "${prefix}:${backend}-decision:v1" "${subject}" | \
   jq -se --arg digest "${subject##*@}" 'any(.[]; (.payload | @base64d | fromjson).predicate | .assessmentPassed == true and .digest == $digest)' >/dev/null

@@ -11,10 +11,19 @@ else
   base_catalog="${catalog}"
 fi
 rpm_major=$(yq -r '.product.version | split(".")[0]' "${base_catalog}")
-arch=$(yq -r '.build.platforms[0] | split("/")[1]' "${catalog}")
-[[ "${arch}" == amd64 ]] && rpm_arch=x86_64 || rpm_arch=${arch}
+platform=$(yq -r '.build.platforms[0] // ""' "${catalog}")
+if [[ -z "${platform}" || "${platform}" == "null" ]]; then
+  platform=$(yq -r '.build.platforms[0] // ""' "${base_catalog}")
+fi
+arch=${platform##*/}
+case "${arch}" in
+  amd64) rpm_arch=x86_64 ;;
+  arm64) rpm_arch=aarch64 ;;
+  *) rpm_arch=${arch} ;;
+esac
 
-source_mode=${FACTORY_RPM_SOURCE_MODE:-$(yq -r '.build.rpm.source // "private-mirror"' "${catalog}")}
+source_mode=${FACTORY_RPM_SOURCE_MODE:-$(yq -r '.build.rpm.source // ""' "${catalog}")}
+[[ -n "${source_mode}" ]] || { echo "build.rpm.source must be set in ${catalog}" >&2; exit 2; }
 
 if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]; then
   cat >"${output}" <<CFG
@@ -30,6 +39,7 @@ CFG
   printf 'local-source:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"
   exit 0
 fi
+
 case "${source_mode}" in
   private-mirror)
     : "${FACTORY_UBI_REPO_PREFIX:?FACTORY_UBI_REPO_PREFIX is required for build.rpm.source=private-mirror}"
@@ -44,7 +54,7 @@ gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 username=${FACTORY_RPM_REPO_USERNAME}
-******
+password=${FACTORY_RPM_REPO_PASSWORD}
 
 [factory-ubi-appstream]
 name=Factory private UBI AppStream mirror
@@ -54,7 +64,7 @@ gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 username=${FACTORY_RPM_REPO_USERNAME}
-******
+password=${FACTORY_RPM_REPO_PASSWORD}
 CFG
     chmod 0600 "${output}"
     printf 'private-mirror:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"

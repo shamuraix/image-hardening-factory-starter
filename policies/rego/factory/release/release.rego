@@ -61,6 +61,7 @@ warn contains sprintf("Vulnerability warning: %s (%s)", [f.id, f.component]) if 
   backend == "delegated-scanners"
   some f in input.findings
   outside_archive_warnable(f)
+  not excluded(f)
 }
 
 outside_archive_warnable(f) if {

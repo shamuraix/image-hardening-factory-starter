@@ -266,6 +266,9 @@ class PipelineTests(unittest.TestCase):
         script = (ROOT / "scripts/scan_image.sh").read_text(encoding="utf-8")
         self.assertIn("trivy-grype-syft-osv-scanner", script)
         self.assertIn('"${scans}/delegated/status.json"', script)
+        self.assertIn("blocked_count=", script)
+        self.assertIn("assessmentPassed:$assessmentPassed", script)
+        self.assertIn(".policy.block.critical", script)
 
     def test_quarantine_import_preserves_the_scanned_digest(self) -> None:
         script = (ROOT / "scripts/import_image.sh").read_text(encoding="utf-8")

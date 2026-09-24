@@ -5,16 +5,8 @@ from pathlib import Path
 from typing import Any
 
 SEVERITIES = {"UNKNOWN", "NEGLIGIBLE", "LOW", "MEDIUM", "HIGH", "CRITICAL"}
-APPLICATION_PURL_PREFIXES = {
-    "pkg:maven/",
-    "pkg:npm/",
-    "pkg:pypi/",
-    "pkg:gem/",
-    "pkg:golang/",
-    "pkg:composer/",
-    "pkg:cargo/",
-    "pkg:nuget/",
-}
+APPLICATION_PATH_PREFIXES = ("/opt/", "/app/", "/srv/app/", "/workspace/")
+SYSTEM_PATH_PREFIXES = ("/usr/", "/lib/", "/lib64/", "/etc/", "/bin/", "/sbin/", "/var/")
 
 
 def _finding(
@@ -24,11 +16,11 @@ def _finding(
     version: str,
     severity: str,
     fixed_version: str | None,
+    in_application_archive: bool,
 ) -> dict[str, Any]:
     normalized = severity.upper()
     if normalized not in SEVERITIES:
         normalized = "UNKNOWN"
-    in_application_archive = any(component.startswith(prefix) for prefix in APPLICATION_PURL_PREFIXES)
     return {
         "id": identifier,
         "scanner": scanner,
@@ -45,11 +37,25 @@ def _finding(
     }
 
 
+def _paths_in_application_archive(paths: list[str]) -> bool:
+    if not paths:
+        return False
+    has_system_path = any(path.startswith(SYSTEM_PATH_PREFIXES) for path in paths)
+    if has_system_path:
+        return False
+    return all(path.startswith(APPLICATION_PATH_PREFIXES) for path in paths)
+
+
 def parse_grype(data: dict[str, Any]) -> list[dict[str, Any]]:
     findings = []
     for match in data.get("matches", []):
         vulnerability = match.get("vulnerability", {})
         artifact = match.get("artifact", {})
+        locations = [
+            location.get("path", "")
+            for location in artifact.get("locations", [])
+            if isinstance(location, dict)
+        ]
         fix = vulnerability.get("fix", {})
         versions = fix.get("versions") or []
         findings.append(
@@ -60,6 +66,7 @@ def parse_grype(data: dict[str, Any]) -> list[dict[str, Any]]:
                 artifact.get("version", "unknown"),
                 vulnerability.get("severity", "UNKNOWN"),
                 versions[0] if versions else None,
+                _paths_in_application_archive(locations),
             )
         )
     return findings
@@ -78,6 +85,7 @@ def parse_trivy(data: dict[str, Any]) -> list[dict[str, Any]]:
                     vulnerability.get("InstalledVersion", "unknown"),
                     vulnerability.get("Severity", "UNKNOWN"),
                     vulnerability.get("FixedVersion"),
+                    False,
                 )
             )
     return findings
@@ -97,6 +105,7 @@ def parse_osv(data: dict[str, Any]) -> list[dict[str, Any]]:
                         package_info.get("version", "unknown"),
                         vulnerability.get("database_specific", {}).get("severity", "UNKNOWN"),
                         None,
+                        False,
                     )
                 )
     return findings

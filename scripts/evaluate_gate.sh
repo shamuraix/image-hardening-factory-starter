@@ -8,28 +8,14 @@ evidence="${work_dir}/evidence"
 backend=${FACTORY_SCANNER_BACKEND:-delegated-scanners}
 case "${backend}" in
   delegated-scanners) status="${evidence}/scans/delegated/status.json" ;;
-  grype)
-    status="${evidence}/scans/grype/status.json"
-    jq -e 'type == "object" and (.findings | type == "array")' \
-      "${evidence}/scans/grype/findings.json" >/dev/null
-    jq -e 'type == "object" and .valid == true and (.error | not)' \
-      "${evidence}/scans/grype/database.json" >/dev/null
-    cp "${evidence}/scans/grype/findings.json" "${evidence}/findings.json"
-    cp "${evidence}/scans/grype/database.json" "${evidence}/database-status.json"
-    ;;
   *) echo "Unknown scanner backend: ${backend}" >&2; exit 1 ;;
 esac
 
 jq -e --arg backend "${backend}" '.backend == $backend' "${status}" >/dev/null
-
-if ! jq -e 'type == "object" and (.findings | type == "array")' \
-  "${evidence}/findings.json" >/dev/null 2>&1; then
-  printf '{"findings":[],"warnings":["scanner evidence unavailable"]}\n' \
-    >"${evidence}/findings.json"
-fi
-if ! jq -e 'type == "object"' "${evidence}/database-status.json" >/dev/null 2>&1; then
-  jq -n '{available:false}' >"${evidence}/database-status.json"
-fi
+jq -e 'type == "object" and (.findings | type == "array")' \
+  "${evidence}/findings.json" >/dev/null
+jq -e 'type == "object" and (.generatedAt | type == "string") and (.scannerVersions | type == "object")' \
+  "${evidence}/database-status.json" >/dev/null
 
 python3 -m factory.cli gate-input \
   --image "${FACTORY_IMAGE}" \
