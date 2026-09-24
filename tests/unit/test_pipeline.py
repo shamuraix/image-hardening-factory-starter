@@ -41,7 +41,7 @@ class PipelineTests(unittest.TestCase):
     def test_gate_requires_build_evidence_and_selects_assessment(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         self.assertIn("GATE: ['BUILD', 'SBOM', 'COMPLIANCE', 'TEST']", jenkinsfile)
-        self.assertIn("fcsArtifact", jenkinsfile)
+        self.assertIn("assessmentArtifact", jenkinsfile)
 
     def test_konflux_concept_stages_have_dependencies(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
@@ -262,38 +262,37 @@ class PipelineTests(unittest.TestCase):
             )
             self.assertEqual(failed_status["status"], "failed")
 
-    def test_fcs_receives_credentials_and_enforces_strict_digest(self) -> None:
-        script = (ROOT / "scripts/fcs_scan_image.sh").read_text(encoding="utf-8")
-        self.assertIn('export FCS_CLIENT_ID="${FALCON_CLIENT_ID}"', script)
-        self.assertIn('export FCS_CLIENT_SECRET="${FALCON_CLIENT_SECRET}"', script)
-        self.assertEqual(script.count("--strict-digest"), 2)
+    def test_scan_stage_emits_delegated_scanner_assessment(self) -> None:
+        script = (ROOT / "scripts/scan_image.sh").read_text(encoding="utf-8")
+        self.assertIn("trivy-grype-syft-osv-scanner", script)
+        self.assertIn('"${scans}/delegated/status.json"', script)
 
     def test_quarantine_import_preserves_the_scanned_digest(self) -> None:
         script = (ROOT / "scripts/import_image.sh").read_text(encoding="utf-8")
         self.assertIn("skopeo copy --preserve-digests", script)
         self.assertIn('[[ "${digest}" == "${candidate_digest}" ]]', script)
 
-    def test_legacy_scanners_are_informational_and_fcs_is_isolated(self) -> None:
+    def test_delegated_scanners_feed_policy_and_gate(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("'FACTORY_K8S_FCS_POD_TEMPLATE'", jenkinsfile)
-        self.assertIn("'FACTORY_FCS_RUNNER_IMAGE'", jenkinsfile)
+        self.assertIn("'FACTORY_ENABLE_ASSESSMENT'", jenkinsfile)
         self.assertIn("catchInterruptions: false", jenkinsfile)
         self.assertIn("stageName == 'gate' ? 'FAILURE' : 'SUCCESS'", jenkinsfile)
 
         policy = (ROOT / "policies/rego/factory/release/release.rego").read_text(encoding="utf-8")
-        self.assertIn("input.fcs.assessmentPassed", policy)
-        self.assertIn('backend == "grype"', policy)
+        self.assertIn("input.assessment.assessmentPassed", policy)
+        self.assertIn('backend == "delegated-scanners"', policy)
 
         gate_script = (ROOT / "scripts/evaluate_gate.sh").read_text(encoding="utf-8")
         self.assertIn('(.findings | type == "array")', gate_script)
+        self.assertIn('--assessment-status "${status}"', gate_script)
 
-    def test_attestation_job_downloads_fcs_and_all_signed_evidence(self) -> None:
+    def test_attestation_job_downloads_assessment_and_all_signed_evidence(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
         for artifact in (
             "importArtifact",
             "gateArtifact",
             "sbomArtifact",
-            "fcsArtifact",
+            "assessmentArtifact",
             "complianceArtifact",
             "testArtifact",
         ):

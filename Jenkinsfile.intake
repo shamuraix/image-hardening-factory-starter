@@ -126,8 +126,6 @@ properties([
 
 [
     'FACTORY_SOURCE_REPOSITORY',
-    'FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY',
-    'FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY',
     'UPSTREAM_OCI_REPOSITORY',
     'INTERNAL_GIT_BASE_URL',
     'ARTIFACTORY_URL',
@@ -146,58 +144,12 @@ stage('plan') {
     }
 }
 
-stage('snapshot and mirror') {
-    parallel(
-        'snapshot UBI 9': {
-            inIntakePod('snapshot-ubi9') {
-                withCredentials(intakeCredentials()) {
-                    sh '''
-                        ubi9_repo_file="${UBI9_SOURCE_REPO_FILE:-config/rpm/ubi9.repo}"
-                        ubi9_repo_ids="${UBI9_SOURCE_REPO_IDS:-ubi-9-baseos-rpms ubi-9-appstream-rpms}"
-                        # shellcheck disable=SC2086
-                        snapshot_id=$(
-                          scripts/snapshot_rpm_repo.sh \
-                            "${ubi9_repo_file}" \
-                            "${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY}" \
-                            work/rpm-ubi9 \
-                            ${ubi9_repo_ids} > work/intake/ubi9-snapshot.log
-                        )
-                        snapshot_id=$(tail -n1 work/intake/ubi9-snapshot.log)
-                        printf 'RPM_SNAPSHOT_UBI9_ID=%s\n' "${snapshot_id}" > work/intake/ubi9.env
-                    '''
-                }
-                stash name: snapshotArtifact('ubi9'), includes: 'work/intake/ubi9.env'
-            }
-        },
-        'snapshot UBI 10': {
-            inIntakePod('snapshot-ubi10') {
-                withCredentials(intakeCredentials()) {
-                    sh '''
-                        ubi10_repo_file="${UBI10_SOURCE_REPO_FILE:-config/rpm/ubi10.repo}"
-                        ubi10_repo_ids="${UBI10_SOURCE_REPO_IDS:-ubi-10-for-x86_64-baseos-rpms ubi-10-for-x86_64-appstream-rpms}"
-                        # shellcheck disable=SC2086
-                        snapshot_id=$(
-                          scripts/snapshot_rpm_repo.sh \
-                            "${ubi10_repo_file}" \
-                            "${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY}" \
-                            work/rpm-ubi10 \
-                            ${ubi10_repo_ids} > work/intake/ubi10-snapshot.log
-                        )
-                        snapshot_id=$(tail -n1 work/intake/ubi10-snapshot.log)
-                        printf 'RPM_SNAPSHOT_UBI10_ID=%s\n' "${snapshot_id}" > work/intake/ubi10.env
-                    '''
-                }
-                stash name: snapshotArtifact('ubi10'), includes: 'work/intake/ubi10.env'
-            }
-        },
-        'mirror sources': {
-            inIntakePod('mirror-sources') {
-                withCredentials(mirrorCredentials()) {
-                    sh 'scripts/mirror_sources.sh'
-                }
-            }
-        },
-    )
+stage('mirror sources') {
+    inIntakePod('mirror-sources') {
+        withCredentials(mirrorCredentials()) {
+            sh 'scripts/mirror_sources.sh'
+        }
+    }
 }
 
 stage('resolve and publish resource locks') {
@@ -206,15 +158,9 @@ stage('resolve and publish resource locks') {
         def image = definition.name as String
         branches[image] = {
             inIntakePod("intake-${image}") {
-                unstash snapshotArtifact('ubi9')
-                unstash snapshotArtifact('ubi10')
                 withCredentials(intakeCredentials()) {
                     withEnv(["FACTORY_IMAGE=${image}"]) {
                         sh '''
-                            set -a
-                            . work/intake/ubi9.env
-                            . work/intake/ubi10.env
-                            set +a
                             catalog="${FACTORY_CATALOG_DIR}/${FACTORY_IMAGE}.yaml"
                             mirror=$(yq -r '.source.mirrorPath' "${catalog}")
                             revision=$(yq -r '.source.revision' "${catalog}")

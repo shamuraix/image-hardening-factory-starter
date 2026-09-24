@@ -22,6 +22,8 @@ build:
   base:
     kind: upstream
     lockKey: redhat-ubi9-minimal
+  rpm:
+    source: private-mirror
   testProfile: base
 policy:
   profile: rhel9-container-stig

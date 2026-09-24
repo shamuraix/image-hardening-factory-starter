@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class ScannerVerificationTests(unittest.TestCase):
-    def verify(self, backend, status_backend, passed=True):
+    def verify(self, backend, passed=True):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             digest = "sha256:" + "a" * 64
@@ -32,7 +32,7 @@ set -eu
 if [[ "$*" == *":gate:v1"* ]]; then
   cat "$FIXTURE/gate"
 elif [[ "$*" == *"-decision:v1"* ]]; then
-  [[ "$*" == *":${STATUS_BACKEND}-decision:v1"* ]] || exit 1
+  [[ "$*" == *":delegated-scanners-decision:v1"* ]] || exit 1
   cat "$FIXTURE/status"
 fi
 """)
@@ -47,7 +47,6 @@ fi
                     **os.environ,
                     "PATH": str(root) + ":" + os.environ["PATH"],
                     "FIXTURE": str(root),
-                    "STATUS_BACKEND": status_backend,
                     "COSIGN_PUBLIC_KEY": "test",
                     "FACTORY_RELEASE_ENV": "commercial",
                 },
@@ -55,11 +54,11 @@ fi
                 check=False,
             ).returncode
 
-    def test_each_backend_requires_its_own_verified_assessment(self):
-        for backend in ("fcs", "grype"):
-            with self.subTest(backend=backend):
-                self.assertEqual(self.verify(backend, backend), 0)
-                self.assertNotEqual(self.verify(backend, backend, passed=False), 0)
-                other = "grype" if backend == "fcs" else "fcs"
-                self.assertNotEqual(self.verify(backend, other), 0)
-        self.assertNotEqual(self.verify("unknown", "unknown"), 0)
+    def test_delegated_scanner_backend_requires_verified_assessment(self):
+        self.assertEqual(self.verify("delegated-scanners"), 0)
+        self.assertNotEqual(self.verify("delegated-scanners", passed=False), 0)
+        self.assertNotEqual(self.verify("unknown"), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

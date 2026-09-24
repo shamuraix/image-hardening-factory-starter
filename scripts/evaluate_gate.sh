@@ -5,29 +5,17 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 evidence="${work_dir}/evidence"
 
-backend=${FACTORY_SCANNER_BACKEND:-fcs}
+backend=${FACTORY_SCANNER_BACKEND:-delegated-scanners}
 case "${backend}" in
-  fcs) status="${evidence}/scans/fcs/status.json" ;;
-  grype)
-    status="${evidence}/scans/grype/status.json"
-    # Authoritative scanner data must never take the informational fallback.
-    jq -e 'type == "object" and (.findings | type == "array")' \
-      "${evidence}/scans/grype/findings.json" >/dev/null
-    jq -e 'type == "object" and .valid == true and (.error | not)' \
-      "${evidence}/scans/grype/database.json" >/dev/null
-    cp "${evidence}/scans/grype/findings.json" "${evidence}/findings.json"
-    cp "${evidence}/scans/grype/database.json" "${evidence}/database-status.json"
-    ;;
+  delegated-scanners) status="${evidence}/scans/delegated/status.json" ;;
   *) echo "Unknown scanner backend: ${backend}" >&2; exit 1 ;;
 esac
 
-jq -e --arg backend "${backend}" '(.backend // "fcs") == $backend' "${status}" >/dev/null
+jq -e --arg backend "${backend}" '.backend == $backend' "${status}" >/dev/null
 
-# Legacy scanners are informational. Preserve their evidence when available,
-# but do not prevent the authoritative FCS assessment from reaching policy.
 if ! jq -e 'type == "object" and (.findings | type == "array")' \
   "${evidence}/findings.json" >/dev/null 2>&1; then
-  printf '{"findings":[],"informationalErrors":["legacy scanner evidence unavailable"]}\n' \
+  printf '{"findings":[],"warnings":["scanner evidence unavailable"]}\n' \
     >"${evidence}/findings.json"
 fi
 if ! jq -e 'type == "object"' "${evidence}/database-status.json" >/dev/null 2>&1; then
@@ -42,7 +30,7 @@ python3 -m factory.cli gate-input \
   --compliance "${evidence}/compliance/result.json" \
   --tests "${evidence}/tests/result.json" \
   --database-status "${evidence}/database-status.json" \
-  --fcs-status "${status}" \
+  --assessment-status "${status}" \
   --output "${evidence}/gate-input.json"
 
 yq -o=json '.policy' "${catalog}" >"${work_dir}/policy.json"

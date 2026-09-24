@@ -150,8 +150,8 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertIn(
             'rpm_catalog="${FACTORY_CATALOG_DIR:-catalog/images}/${base_image}.yaml"', local_build
         )
-        self.assertIn('export RPM_SNAPSHOT_UBI9_ID="${snapshot_id}"', local_build)
-        self.assertIn('export RPM_SNAPSHOT_UBI10_ID="${snapshot_id}"', local_build)
+        self.assertIn("FACTORY_RPM_SOURCE_MODE=private-mirror", local_build)
+        self.assertIn("FACTORY_RPM_SOURCE_MODE=public-upstream", local_build)
         self.assertNotIn('.product.version\' "${catalog}") == 10.*', local_build)
 
     def test_local_base_override_is_recorded_as_development_only(self) -> None:
@@ -201,9 +201,7 @@ class LocalWorkflowTests(unittest.TestCase):
         # CDN URL is built from rpm_major (supports UBI 9 and UBI 10)
         self.assertIn("cdn-ubi.redhat.com/content/public/ubi/dist/ubi${rpm_major}", local_build)
         # write_repo_config generates CDN repos without credentials
-        cdn_block = repo_config.split("FACTORY_RPM_UPSTREAM_UBI_BASE:-}")[1].split(
-            "if [[ -n ${FACTORY_RPM_BASE_URL:-}"
-        )[0]
+        cdn_block = repo_config.split("public-upstream)")[1].split(";;")[0]
         self.assertIn("FACTORY_RPM_UPSTREAM_UBI_BASE", cdn_block)
         self.assertNotIn("username=", cdn_block)
         # CDN URLs in local_build.sh come from the gated upstream block
@@ -231,45 +229,17 @@ class LocalWorkflowTests(unittest.TestCase):
             self.assertIn("gpgcheck=1", repo)
             self.assertIn("sslverify=1", repo)
 
-    def test_intake_uses_bundled_defaults_when_operator_settings_absent(self) -> None:
+    def test_intake_no_longer_requires_rpm_snapshot_settings(self) -> None:
         jenkinsfile = (ROOT / "Jenkinsfile.intake").read_text(encoding="utf-8")
 
-        # Bundled repo files are the default
-        self.assertIn("UBI9_SOURCE_REPO_FILE:-config/rpm/ubi9.repo}", jenkinsfile)
-        self.assertIn("UBI10_SOURCE_REPO_FILE:-config/rpm/ubi10.repo}", jenkinsfile)
-        # Default repo IDs cover BaseOS and AppStream
-        self.assertIn("ubi-9-baseos-rpms ubi-9-appstream-rpms", jenkinsfile)
-        self.assertIn("ubi-10-for-x86_64-baseos-rpms ubi-10-for-x86_64-appstream-rpms", jenkinsfile)
-        # SOURCE_REPO_FILE and _IDS are no longer required settings
+        self.assertIn("stage('mirror sources')", jenkinsfile)
+        self.assertNotIn("stage('snapshot and mirror')", jenkinsfile)
         required_block = jenkinsfile.split(".each { requiredSetting(it) }")[0].rsplit("[", 1)[1]
-        self.assertNotIn("UBI9_SOURCE_REPO_FILE", required_block)
-        self.assertNotIn("UBI10_SOURCE_REPO_FILE", required_block)
-        self.assertNotIn("UBI9_SOURCE_REPO_ID", required_block)
-        self.assertNotIn("UBI10_SOURCE_REPO_ID", required_block)
+        self.assertNotIn("FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY", required_block)
+        self.assertNotIn("FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY", required_block)
 
-    def test_snapshot_accepts_multiple_repo_ids_and_validates_each(self) -> None:
-        snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
-
-        # Interface: positional args after the first three are repo IDs
-        self.assertIn("shift 3", snapshot)
-        self.assertIn("if [[ $# -eq 0 ]]", snapshot)
-        self.assertIn("at least one source repository id is required", snapshot)
-        # Each ID is validated before use
-        self.assertIn("[A-Za-z0-9_.:/-]+", snapshot)
-        self.assertIn("invalid repository id:", snapshot)
-        # All IDs are passed to dnf reposync
-        self.assertIn("repoid_args", snapshot)
-        self.assertIn('--repoid "${id}"', snapshot)
-        self.assertIn('"${repoid_args[@]}"', snapshot)
-
-    def test_snapshot_records_size_in_metadata(self) -> None:
-        snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
-
-        # Size and file count are measured
-        self.assertIn("snapshot_bytes=$(du -sb", snapshot)
-        self.assertIn("snapshot_files=$(find", snapshot)
-        # Reported to stderr for operator visibility
-        self.assertIn("snapshot size:", snapshot)
-        # Included in snapshot.json
-        self.assertIn("snapshotBytes", snapshot)
-        self.assertIn("snapshotFiles", snapshot)
+    def test_resource_lock_path_no_longer_uses_snapshot_segment(self) -> None:
+        prepare = (ROOT / "scripts/prepare_context.sh").read_text(encoding="utf-8")
+        publish = (ROOT / "scripts/publish_intake.sh").read_text(encoding="utf-8")
+        self.assertIn("/locks/${image}/${revision}/resource-lock.json", prepare)
+        self.assertIn("/locks/${image}/${revision}/${file}", publish)

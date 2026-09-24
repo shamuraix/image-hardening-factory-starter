@@ -168,6 +168,21 @@
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]+$"
         },
+        "rpm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source"
+          ],
+          "properties": {
+            "source": {
+              "enum": [
+                "private-mirror",
+                "public-upstream"
+              ]
+            }
+          }
+        },
         "buildArgs": {
           "type": "object",
           "additionalProperties": {

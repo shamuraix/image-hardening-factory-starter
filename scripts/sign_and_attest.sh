@@ -56,16 +56,13 @@ declare -A predicates=(
   ["${evidence}/tests/result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:test:v1"
   ["${evidence}/gate-result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:gate:v1"
 )
-backend=$(jq -er '.scannerBackend // "fcs"' "${evidence}/gate-result.json")
+backend=$(jq -er '.scannerBackend // "delegated-scanners"' "${evidence}/gate-result.json")
 case "${backend}" in
-  fcs)
-    predicates["${evidence}/scans/fcs/assessment.json"]="https://crowdstrike.com/fcs/image-assessment/v1"
-    predicates["${evidence}/scans/fcs/sbom.cdx.json"]="https://cyclonedx.org/bom"
-    predicates["${evidence}/scans/fcs/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:fcs-decision:v1"
-    ;;
-  grype)
-    predicates["${evidence}/scans/grype/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-decision:v1"
-    predicates["${evidence}/scans/grype/report.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-report:v1"
+  delegated-scanners)
+    predicates["${evidence}/scans/delegated/status.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:delegated-scanners-decision:v1"
+    predicates["${evidence}/scans/grype.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:grype-report:v1"
+    predicates["${evidence}/scans/trivy.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:trivy-report:v1"
+    predicates["${evidence}/scans/osv.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:osv-report:v1"
     ;;
   *) echo "Unknown signed scanner backend" >&2; exit 1 ;;
 esac

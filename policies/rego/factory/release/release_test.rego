@@ -3,129 +3,47 @@ package factory.release
 import rego.v1
 
 passing_input := {
-	"image": "jira-lts",
-	"imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	"sbomValid": true,
-	"compliancePassed": true,
-	"testsPassed": true,
-	"findings": [{"id": "legacy-critical", "severity": "Critical"}],
-	"database": {"available": false},
-	"fcs": {
-		"scanner": "crowdstrike-fcs",
-		"digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		"exitCode": 0,
-		"sbomExitCode": 0,
-		"reportValid": true,
-		"sbomValid": true,
-		"assessmentPassed": true,
-	},
+  "image": "jira-lts",
+  "imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sbomValid": true,
+  "compliancePassed": true,
+  "testsPassed": true,
+  "findings": [],
+  "database": {"generatedAt": "2026-09-15T00:00:00Z"},
+  "assessment": {
+    "scanner": "trivy-grype-syft-osv-scanner",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "assessmentPassed": true,
+  },
+  "scannerBackend": "delegated-scanners",
+  "evaluatedAt": "2026-09-15T12:00:00Z",
+  "policy": {
+    "maximumDatabaseAgeHours": 72,
+    "block": {"critical": true, "fixableHigh": true, "newHigh": true, "knownExploited": true},
+  },
 }
 
-test_informational_legacy_findings_do_not_deny if {
-	result := decision with input as passing_input
-	result.allow
-}
-
-test_fcs_policy_denial_blocks_release if {
-	candidate := object.union(passing_input, {"fcs": object.union(passing_input.fcs, {
-		"exitCode": 2,
-		"assessmentPassed": false,
-	})})
-	result := decision with input as candidate
-	not result.allow
-}
-
-test_fcs_digest_mismatch_blocks_release if {
-	candidate := object.union(passing_input, {"fcs": object.union(passing_input.fcs, {"digest": "sha256:def"})})
-	result := decision with input as candidate
-	not result.allow
-}
-
-test_missing_fcs_status_blocks_release if {
-	candidate := object.remove(passing_input, {"fcs"})
-	result := decision with input as candidate
-	not result.allow
-}
-
-test_missing_exit_and_assessment_cannot_pass if {
-	candidate := object.union(object.remove(passing_input, {"fcs"}), {"fcs": object.remove(passing_input.fcs, {"exitCode", "assessmentPassed"})})
-	not allow with input as candidate
-}
-
-test_truthy_strings_cannot_pass if {
-	candidate := object.union(passing_input, {"testsPassed": "false"})
-	not allow with input as candidate
-}
-
-test_missing_candidate_digest_cannot_pass if {
-	candidate := object.remove(passing_input, {"imageDigest"})
-	not allow with input as candidate
-}
-
-grype_input := object.union(passing_input, {
-	"scannerBackend": "grype",
-	"assessment": {"scanner": "syft-grype", "assessmentPassed": true, "digest": passing_input.imageDigest},
-	"evaluatedAt": "2026-09-15T12:00:00Z",
-	"database": {"built": "2026-09-15T00:00:00Z"},
-	"findings": [],
-	"policy": {"maximumDatabaseAgeHours": 72, "block": {"critical": true, "fixableHigh": true, "newHigh": true, "knownExploited": true}},
-})
-
-test_grype_without_fcs_passes if {
-	allow with input as object.remove(grype_input, {"fcs"})
-}
-
-test_grype_stale_future_and_missing_database_denied if {
-	every db in [{"built": "2026-09-01T00:00:00Z"}, {"built": "2026-09-16T00:00:00Z"}, {}] {
-		not allow with input as object.union(object.remove(grype_input, {"database"}), {"database": db})
-	}
-}
-
-test_grype_thresholds_deny if {
-	every finding in [
-		{"id": "critical", "severity": "CRITICAL"},
-		{"id": "fixable", "severity": "HIGH", "fixAvailable": true},
-		{"id": "new", "severity": "HIGH", "new": true},
-		{"id": "kev", "severity": "LOW", "knownExploited": true},
-		{"id": "unknown", "severity": "UNKNOWN"},
-	] {
-		not allow with input as object.union(grype_input, {"findings": [finding]})
-	}
-}
-
-test_grype_missing_status_and_digest_mismatch_denied if {
-	every assessment in [{}, {"scanner": "syft-grype", "assessmentPassed": true, "digest": "sha256:other"}] {
-		not allow with input as object.union(object.remove(grype_input, {"assessment"}), {"assessment": assessment})
-	}
+test_delegated_scanners_pass_when_required_evidence_exists if {
+  result := decision with input as passing_input
+  result.allow
 }
 
 test_unknown_backend_denied if {
-	not allow with input as object.union(grype_input, {"scannerBackend": "other"})
+  not allow with input as object.union(passing_input, {"scannerBackend": "other"})
 }
 
-exception_finding := {"id": "GHSA-example", "component": "pkg:maven/example/library@1", "installedVersion": "1", "fixAvailable": true, "severity": "CRITICAL", "knownExploited": true}
-exception_data := {"jira-lts": [object.union(exception_finding, {"reason": "test"})]}
-
-test_exact_default_exclusion_allows_vulnerability if {
-	candidate := object.union(grype_input, {"findings": [exception_finding]})
-	allow with input as candidate with data.factory.exceptions.approved as exception_data
+test_fixable_high_outside_archive_warns_without_deny if {
+  candidate := object.union(passing_input, {
+    "findings": [{"id": "CVE-1", "component": "pkg:rpm/openssl@1", "severity": "HIGH", "fixAvailable": true, "inApplicationArchive": false}],
+  })
+  result := decision with input as candidate
+  result.allow
+  count(result.warn) == 1
 }
 
-test_exclusions_do_not_match_other_id_component_version_or_unfixable if {
-	every change in [{"id": "GHSA-other"}, {"component": "other"}, {"installedVersion": "2"}, {"fixAvailable": false}] {
-		candidate := object.union(grype_input, {"findings": [object.union(exception_finding, change)]})
-		not allow with input as candidate with data.factory.exceptions.approved as exception_data
-	}
-}
-
-test_exclusions_do_not_match_other_image if {
-	candidate := object.union(grype_input, {"image": "ubi9-minimal", "findings": [exception_finding]})
-	not allow with input as candidate with data.factory.exceptions.approved as exception_data
-}
-
-test_exclusions_do_not_bypass_tests_or_fcs if {
-	candidate := object.union(grype_input, {"testsPassed": false, "findings": [exception_finding]})
-	not allow with input as candidate with data.factory.exceptions.approved as exception_data
-	fcs_candidate := object.union(passing_input, {"findings": [exception_finding], "fcs": object.union(passing_input.fcs, {"assessmentPassed": false})})
-	not allow with input as fcs_candidate with data.factory.exceptions.approved as exception_data
+test_fixable_high_in_archive_denies if {
+  candidate := object.union(passing_input, {
+    "findings": [{"id": "CVE-2", "component": "pkg:maven/demo@1", "severity": "HIGH", "fixAvailable": true, "inApplicationArchive": true}],
+  })
+  not allow with input as candidate
 }

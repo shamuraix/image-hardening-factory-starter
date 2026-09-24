@@ -26,8 +26,7 @@ def main() -> int:
                 "factoryRevision": build["factoryRevision"],
                 "baseRef": build["baseRef"],
                 "baseDigest": build["baseDigest"],
-                "rpmSnapshot": build["rpmSnapshot"],
-                "rpmRepomdDigest": build["rpmRepomdDigest"],
+                "rpmSource": build.get("rpmSource", "unknown"),
             },
             "resolvedDependencies": [
                 {

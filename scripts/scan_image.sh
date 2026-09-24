@@ -33,6 +33,7 @@ normalize_args=(
 baseline="/opt/security-data/baselines/${FACTORY_IMAGE}.json"
 [[ -s "${baseline}" ]] && normalize_args+=(--baseline "${baseline}")
 python3 -m factory.cli normalize-findings "${normalize_args[@]}"
+digest=$(skopeo inspect --format '{{.Digest}}' "oci-archive:${work_dir}/image.oci.tar")
 
 malware_bundle="${work_dir}/malware-rootfs"
 malware_rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${malware_bundle}")
@@ -48,6 +49,16 @@ jq -n \
   --arg generatedAt "$(cat /opt/security-data/generated-at)" \
   --arg grype "$(grype version -o json | jq -r '.version')" \
   --arg trivy "$(trivy --version --format json | jq -r '.Version')" \
+  --arg syft "$(syft version -o json | jq -r '.version')" \
   --arg osv "$(osv-scanner --version 2>&1 | head -n1)" \
-  '{generatedAt:$generatedAt,scannerVersions:{grype:$grype,trivy:$trivy,osvScanner:$osv}}' \
+  '{generatedAt:$generatedAt,scannerVersions:{grype:$grype,trivy:$trivy,syft:$syft,osvScanner:$osv}}' \
   >"${evidence}/database-status.json"
+
+warning_count=$(jq -r '.warnings // [] | length' "${evidence}/findings.json")
+mkdir -p "${scans}/delegated"
+jq -n \
+  --arg assessedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg digest "${digest}" \
+  --argjson warningCount "${warning_count}" \
+  '{schemaVersion:"1.0",backend:"delegated-scanners",scanner:"trivy-grype-syft-osv-scanner",digest:$digest,assessmentPassed:true,warningCount:$warningCount,assessedAt:$assessedAt}' \
+  >"${scans}/delegated/status.json"

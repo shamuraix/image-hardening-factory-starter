@@ -5,9 +5,8 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 # shellcheck disable=SC1090,SC1091
 source "${work_dir}/build.env"
-export RPM_REPOMD_DIGEST
 if ! jq -e '.localDevelopment == true' "${work_dir}/resource-lock.json" >/dev/null; then
-  for override in FACTORY_RPM_BASE_URL FACTORY_RPM_UPSTREAM_UBI_BASE FACTORY_UBI_REPO_PREFIX; do
+  for override in FACTORY_RPM_BASE_URL FACTORY_RPM_UPSTREAM_UBI_BASE FACTORY_UBI_REPO_PREFIX FACTORY_RPM_SOURCE_MODE; do
     [[ -z ${!override:-} ]] || { echo "${override} is development-only" >&2; exit 2; }
   done
 fi
@@ -144,8 +143,8 @@ fi
 args+=(--opt "build-arg:BASE_MAJOR=${base_major}")
 
 repo_file="${private_dir}/factory.repo"
-RPM_SNAPSHOT_ID=$(scripts/write_repo_config.sh "${catalog}" "${repo_file}")
-export RPM_SNAPSHOT_ID
+RPM_SOURCE_IDENTIFIER=$(scripts/write_repo_config.sh "${catalog}" "${repo_file}")
+export RPM_SOURCE_IDENTIFIER
 chmod 600 "${repo_file}"
 args+=(--secret "id=factory-repo,src=${repo_file}")
 
@@ -184,12 +183,11 @@ jq -n \
   --arg baseRef "${BASE_REF}" \
   --arg baseDigest "${BASE_DIGEST}" \
   --arg factoryRevision "${FACTORY_COMMIT_SHA:-local}" \
-  --arg rpmSnapshot "${RPM_SNAPSHOT_ID}" \
-  --arg rpmRepomdDigest "${RPM_REPOMD_DIGEST}" \
+  --arg rpmSource "${RPM_SOURCE_IDENTIFIER}" \
   --arg created "${created}" \
   --arg startedOn "${build_started}" \
   --arg finishedOn "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg builder "${FACTORY_RUNNER_ID:-local}" \
-  '{startedOn:$startedOn,finishedOn:$finishedOn,builder:$builder,image:$image,digest:$digest,sourceRevision:$sourceRevision,baseRef:$baseRef,baseDigest:$baseDigest,factoryRevision:$factoryRevision,rpmSnapshot:$rpmSnapshot,rpmRepomdDigest:$rpmRepomdDigest,created:$created}' \
+  '{startedOn:$startedOn,finishedOn:$finishedOn,builder:$builder,image:$image,digest:$digest,sourceRevision:$sourceRevision,baseRef:$baseRef,baseDigest:$baseDigest,factoryRevision:$factoryRevision,rpmSource:$rpmSource,created:$created}' \
   >"${work_dir}/image-metadata.json"
 printf 'IMAGE_DIGEST=%s\nLOCAL_IMAGE_REF=%s\n' "${digest}" "${local_ref}" >>"${work_dir}/build.env"

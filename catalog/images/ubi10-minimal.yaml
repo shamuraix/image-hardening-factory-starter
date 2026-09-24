@@ -22,6 +22,8 @@ build:
   base:
     kind: upstream
     lockKey: redhat-ubi10-minimal
+  rpm:
+    source: private-mirror
   testProfile: base
 policy:
   profile: rhel10-container-stig-canary

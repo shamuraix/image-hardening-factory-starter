@@ -5,6 +5,16 @@ from pathlib import Path
 from typing import Any
 
 SEVERITIES = {"UNKNOWN", "NEGLIGIBLE", "LOW", "MEDIUM", "HIGH", "CRITICAL"}
+APPLICATION_PURL_PREFIXES = {
+    "pkg:maven/",
+    "pkg:npm/",
+    "pkg:pypi/",
+    "pkg:gem/",
+    "pkg:golang/",
+    "pkg:composer/",
+    "pkg:cargo/",
+    "pkg:nuget/",
+}
 
 
 def _finding(
@@ -18,6 +28,7 @@ def _finding(
     normalized = severity.upper()
     if normalized not in SEVERITIES:
         normalized = "UNKNOWN"
+    in_application_archive = any(component.startswith(prefix) for prefix in APPLICATION_PURL_PREFIXES)
     return {
         "id": identifier,
         "scanner": scanner,
@@ -28,6 +39,7 @@ def _finding(
         "fixAvailable": bool(fixed_version),
         "knownExploited": False,
         "applicable": True,
+        "inApplicationArchive": in_application_archive,
         "new": True,
         "exception": None,
     }
@@ -122,4 +134,19 @@ def normalize(
         finding["knownExploited"] = finding["id"] in kev_ids
         finding["new"] = finding["correlationKey"] not in baseline_keys
     all_findings.sort(key=lambda item: (item["id"], item["component"], item["scanner"]))
-    return {"schemaVersion": "1.0", "findings": all_findings}
+    warnings = []
+    for finding in all_findings:
+        if (
+            finding["severity"] in {"HIGH", "CRITICAL"}
+            and finding["fixAvailable"]
+            and not finding["inApplicationArchive"]
+        ):
+            warnings.append(
+                {
+                    "id": finding["id"],
+                    "component": finding["component"],
+                    "severity": finding["severity"],
+                    "message": "fixable high/critical vulnerability is outside the application archive",
+                }
+            )
+    return {"schemaVersion": "1.0", "findings": all_findings, "warnings": warnings}
