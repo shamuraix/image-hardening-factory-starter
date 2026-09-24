@@ -22,6 +22,8 @@ build:
   base:
     kind: catalog
     image: ubi9-minimal
+  rpm:
+    source: private-mirror
   testProfile: jira
   buildArgs:
     JIRA_VERSION: 11.3.11

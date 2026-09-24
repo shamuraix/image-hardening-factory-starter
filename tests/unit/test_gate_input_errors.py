@@ -20,11 +20,28 @@ class GateInputErrorTests(unittest.TestCase):
         for findings, database, reaches_gate in cases:
             with self.subTest(findings=findings, database=database), TemporaryDirectory() as d:
                 work = Path(d)
-                scans = work / "evidence/scans/grype"
+                evidence = work / "evidence"
+                scans = evidence / "scans/delegated"
                 scans.mkdir(parents=True)
-                (scans / "findings.json").write_text(findings)
-                (scans / "database.json").write_text(json.dumps(database))
-                (scans / "status.json").write_text('{"backend":"grype"}')
+                (evidence / "findings.json").write_text(findings)
+                db = (
+                    {"generatedAt": "2026-09-15T00:00:00Z", "scannerVersions": {}}
+                    if database.get("valid")
+                    else {}
+                )
+                (evidence / "database-status.json").write_text(json.dumps(db))
+                (scans / "status.json").write_text(
+                    '{"backend":"delegated-scanners","assessmentPassed":true,"scanner":"trivy-grype-syft-osv-scanner","digest":"sha256:'
+                    + "a" * 64
+                    + '"}'
+                )
+                (evidence / "sbom.cdx.json").write_text(
+                    json.dumps({"bomFormat": "CycloneDX", "specVersion": "1.6", "components": []})
+                )
+                (evidence / "compliance/result.json").parent.mkdir(parents=True, exist_ok=True)
+                (evidence / "compliance/result.json").write_text(json.dumps({"passed": True}))
+                (evidence / "tests/result.json").parent.mkdir(parents=True, exist_ok=True)
+                (evidence / "tests/result.json").write_text(json.dumps({"passed": True}))
                 (work / "image-metadata.json").write_text(
                     json.dumps({"digest": "sha256:" + "a" * 64})
                 )
@@ -37,12 +54,10 @@ class GateInputErrorTests(unittest.TestCase):
                     env={
                         **os.environ,
                         "PATH": str(work) + ":" + os.environ["PATH"],
-                        "FACTORY_SCANNER_BACKEND": "grype",
+                        "FACTORY_SCANNER_BACKEND": "delegated-scanners",
                         "FACTORY_IMAGE": "fixture",
                     },
                     capture_output=True,
                     check=False,
                 )
                 self.assertEqual(result.returncode == 73, reaches_gate, result.stderr)
-                if not reaches_gate:
-                    self.assertFalse((work / "evidence/findings.json").exists())

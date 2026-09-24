@@ -1,188 +1,106 @@
 # Implementation plan
 
-This plan converts the ten recommended steps into deployable work packages.
-Each milestone leaves the factory in a usable and testable state.
+## Quick roadmap
 
-## Milestone 1 — Intake and immutable locks
+1. Intake and signed resource locks
+2. Rootless OCI builds with internal RPM source control
+3. SBOM + delegated scanner evidence + compliance/test evidence
+4. Policy-gated import, signing, and digest-preserving promotion
+5. Optional remediation/reproducibility extensions
 
-Deliverables:
+---
 
-- Mirror the five Repo One repositories into the configured internal SCM.
-- Validate every source revision as a full 40-character commit.
-- Resolve every `hardening_manifest.yaml` HTTP and OCI resource.
-- Verify declared SHA-256/SHA-512 values before upload.
-- Store resources under content-addressed Artifactory paths.
-- Generate `resource-lock.json` containing source, resource, base-image,
-  repository-metadata, and toolchain digests.
-- Sign the lock before transfer into a disconnected enclave.
+## Detailed milestones
 
-Acceptance criteria:
+### Milestone 1 — Intake and immutable resource locks
 
-- Repeating intake with identical inputs produces the same canonical lock.
-- No build job can use an URL or resource absent from the lock.
-- The connected intake service account cannot write release repositories.
+Deliver:
 
-## Milestone 2 — Harden and publish UBI 9.8
+- Internal source mirror flow for catalog sources
+- Manifest resource resolution with checksum enforcement
+- Signed `resource-lock.json` generation and publication
 
-Deliverables:
+Done when:
 
-- Patch the UBI Dockerfile to require an internal base reference by digest.
-- Build using an immutable UBI RPM snapshot from Artifactory.
-- Run the supplied hardening scripts explicitly.
-- Run OpenSCAP/ComplianceAsCode, RPM integrity, crypto-policy, FIPS-host, and
-  structural tests.
-- Produce OCI image, SBOM, vulnerability results, provenance and gate result.
+- Identical inputs produce canonical lock output
+- Builds cannot consume undeclared resources
+- Intake permissions cannot write release repositories
 
-Acceptance criteria:
+### Milestone 2 — Rootless build pipeline foundation
 
-- The build runner has no external egress.
-- The base and `repomd.xml` digests appear in provenance.
-- All applicable release rules pass before quarantine import.
+Deliver:
 
-## Milestone 3 — Atlassian UBI 9.8 overlay
+- Rootless BuildKit image build path
+- Internal RPM source selection (`private-mirror` / `public-upstream` where approved)
+- OCI archive + metadata production
 
-Deliverables:
+Done when:
 
-- Patch Bitbucket, Confluence and Jira to require the released internal UBI 9
-  image by digest.
-- Change manifest base metadata from 9.7 to 9.8.
-- Fix Bitbucket's exposed HTTP port discrepancy.
-- Fix Jira's JSM OBR cleanup command.
-- Add RPM integrity tests for every forced `rpm -e --nodeps` operation.
-- Exclude the bundled legacy Helm charts from release scope.
+- Build path has no unauthorized external egress
+- Base identity and RPM source identity are recorded in build metadata/provenance
 
-Acceptance criteria:
+### Milestone 3 — Application image overlay pipeline
 
-- Every patch applies cleanly to its pinned upstream commit.
-- Version labels, resource filenames and product build arguments agree.
-- No Dockerfile contains Registry1 or a public base image reference.
+Deliver:
 
-## Milestone 4 — Parallel Atlassian builds
+- Catalog dependency fan-out for Atlassian images
+- Isolated build context/evidence directories per image
+- Parallelized dependent image scheduling
 
-Deliverables:
+Done when:
 
-- Dependency-aware Jenkins execution-plan generator.
-- UBI 9 completion triggers Bitbucket, Confluence and Jira builds in parallel.
-- Each image has an isolated build context and evidence directory.
-- Failure of one application does not conceal results for the other two.
+- Base-image selection behavior matches catalog dependency graph
+- A single app build does not force unrelated base rebuilds
 
-Acceptance criteria:
+### Milestone 4 — Evidence and delegated assessment
 
-- Selecting `ubi9-minimal` renders all four affected pipelines.
-- Selecting only `jira-lts` does not rebuild unrelated images.
-- All application builds use the same approved UBI digest.
+Deliver:
 
-## Milestone 5 — SBOM, scanning and policy gate
+- Syft CycloneDX/SPDX SBOMs
+- Scanner evidence (Grype/Trivy/OSV + normalized findings)
+- Delegated assessment status artifact
+- Compliance and product-test evidence
 
-Deliverables:
+Done when:
 
-- Syft CycloneDX and SPDX SBOMs.
-- CrowdStrike FCS image assessment, native JSON report and CycloneDX SBOM.
-- Grype SBOM scan, Trivy image/config scan and OSV source scan retained as
-  informational evidence.
-- Red Hat CSAF/OVAL, CISA KEV and EPSS data supplied from Artifactory.
-- Normalized finding document and OPA decision.
+- Assessment and policy consume the exact built candidate digest
+- Evidence remains visible and signed for audit/remediation
 
-Acceptance criteria:
+### Milestone 5 — Policy gate and controlled release
 
-- The exact OCI archive produced by the build is assessed by FCS through an
-  isolated, rootless, job-local Podman API socket.
-- The Falcon image assessment policy is the sole vulnerability-scanner release
-  authority; a nonzero exit or invalid/missing FCS evidence denies release.
-- Findings from Grype, Trivy, OSV and ClamAV remain visible and signed but
-  cannot independently deny a gate or promotion.
-- Compliance, product tests, SBOM validity, signatures and approvals remain
-  independently blocking controls.
+Deliver:
 
-## Milestone 6 — Product integration testing
+- OPA gate input/result generation
+- Protected quarantine import
+- Cosign signature + required attestations
+- Digest-preserving promotion with verification before/after copy
 
-Deliverables:
+Done when:
 
-- Base image structure and crypto tests.
-- Ephemeral PostgreSQL tests for all three products.
-- Bitbucket Git HTTP/SSH and supported Git-version tests.
-- Confluence HTTP, Synchrony and graceful-shutdown tests.
-- Jira/JSM plugin loading, HTTP and cluster-port tests.
+- Build jobs cannot publish to quarantine/release directly
+- Promotion never mutates the promoted digest
 
-Acceptance criteria:
+### Milestone 6 — Optional extension stages
 
-- Tests run against the exact candidate digest.
-- Startup and SIGTERM shutdown succeed as the configured non-root UID.
-- `rpm -Va` deviations match a reviewed allowlist.
+Deliver:
 
-## Milestone 7 — Signing, attestations and pull promotion
+- Helmper/Copacetic/Hummingbird optional evidence hooks
+- Read-only AI remediation summary support
+- Guarded remediation-branch publication flow
 
-Deliverables:
+Done when:
 
-- Protected quarantine importer.
-- Cosign signatures using environment-local encrypted keys, stored with the
-  subject in Artifactory as digest-linked attachments, with transparency logging disabled.
-- Signed in-toto attestations for SBOM, provenance, scans, compliance, tests,
-  gate decision and approval.
-- Pull-based promotion script that verifies source signatures and copies the
-  subject plus OCI referrer closure and Cosign 2.x attachment tags.
+- Optional stages add evidence without weakening trust boundaries
+- Auto-merge remains disabled for remediation outputs
 
-Acceptance criteria:
+### Milestone 7 — UBI canary evolution
 
-- Build runners cannot push to quarantine or release repositories.
-- Promotion copies the source digest without mutation.
-- Gov1/Gov2 require environment-local governed U.S.-person group approval of the exact digest and local signing.
+Deliver:
 
-## Milestone 8 — Read-only AI summaries
+- UBI canary path for compatibility qualification
+- Controlled promotion separation for canary vs release
 
-Deliverables:
+Done when:
 
-- Schema-constrained remediation summary.
-- Retrieval inputs limited to signed evidence, approved vendor security data,
-  internal repository candidates and source files.
-- Prompt-injection-resistant handling of advisory and source text.
-
-Acceptance criteria:
-
-- The agent has no write, signing, promotion or exception credential.
-- Every proposed version is proven to exist in Artifactory.
-- Unverifiable guidance is labeled blocked rather than guessed.
-
-## Milestone 9 — Agent-generated remediation branches
-
-Deliverables:
-
-- Agent writes only to an ephemeral overlay working tree.
-- Deterministic tools perform dependency solving and checksum calculation.
-- A trusted broker, not the agent, publishes the SCM branch for human review.
-- Clean-checkout rebuild and rescan pipeline verifies the proposal.
-
-Acceptance criteria:
-
-- AI cannot edit `policies/`, `exceptions/`, VEX or signing configuration.
-- Auto-merge remains disabled.
-- The change request includes before/after findings, SBOM delta and test evidence.
-
-## Milestone 10 — UBI 10 canary
-
-Deliverables:
-
-- Independent UBI 10.2 build and evidence pipeline.
-- Validated RHEL 10 SCAP content and vulnerability-data coverage.
-- Optional Atlassian compatibility branches; no production dependency change.
-- Runtime, Java, native library, font and vendor-support comparison report.
-
-Acceptance criteria:
-
-- UBI 10 is not promoted as an Atlassian base by policy or tag accident.
-- Migration requires an explicit catalog dependency change and human approval.
-- UBI 9 rollback remains available by digest throughout the evaluation.
-
-## Recommended delivery sequence
-
-| Sprint | Scope | Exit artifact |
-|---|---|---|
-| 1 | Milestone 1 | Signed locks in Artifactory |
-| 2 | Milestone 2 | Released UBI 9.8 digest |
-| 3 | Milestones 3–4 | Three parallel application candidates |
-| 4 | Milestone 5 | Enforced release policy |
-| 5 | Milestone 6 | Product integration evidence |
-| 6 | Milestone 7 | Signed pull-based release |
-| 7 | Milestone 8 | Read-only remediation summaries |
-| 8 | Milestone 9 | Guarded patch MRs |
-| Parallel | Milestone 10 | UBI 10 compatibility report |
+- Canary cannot be promoted to release by configuration mistake
+- Migration requires explicit catalog/policy/operator approval

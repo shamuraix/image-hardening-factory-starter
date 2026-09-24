@@ -14,14 +14,11 @@ if [[ -s "${work_dir}/evidence/gate-result.json" ]]; then
   gate_allowed=$(jq -r '.allow // false' "${work_dir}/evidence/gate-result.json")
 fi
 
-backend=${FACTORY_SCANNER_BACKEND:-fcs}
-fcs_assessment="false"
+backend=${FACTORY_SCANNER_BACKEND:-delegated-scanners}
 assessment="false"
-if [[ -s "${work_dir}/evidence/scans/${backend}/status.json" ]]; then
-  assessment=$(jq -r '.assessmentPassed // false' "${work_dir}/evidence/scans/${backend}/status.json")
-fi
-if [[ -s "${work_dir}/evidence/scans/fcs/status.json" ]]; then
-  fcs_assessment=$(jq -r '.assessmentPassed // false' "${work_dir}/evidence/scans/fcs/status.json")
+assessment_status="${work_dir}/evidence/scans/delegated/status.json"
+if [[ "${backend}" == delegated-scanners && -s "${assessment_status}" ]]; then
+  assessment=$(jq -r '.assessmentPassed // false' "${assessment_status}")
 fi
 provenance_sha256=""
 if [[ -s "${work_dir}/evidence/provenance.json" ]]; then
@@ -58,7 +55,6 @@ jq -n \
   --arg gateAllowed "${gate_allowed}" \
   --arg scannerBackend "${backend}" \
   --arg assessmentPassed "${assessment}" \
-  --arg fcsAssessmentPassed "${fcs_assessment}" \
   --arg provenanceSha256 "${provenance_sha256}" \
   --arg sbomSha256 "${sbom_sha256}" \
   --arg status "${status}" \
@@ -69,7 +65,7 @@ jq -n \
     catalog:$catalog,
     digest:$digest,
     source:{url:$sourceUrl,commit:$commit},
-    verification:{scannerBackend:$scannerBackend,assessmentPassed:($assessmentPassed=="true"),gateAllowed:($gateAllowed=="true"),fcsAssessmentPassed:($fcsAssessmentPassed=="true")},
+    verification:{scannerBackend:$scannerBackend,assessmentPassed:($assessmentPassed=="true"),gateAllowed:($gateAllowed=="true")},
     artifacts:{provenanceSha256:$provenanceSha256,sbomSha256:$sbomSha256},
     status:$status,
     reason:$reason,

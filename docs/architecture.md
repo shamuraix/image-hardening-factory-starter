@@ -1,94 +1,85 @@
 # Architecture
 
-## Dependency selection
+[Project overview](../README.md) · [Configuration](configuration.md) · [Operations](operations.md)
+
+## Quick architecture view
+
+### What this system does
+
+Image Hardening Factory takes pinned source inputs, builds deterministic OCI
+candidates, gathers evidence, gates release with policy, then signs/promotes by
+digest.
+
+### High-level flow
 
 ```mermaid
 flowchart TD
-    U9["UBI 9 release base"] --> B["Bitbucket LTS"]
-    U9 --> C["Confluence LTS"]
-    U9 --> J["Jira LTS"]
-    U10["UBI 10 canary"] --> Canary["Separate canary repository"]
-    B --> Apps["Application release repository"]
-    C --> Apps
-    J --> Apps
+    Intake[Connected intake] --> Build[Rootless BuildKit build]
+    Build --> Evidence[SBOM, scan/assessment, compliance, tests]
+    Evidence --> Gate[OPA release gate]
+    Gate -->|allow| Import[Quarantine import]
+    Gate -->|deny| Stop[Retain evidence and stop]
+    Import --> Sign[Cosign signature and attestations]
+    Sign --> Promote[Digest-preserving promotion]
 ```
 
-The planner computes descendants and schedules dependency waves. Selected bases
-pass their OCI archive directly to dependent builds. Unselected bases currently
-require an operator-maintained `releases/<base>/current.json` in the generic
-source repository, with an internal digest-qualified `imageRef`. The factory
-does not publish this index automatically. Restrict its writer to the release
-operator; it is a trust input and is not independently signed by this implementation.
+### Image dependency model
 
-## Stage ownership
+```mermaid
+flowchart TD
+    U9[UBI 9 base] --> B[Bitbucket LTS]
+    U9 --> C[Confluence LTS]
+    U9 --> J[Jira LTS]
+    U10[UBI 10 canary] --> Canary[Canary repository]
+```
+
+A base change can fan out to dependent application images; a single application
+build can reuse an already-released base when that base is not selected.
+
+---
+
+## Advanced architecture reference
+
+### Trust boundaries by stage
 
 | Boundary | Inputs | Outputs | Privilege |
 |---|---|---|---|
-| Connected intake | Pinned source, manifest resources, RPM origins | Mirrors, signed resource locks and snapshot metadata | Upstream access; intake writes |
-| Prepare/build | Internal inputs and selected base | OCI archive, metadata | Internal reads; rootless user namespaces |
-| Assessment | Exact candidate archive | FCS, SBOM, OpenSCAP and baseline results | FCS API access only in FCS pod |
-| Policy | Required assessment evidence | Allow/deny document | No publication credential |
-| Import | Passing candidate and lock | Immutable quarantine reference | Quarantine writes |
-| Sign | Imported digest, evidence, Gov approval | Cosign signature and attestations | Key and attachment writes |
-| Promote | Signed candidate and attachments | Exact digest in release/canary | Source read, destination write |
+| Connected intake | Pinned source + manifests | Signed resource locks + mirrored artifacts | Upstream access + intake write |
+| Prepare/build | Internal mirrors + selected base | OCI archive + build metadata | Internal read; rootless namespaces |
+| Evidence/assessment | Candidate archive | Findings, assessment status, compliance/test evidence | Internal analysis only |
+| Policy gate | Required evidence set | allow/deny decision | No publish credential |
+| Import | Passing digest + lock | Immutable quarantine ref | Quarantine write |
+| Signing | Imported digest + evidence | Signature + attestations | Signing/referrer write |
+| Promotion | Signed quarantine digest | Exact digest in release/canary | Source read + destination write |
 
-Jenkins stashes transfer candidates between pods. An external Artifact Manager
-is required at realistic image sizes. Rootless does not mean every Kubernetes
-Restricted profile works unchanged: validate user namespaces, subordinate IDs,
-setuid mapping helpers, seccomp and storage on the actual node/runtime pair.
-Never solve runtime incompatibility by granting a general-purpose privileged pod.
+### Assessment and policy model
 
-## Evidence and failure flow
+The authoritative backend is **delegated-scanners** with normalized evidence
+from scanner outputs and policy-aware assessment status. Policy still evaluates:
 
-```mermaid
-flowchart TD
-    Candidate["One OCI candidate digest"] --> FCS["FCS assessment"]
-    Candidate --> Tests["Compliance and baseline tests"]
-    Candidate --> SBOM["Syft inventory"]
-    FCS --> Decision{"Complete passing evidence?"}
-    Tests --> Decision
-    SBOM --> Decision
-    Decision -->|No| Deny["Retain evidence; block import"]
-    Deny --> AI["Optional read-only summary"]
-    Decision -->|Yes| Approval["Gov group approves exact digest"]
-    Approval --> Sign["Sign digest and predicates"]
-    Sign --> Verify["Verify source; copy; verify destination"]
-```
+- SBOM validity
+- assessment integrity and digest match
+- compliance and test pass state
+- vulnerability threshold rules and approved exceptions
 
-The gate command exits nonzero on denial. Jenkins records it as an unstable
-stage so optional remediation can inspect evidence; the importer independently
-rejects denial. Failures before the gate (such as a runtime test error) stop the
-image pipeline. There is no automatic exception or AI override.
+Warnings (for selected outside-archive fixable findings) do not bypass deny
+conditions for in-scope blocking findings.
 
-## Storage compatibility
+### Build/runtime model
 
-The recorded Cosign 2.6 baseline uses digest-derived attachment tags. OCI 1.1
-registry support alone does not convert those tags into referrers. Promotion
-therefore uses both ORAS recursive copying and `cosign copy --only=sig,att,sbom`,
-then validates required attestations at the destination. Do not change Cosign
-major versions without a signed-image integration test against your Artifactory.
+- BuildKit runs rootless per-job with native snapshotter.
+- Podman remains rootless with VFS for scan/test workflows.
+- Scanner and compliance rootfs inspection uses ownership-preserving Umoci
+  unpack under `podman unshare`.
+- No shared privileged daemon is required.
 
-Relevant upstream interfaces:
+### Evidence identity and promotion
 
-- [Skopeo copy and digest preservation](https://github.com/containers/skopeo/blob/main/docs/skopeo-copy.1.md)
-- [Cosign 2.6 copy command](https://github.com/sigstore/cosign/blob/v2.6.0/cmd/cosign/cli/copy.go)
-- [ORAS recursive copy](https://oras.land/docs/commands/oras_cp/)
-- [OPA policy language](https://www.openpolicyagent.org/docs/policy-language)
+Evidence is bound to the candidate digest via signed attestations. Promotion is
+pull-based and must preserve digest identity while copying both referrers and
+Cosign attachment artifacts.
 
-## Konflux workflow alignment
+### Konflux-style optional stages
 
-The optional Helmper, Copacetic, and Hummingbird stages follow the same
-high-level separation used by Konflux pipelines:
-
-- Build and evidence stages produce immutable digest-linked artifacts.
-- Policy remains explicit and independent from remediation planning.
-- Remediation and reproducibility checks are additive evidence and can be run as
-  informative stages without granting publish credentials.
-
-This keeps trust boundaries stable while allowing operators to adopt
-Konflux-style task bundles incrementally.
-
-These diagrams are Markdown/Mermaid source for GitHub. For Confluence instances
-without Mermaid support, render to SVG/PNG and attach the image; a Markdown code
-block is not a native Confluence diagram. The retained introduction PPTX is a
-historical overview, not the authoritative configuration reference.
+Helmper, Copacetic, and Hummingbird stages remain optional evidence extensions.
+They add analysis/reproducibility data without weakening trust boundaries.

@@ -3,120 +3,99 @@ set -euo pipefail
 
 catalog=${1:?catalog file is required}
 output=${2:?output file is required}
+
 base_kind=$(yq -r '.build.base.kind' "${catalog}")
 if [[ "${base_kind}" == catalog ]]; then
-  family=$(yq -r '.build.base.image' "${catalog}")
+  base_catalog="$(dirname "${catalog}")/$(yq -r '.build.base.image' "${catalog}").yaml"
 else
-  version=$(yq -r '.product.version' "${catalog}")
-  case "${version}" in
-    9.*) family=ubi9-minimal ;;
-    10.*) family=ubi10-minimal ;;
-    *) echo "unable to determine RPM snapshot for ${catalog}" >&2; exit 2 ;;
-  esac
+  base_catalog="${catalog}"
 fi
-snapshot_id=$(scripts/rpm_snapshot_id.sh "${catalog}")
+rpm_major=$(yq -r '.product.version | split(".")[0]' "${base_catalog}")
+platform=$(yq -r '.build.platforms[0] // ""' "${catalog}")
+if [[ -z "${platform}" || "${platform}" == "null" ]]; then
+  platform=$(yq -r '.build.platforms[0] // ""' "${base_catalog}")
+fi
+arch=${platform##*/}
+case "${arch}" in
+  amd64) rpm_arch=x86_64 ;;
+  arm64) rpm_arch=aarch64 ;;
+  *) rpm_arch=${arch} ;;
+esac
 
-if [[ -n ${FACTORY_UBI_REPO_PREFIX:-} ]]; then
-  : "${FACTORY_RPM_REPO_USERNAME:?FACTORY_RPM_REPO_USERNAME is required for the UBI cache}"
-  : "${FACTORY_RPM_REPO_PASSWORD:?FACTORY_RPM_REPO_PASSWORD is required for the UBI cache}"
-  cat >"${output}" <<EOF
+source_mode=${FACTORY_RPM_SOURCE_MODE:-$(yq -r '.build.rpm.source // ""' "${catalog}")}
+[[ -n "${source_mode}" ]] || { echo "build.rpm.source must be set in ${catalog}" >&2; exit 2; }
+
+if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]; then
+  cat >"${output}" <<CFG
+[factory-local-rpm]
+name=Factory local RPM source
+baseurl=${FACTORY_RPM_BASE_URL%/}/
+enabled=1
+gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
+repo_gpgcheck=${FACTORY_RPM_REPO_GPGCHECK:-1}
+sslverify=${FACTORY_RPM_SSLVERIFY:-1}
+CFG
+  chmod 0600 "${output}"
+  printf 'local-source:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"
+  exit 0
+fi
+
+case "${source_mode}" in
+  private-mirror)
+    : "${FACTORY_UBI_REPO_PREFIX:?FACTORY_UBI_REPO_PREFIX is required for build.rpm.source=private-mirror}"
+    : "${FACTORY_RPM_REPO_USERNAME:?FACTORY_RPM_REPO_USERNAME is required for build.rpm.source=private-mirror}"
+    : "${FACTORY_RPM_REPO_PASSWORD:?FACTORY_RPM_REPO_PASSWORD is required for build.rpm.source=private-mirror}"
+    cat >"${output}" <<CFG
 [factory-ubi-baseos]
-name=Factory internal UBI BaseOS cache
+name=Factory private UBI BaseOS mirror
 baseurl=${FACTORY_UBI_REPO_PREFIX%/}/baseos/os/
 enabled=1
-gpgcheck=1
+gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 username=${FACTORY_RPM_REPO_USERNAME}
 password=${FACTORY_RPM_REPO_PASSWORD}
 
 [factory-ubi-appstream]
-name=Factory internal UBI AppStream cache
+name=Factory private UBI AppStream mirror
 baseurl=${FACTORY_UBI_REPO_PREFIX%/}/appstream/os/
 enabled=1
-gpgcheck=1
+gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 username=${FACTORY_RPM_REPO_USERNAME}
 password=${FACTORY_RPM_REPO_PASSWORD}
-EOF
-  chmod 0600 "${output}"
-  printf '%s\n' "${snapshot_id}"
-  exit 0
-fi
-
-if [[ -n ${FACTORY_RPM_UPSTREAM_UBI_BASE:-} ]]; then
-  cat >"${output}" <<EOF2
+CFG
+    chmod 0600 "${output}"
+    printf 'private-mirror:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"
+    ;;
+  public-upstream)
+    upstream_root=${FACTORY_RPM_UPSTREAM_UBI_BASE:-}
+    if [[ -z "${upstream_root}" ]]; then
+      upstream_root="https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi${rpm_major}/${rpm_major}/${rpm_arch}"
+    fi
+    cat >"${output}" <<CFG
 [factory-ubi-upstream-baseos]
-name=Factory development UBI BaseOS direct upstream (non-reproducible)
-baseurl=${FACTORY_RPM_UPSTREAM_UBI_BASE%/}/baseos/os/
+name=Factory public UBI BaseOS upstream
+baseurl=${upstream_root%/}/baseos/os/
 enabled=1
 gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
 
 [factory-ubi-upstream-appstream]
-name=Factory development UBI AppStream direct upstream (non-reproducible)
-baseurl=${FACTORY_RPM_UPSTREAM_UBI_BASE%/}/appstream/os/
+name=Factory public UBI AppStream upstream
+baseurl=${upstream_root%/}/appstream/os/
 enabled=1
 gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
 repo_gpgcheck=0
 sslverify=${FACTORY_RPM_SSLVERIFY:-1}
-EOF2
-  chmod 0600 "${output}"
-  printf '%s
-' "${snapshot_id}"
-  exit 0
-fi
-
-if [[ -n ${FACTORY_RPM_BASE_URL:-} ]]; then
-  cat >"${output}" <<EOF
-[factory-snapshot]
-name=Factory local immutable UBI snapshot
-baseurl=${FACTORY_RPM_BASE_URL%/}/
-enabled=1
-gpgcheck=${FACTORY_RPM_GPGCHECK:-1}
-repo_gpgcheck=${FACTORY_RPM_REPO_GPGCHECK:-1}
-sslverify=${FACTORY_RPM_SSLVERIFY:-1}
-EOF
-  chmod 0600 "${output}"
-  printf '%s\n' "${snapshot_id}"
-  exit 0
-fi
-
-: "${ARTIFACTORY_URL:?}"
-: "${ARTIFACTORY_READ_TOKEN:?}"
-case "${family}" in
-  ubi9-minimal)
-    repository=${FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY:?FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY is required}
+CFG
+    chmod 0600 "${output}"
+    printf 'public-upstream:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"
     ;;
-  ubi10-minimal)
-    repository=${FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY:?FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY is required}
+  *)
+    echo "unknown build.rpm.source: ${source_mode}" >&2
+    exit 2
     ;;
-  *) echo "unknown catalog RPM base: ${family}" >&2; exit 2 ;;
 esac
-
-# createrepo_c emits unsigned metadata. Authenticate it against the signed
-# intake lock instead of requiring a nonexistent repomd.xml.asc file.
-: "${RPM_REPOMD_DIGEST:?signed RPM metadata digest is required}"
-metadata=$(mktemp)
-trap 'rm -f "${metadata}"' EXIT
-curl --fail --silent --show-error \
-  --header "Authorization: Bearer ${ARTIFACTORY_READ_TOKEN}" \
-  --output "${metadata}" \
-  "${ARTIFACTORY_URL%/}/artifactory/${repository}/${snapshot_id}/repodata/repomd.xml"
-printf '%s  %s\n' "${RPM_REPOMD_DIGEST#sha256:}" "${metadata}" | sha256sum --check --status
-
-cat >"${output}" <<EOF
-[factory-snapshot]
-name=Factory immutable UBI snapshot
-baseurl=${ARTIFACTORY_URL%/}/artifactory/${repository}/${snapshot_id}/
-enabled=1
-gpgcheck=1
-repo_gpgcheck=0
-sslverify=1
-username=oidc
-password=${ARTIFACTORY_READ_TOKEN}
-EOF
-chmod 0600 "${output}"
-printf '%s\n' "${snapshot_id}"

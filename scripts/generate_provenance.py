@@ -16,6 +16,9 @@ def main() -> int:
     output = Path(sys.argv[2])
     build = load(work / "image-metadata.json")
     lock = load(work / "resource-lock.json")
+    rpm_source = build.get("rpmSource", "unknown")
+    if isinstance(rpm_source, str):
+        rpm_source = {"id": rpm_source}
     predicate = {
         "buildDefinition": {
             "buildType": os.environ.get(
@@ -26,8 +29,7 @@ def main() -> int:
                 "factoryRevision": build["factoryRevision"],
                 "baseRef": build["baseRef"],
                 "baseDigest": build["baseDigest"],
-                "rpmSnapshot": build["rpmSnapshot"],
-                "rpmRepomdDigest": build["rpmRepomdDigest"],
+                "rpmSource": rpm_source,
             },
             "resolvedDependencies": [
                 {

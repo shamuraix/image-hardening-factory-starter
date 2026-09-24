@@ -30,7 +30,6 @@ context="${work_dir}/context"
 cache="${work_dir}/local-cache"
 revision=$(yq -r '.source.revision' "${catalog}")
 overlay=$(yq -r '.source.overlay // ""' "${catalog}")
-snapshot_id=${LOCAL_RPM_SNAPSHOT_ID:-local-dev}
 base_kind=$(yq -r '.build.base.kind' "${catalog}")
 if [[ ${base_kind} == catalog ]]; then
   catalog_base_image=$(yq -r '.build.base.image' "${catalog}")
@@ -213,11 +212,11 @@ else
     "oci-archive:${work_dir}/base.oci.tar" | jq -er '.Digest')
 fi
 
-jq --arg snapshot "${snapshot_id}" --arg repomdDigest "${repomd_digest}" \
+jq --arg repomdDigest "${repomd_digest}" \
   --arg baseRef "${base_ref}" --arg baseDigest "${base_digest}" \
   --arg rpmSource "${rpm_source}" --arg catalogBase "${catalog_base_image}" \
   --arg effectiveBase "${base_image}" \
-  '. + {localDevelopment:true,rpmSnapshot:{snapshotId:$snapshot,repomdDigest:$repomdDigest,developmentSource:$rpmSource},baseImage:{reference:$baseRef,digest:$baseDigest}} +
+  '. + {localDevelopment:true,rpmSource:{type:"development",repomdDigest:$repomdDigest,source:$rpmSource},baseImage:{reference:$baseRef,digest:$baseDigest}} +
     (if $catalogBase != "" and $catalogBase != $effectiveBase then
       {developmentBaseOverride:{catalogBase:$catalogBase,effectiveBase:$effectiveBase}}
     else {} end)' \
@@ -229,20 +228,22 @@ FACTORY_IMAGE=${image}
 SOURCE_REVISION=${revision}
 BASE_REF=${base_ref}
 BASE_DIGEST=${base_digest}
-RPM_REPOMD_DIGEST=${repomd_digest}
 EOF
 
 export FACTORY_IMAGE="${image}"
 export FACTORY_LOCAL_IMAGE_NAMESPACE="${local_image_namespace}"
 export FACTORY_RPM_BASE_URL="${rpm_base_url}"
 if [[ ${LOCAL_USE_UPSTREAM_UBI_REPOS:-false} == true ]]; then
+  export FACTORY_RPM_SOURCE_MODE=public-upstream
   export FACTORY_RPM_UPSTREAM_UBI_BASE="${upstream_cdn_base}"
   unset FACTORY_UBI_REPO_PREFIX FACTORY_RPM_REPO_USERNAME FACTORY_RPM_REPO_PASSWORD
 elif [[ -z ${LOCAL_RPM_REPO_DIR:-} ]]; then
+  export FACTORY_RPM_SOURCE_MODE=private-mirror
   export FACTORY_UBI_REPO_PREFIX="${rpm_cache_prefix}"
   export FACTORY_RPM_REPO_USERNAME=${LOCAL_ARTIFACTORY_USERNAME:-oidc}
   export FACTORY_RPM_REPO_PASSWORD="${ARTIFACTORY_READ_TOKEN}"
 else
+  unset FACTORY_RPM_SOURCE_MODE
   unset FACTORY_UBI_REPO_PREFIX FACTORY_RPM_REPO_USERNAME FACTORY_RPM_REPO_PASSWORD
 fi
 export FACTORY_BUILD_NETWORK=host
@@ -250,12 +251,6 @@ export FACTORY_BASE_MAJOR="${rpm_major}"
 export FACTORY_RPM_GPGCHECK=${LOCAL_RPM_GPGCHECK:-1}
 export FACTORY_RPM_REPO_GPGCHECK=${LOCAL_RPM_REPO_GPGCHECK:-1}
 export FACTORY_RPM_SSLVERIFY=${LOCAL_RPM_SSLVERIFY:-1}
-# The production helper derives its variable name from the unchanged catalog
-# dependency. A local base override may intentionally use the other family, so
-# define both development labels; repository selection above still follows the
-# effective base and only the matching UBI repositories are enabled.
-export RPM_SNAPSHOT_UBI9_ID="${snapshot_id}"
-export RPM_SNAPSHOT_UBI10_ID="${snapshot_id}"
 export FACTORY_REMOVE_TRANSPORT_SIGNATURES=true
 
 scripts/build_image.sh "${catalog}" "${work_dir}"

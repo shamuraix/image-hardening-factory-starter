@@ -1,31 +1,65 @@
 # Contributing
 
-Use Python 3.11+ and run from the repository root. Install `.[dev]` from your
-approved package mirror. Run `make validate test lint policy-test` before a PR.
-`policy-test` requires OPA; Python tests alone do not evaluate Rego.
+## Quick contributor workflow
 
-Keep source revisions immutable. A pin update must include matching product
-versions, build arguments, manifest checksums and an overlay applicability test
-against the new upstream commit. `make update-pins` only changes revisions; it
-does not prove those other inputs still agree. Never automatically merge its diff.
+1. Use Python 3.11+ from repository root.
+2. Install dependencies:
 
-Add behavioral regression tests for failures that can affect release decisions,
-artifact identity or trust boundaries. Use local mock tools to test command
-contracts without registry credentials, and retain environment integration tests
-for container/runtime behavior that mocks cannot establish.
+   ```bash
+   python3 -m venv .venv
+   . .venv/bin/activate
+   pip install -e '.[dev]'
+   ```
 
-The JSON Schema lives in `factory/schemas/` and ships inside the wheel. Do not
-introduce a second schema under the catalog. Stage implementations remain shell
-scripts; the Python package handles reusable data validation and planning.
+3. Run checks before opening a PR:
 
-Tool versions in `tools/versions.lock.yaml` are a reviewed inventory, not an
-installer lock: Containerfiles still install some RPM tools from their configured
-repositories. Stage verified binaries and wheels under ignored `dist/`, build
-against an immutable RPM source, verify actual versions, then pin the resulting
-runner image digest. Review tool upgrades individually instead of replacing all
-pins with moving latest versions.
+   ```bash
+   make validate
+   make test
+   make lint
+   make policy-test
+   ```
 
-Never commit credentials, downloaded proprietary binaries, generated OCI images
-or licensed test fixtures. Keep policy/approval and publication changes separate
-from AI-generated remediation proposals. The broker creates a branch, not an
-approved release or an automatically merged pull request.
+`policy-test` requires OPA; Python tests do not validate Rego policy behavior.
+
+---
+
+## Advanced contribution rules
+
+### Source pin changes
+
+`make update-pins` updates source revisions only. A valid pin-change PR must also
+confirm matching product versions, build arguments, manifest checksums, and
+overlay applicability against the new upstream revision.
+
+Never auto-merge source pin diffs.
+
+### Required testing depth
+
+Add regression tests for changes that affect:
+
+- release decisions
+- digest/evidence identity
+- trust boundaries
+
+Use local mock tools for command contracts and integration tests for runtime
+behavior that mocks cannot prove.
+
+### Repository conventions
+
+- Catalog schema remains under `factory/schemas/` (packaged in wheel).
+- Keep shell stage scripts as stage executors; use Python package code for
+  reusable validation/planning/data shaping.
+- `tools/versions.lock.yaml` is a reviewed inventory, not an installer lock.
+
+### Security and artifact handling
+
+Never commit:
+
+- credentials/secrets
+- proprietary downloaded binaries
+- generated OCI images
+- licensed test fixtures
+
+Keep policy/approval/publication changes separate from AI remediation proposals.
+AI-generated changes are never approval by themselves.

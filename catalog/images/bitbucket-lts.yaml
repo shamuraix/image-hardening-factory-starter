@@ -22,6 +22,8 @@ build:
   base:
     kind: catalog
     image: ubi9-minimal
+  rpm:
+    source: private-mirror
   testProfile: bitbucket
   buildArgs:
     BITBUCKET_VERSION: 10.2.7

@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--compliance", required=True)
     gate.add_argument("--tests", required=True)
     gate.add_argument("--database-status", required=True)
-    gate.add_argument("--fcs-status", required=True)
+    gate.add_argument("--assessment-status", required=True)
     gate.add_argument("--output", required=True)
 
     findings = commands.add_parser("normalize-findings")
@@ -92,7 +92,7 @@ def main() -> int:
             args.compliance,
             args.tests,
             args.database_status,
-            args.fcs_status,
+            args.assessment_status,
         )
         write_gate_input(data, args.output)
         return 0

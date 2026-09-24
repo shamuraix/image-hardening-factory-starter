@@ -42,10 +42,7 @@ def stageEnabled(String name) {
 
 
 def scannerBackend() {
-    def configured = ['FACTORY_K8S_FCS_POD_TEMPLATE', 'FACTORY_FCS_RUNNER_IMAGE',
-        'FALCON_REGION', 'FALCON_CLIENT_ID_CREDENTIAL_ID',
-        'FALCON_CLIENT_SECRET_CREDENTIAL_ID', 'FACTORY_FCS_REPORT_SCHEMA'].every { env[it]?.trim() }
-    return stageEnabled('FCS') && configured ? 'fcs' : 'grype'
+    return 'delegated-scanners'
 }
 
 
@@ -246,7 +243,7 @@ def validateStageDependencies() {
         BUILD: ['PREPARE'],
         SBOM: ['BUILD'],
         SCAN: ['BUILD', 'SBOM'],
-        FCS: scannerBackend() == 'grype' ? ['BUILD', 'SBOM'] : ['BUILD'],
+        ASSESSMENT: ['SCAN'],
         COMPLIANCE: ['BUILD', 'SBOM'],
         TEST: ['BUILD'],
         HELMPER: ['PREPARE'],
@@ -289,7 +286,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
     def scanArtifact = ''
     def helmperArtifact = ''
     def copaArtifact = ''
-    def fcsArtifact = ''
+    def assessmentArtifact = ''
     def complianceArtifact = ''
     def testArtifact = ''
     def gateArtifact = ''
@@ -425,40 +422,19 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
         )
     }
 
-    if (backend == 'fcs' && (stageEnabled('FCS') || stageEnabled('GATE'))) {
-        fcsArtifact = runFactoryStage(
+    if (stageEnabled('ASSESSMENT') || stageEnabled('GATE')) {
+        assessmentArtifact = runFactoryStage(
             image,
-            'fcs',
-            'FACTORY_K8S_FCS_POD_TEMPLATE',
-            'FACTORY_FCS_RUNNER_IMAGE',
-            [buildArtifact],
-            "work/${image}/evidence/scans/fcs/**",
-            'scripts/fcs_scan_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
-            [
-                [
-                    type: 'string',
-                    idVariable: 'FALCON_CLIENT_ID_CREDENTIAL_ID',
-                    variable: 'FALCON_CLIENT_ID',
-                ],
-                [
-                    type: 'string',
-                    idVariable: 'FALCON_CLIENT_SECRET_CREDENTIAL_ID',
-                    variable: 'FALCON_CLIENT_SECRET',
-                ],
-            ],
-            catalogEnvironment,
-        )
-    }
-
-    if (backend == 'grype' && (stageEnabled('FCS') || stageEnabled('GATE'))) {
-        fcsArtifact = runFactoryStage(
-            image,
-            'grype-assessment',
+            'assessment',
             'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            [buildArtifact, sbomArtifact],
-            "work/${image}/evidence/scans/grype/**",
-            'scripts/grype_scan_image.sh "${FACTORY_WORK_DIR}"',
+            [scanArtifact],
+            "work/${image}/evidence/scans/delegated/status.json," +
+                "work/${image}/evidence/scans/grype.json," +
+                "work/${image}/evidence/scans/trivy.json," +
+                "work/${image}/evidence/scans/osv.json," +
+                "work/${image}/evidence/scans/syft.version.txt",
+            'test -f "${FACTORY_WORK_DIR}/evidence/scans/delegated/status.json"',
             [],
             catalogEnvironment,
         )
@@ -502,7 +478,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
                 buildArtifact,
                 sbomArtifact,
                 scanArtifact,
-                fcsArtifact,
+                assessmentArtifact,
                 complianceArtifact,
                 testArtifact,
             ],
@@ -597,7 +573,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
                 prepareArtifact,
                 buildArtifact,
                 sbomArtifact,
-                fcsArtifact,
+                assessmentArtifact,
                 complianceArtifact,
                 testArtifact,
                 gateArtifact,
@@ -633,7 +609,7 @@ def runImage(Map imageDefinition, Set<String> selectedImages) {
             'hummingbird',
             'FACTORY_K8S_OFFLINE_POD_TEMPLATE',
             'FACTORY_RUNNER_IMAGE',
-            [buildArtifact, sbomArtifact, fcsArtifact, gateArtifact, attestArtifact],
+            [buildArtifact, sbomArtifact, assessmentArtifact, gateArtifact, attestArtifact],
             "work/${image}/evidence/hummingbird/**",
             'scripts/hummingbird_verify.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"',
             [],
@@ -698,7 +674,7 @@ properties([
         booleanParam(name: 'FACTORY_ENABLE_SCAN', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_HELMPER', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_COPA', defaultValue: false),
-        booleanParam(name: 'FACTORY_ENABLE_FCS', defaultValue: false),
+        booleanParam(name: 'FACTORY_ENABLE_ASSESSMENT', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_COMPLIANCE', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_TEST', defaultValue: false),
         booleanParam(name: 'FACTORY_ENABLE_GATE', defaultValue: false),
