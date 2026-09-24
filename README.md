@@ -21,8 +21,8 @@ Minimum local prerequisites:
 - `jq`, `yq`
 - Podman (rootless)
 - Skopeo
-- BuildKit (`buildctl`, `buildkitd`, `buildkit-runc`)
-- RootlessKit
+- Lima (`limactl`) with `template://buildkit`
+- BuildKit client (`buildctl`)
 - `umoci` (required by scan/compliance scripts)
 
 Optional but commonly needed:
@@ -65,6 +65,8 @@ What these do:
 ### 4) Run a local build (development-only)
 
 ```bash
+limactl start --name factory-buildkit template://buildkit
+export FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit
 make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
 ```
 

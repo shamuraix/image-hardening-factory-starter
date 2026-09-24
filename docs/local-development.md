@@ -11,7 +11,8 @@ Install these first:
 - Python 3.11+
 - Git, Curl
 - Podman (rootless), Skopeo
-- BuildKit (`buildctl`, `buildkitd`, `buildkit-runc`) and RootlessKit
+- Lima (`limactl`) with the `template://buildkit` VM
+- BuildKit client (`buildctl`) pointed at the Lima BuildKit socket
 - `jq`, `yq`, `umoci`
 
 Use pinned tool versions from `tools/versions.lock.yaml` whenever possible.
@@ -23,6 +24,8 @@ python3 -m venv .venv
 . .venv/bin/activate
 pip install -e '.[dev]'
 
+limactl start --name factory-buildkit template://buildkit
+export FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit
 make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
 make local-test IMAGE=ubi9-minimal
 make local-assessment IMAGE=ubi9-minimal
@@ -42,8 +45,8 @@ All local outputs remain development-only and are not releasable artifacts.
 
 ### Build modes
 
-The local development workflow uses rootless Podman and BuildKit with a temporary
-loopback OCI registry. Three RPM source modes are available:
+The local development workflow uses rootless Podman, a Lima BuildKit VM, and a
+temporary loopback OCI registry. Three RPM source modes are available:
 
 | Mode | Flag | Credentials required |
 |---|---|---|
@@ -67,10 +70,13 @@ manifest resources, generates a clearly marked development resource lock, and
 publishes the result to both an OCI archive and the local registry.  Catalog
 base images are built automatically before an application image.
 
-Prerequisites are Python 3.11+, Git, Curl, Podman, Skopeo, `yq`, `jq`, BuildKit
-(`buildctl`, `buildkitd`, and bundled `buildkit-runc`), and RootlessKit.
+Prerequisites are Python 3.11+, Git, Curl, Podman, Skopeo, `yq`, `jq`,
+`limactl`, and `buildctl`. Start the BuildKit VM with
+`limactl start --name factory-buildkit template://buildkit` and set
+`FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit` (or set
+`FACTORY_BUILDKIT_ADDR` directly to a BuildKit socket address).
 Use the versions recorded in `tools/versions.lock.yaml`. Umoci is also required
-for malware and compliance scans. Podman and BuildKit must run rootless.
+for malware and compliance scans. Podman must run rootless.
 Provide subordinate UID/GID ranges and working `newuidmap`/`newgidmap` helpers.
 For local mirror testing, `LOCAL_RPM_REPO_DIR` must point to a complete RPM
 repository containing
@@ -78,14 +84,10 @@ repository containing
 repository must also contain valid RPM and repository signatures trusted by
 the source image.
 
-No prestarted BuildKit service is needed: each invocation starts a private
-rootless daemon with the native snapshotter and removes it afterwards.
+Builds call `buildctl` against the running Lima BuildKit instance.
 The local workflow requests host networking to reach its loopback services;
 this is the local user's network, not a privileged container network.
-Local builds retain BuildKit's process sandbox by default. When executing
-inside an unprivileged container, the administrator may need
-`FACTORY_BUILDKIT_NO_PROCESS_SANDBOX=true` and the security-profile exceptions
-described in [configuration](configuration.md#buildkit-pod-template).
+Local builds keep BuildKit's default sandbox behavior from the Lima template.
 Do not run the build as root to work around missing user-namespace support.
 
 ```bash

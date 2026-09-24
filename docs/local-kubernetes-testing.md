@@ -7,15 +7,13 @@ repository workflow (build, evidence, gate, import/sign/promote mechanics).
 
 Minimal flow:
 
-1. Satisfy host prerequisites (Linux, Podman/kind/kubectl/Skopeo/Python/jq/curl/OpenSSL/sudo).
+1. Satisfy host prerequisites (Linux or macOS, `limactl`, kubectl, Skopeo, Python, jq, curl, OpenSSL).
 2. Start the harness:
 
    ```bash
-   sudo -v
-   export KIND_EXPERIMENTAL_PROVIDER=podman
-   export FACTORY_HARNESS_ROOTFUL=true
-   export FACTORY_HARNESS_CLUSTER=factory-proc-fixed
-   export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind
+   limactl start --name factory-k3s template://k3s
+   export FACTORY_HARNESS_CLUSTER=factory-k3s
+   export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s
    export FACTORY_HARNESS_JENKINS_PORT=18083
    export FACTORY_HARNESS_REGISTRY_PORT=15446
    tests/integration/kind/up.sh
@@ -25,15 +23,15 @@ Minimal flow:
 3. Collect status/artifacts:
 
    ```bash
-   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind status
-   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind collect
+   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s status
+   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s collect
    ```
 
 4. Tear down:
 
    ```bash
-   sudo -v
-   FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind tests/integration/kind/down.sh
+   FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s tests/integration/kind/down.sh
+   limactl stop factory-k3s
    ```
 
 ---
@@ -42,9 +40,9 @@ Minimal flow:
 
 ## Tested configuration
 
-The Linux harness passes with **rootful Podman → kind → containerd/crun →
+The harness target is **Lima k3s template → Kubernetes → containerd/crun →
 non-root Jenkins agents**. Jenkins and a TLS-authenticated fixture registry run
-inside kind. Factory pods use UID/GID 10001, `hostUsers: false`,
+inside the local k3s cluster. Factory pods use UID/GID 10001, `hostUsers: false`,
 `procMount: Unmasked`, and a tested crun RuntimeClass. The node's default runtime
 remains runc.
 
@@ -57,21 +55,19 @@ These are diagnostic workloads with synthetic development images and evidence.
 Passing this harness does not establish production FIPS compliance, network
 isolation, delegated-assessment compatibility, or application qualification.
 
-## Rootful Podman on the existing Linux host
+## Lima k3s on the local host
 
-Requirements: Linux, Podman, kind, kubectl, Skopeo, Git, Python 3.11+, jq, curl,
-OpenSSL, and sudo access. Bootstrap downloads pinned Linux tools and Jenkins
+Requirements: Linux or macOS, Lima (`limactl`), kubectl, Skopeo, Git, Python 3.11+, jq, curl,
+and OpenSSL. Bootstrap downloads pinned Linux tools and Jenkins
 plugins. Allow access to GitHub releases, Debian mirrors, Docker Hub and Jenkins
 update sites. A starting allocation is 6 CPUs, 12 GiB RAM and 30 GiB free disk.
 
 Run as your normal user from the repository root:
 
 ```bash
-sudo -v
-export KIND_EXPERIMENTAL_PROVIDER=podman
-export FACTORY_HARNESS_ROOTFUL=true
-export FACTORY_HARNESS_CLUSTER=factory-proc-fixed
-export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind
+limactl start --name factory-k3s template://k3s
+export FACTORY_HARNESS_CLUSTER=factory-k3s
+export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s
 export FACTORY_HARNESS_JENKINS_PORT=18083
 export FACTORY_HARNESS_REGISTRY_PORT=15446
 tests/integration/kind/up.sh
@@ -100,8 +96,8 @@ packages and the node-local D-Bus service remain available.
 ## Results and source refresh
 
 ```bash
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind status
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind collect
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s status
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s collect
 ```
 
 Collection pins artifact downloads to the reported build number. To refresh
@@ -114,7 +110,7 @@ a larger repository should use an internal SCM/artifact server.
 Jenkins build 5 completed **SUCCESS** with 98 unit tests, 12 OPA
 policy tests, five catalogs, real build/export and image execution, failing-RUN
 rejection/cleanup, registry import/signing/promotion/retry, and artifact handoff
-into a second fresh pod. Evidence: `.local-factory/proc-fixed-kind/results/5/`.
+into a second fresh pod. Evidence: `.local-factory/proc-fixed-k3s/results/5/`.
 
 ## Runtime troubleshooting
 
@@ -123,7 +119,7 @@ HTTP 400 before the container exists. Avoid sharing unredacted pod environment
 variables, which include Jenkins agent credentials.
 
 ```bash
-kubectl --kubeconfig .local-factory/proc-fixed-kind/kubeconfig -n factory-harness get events --sort-by=.lastTimestamp
+kubectl --kubeconfig .local-factory/proc-fixed-k3s/kubeconfig -n factory-harness get events --sort-by=.lastTimestamp
 sudo -v
 tests/integration/kind/node-diagnostics.sh
 ```
@@ -133,8 +129,8 @@ and recent security denials. The controlled runtime comparison is:
 
 ```bash
 sudo -v
-python3 tests/integration/kind/probe-crun.py --state .local-factory/proc-fixed-kind
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind refresh
+python3 tests/integration/kind/probe-crun.py --state .local-factory/proc-fixed-k3s
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s refresh
 ```
 
 It waits for kubelet to advertise the RuntimeClass's user-namespace support,
@@ -148,42 +144,29 @@ The investigation established:
 - Nested Podman required unmasked proc and no default ping-group sysctl.
   [Kubernetes proc configuration](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/)
   and [Podman issue](https://github.com/containers/podman/issues/13194).
-- Runc failed sandbox sysfs mounting with user namespaces in kind. Editing the
+- Runc failed sandbox sysfs mounting with user namespaces in local clusters. Editing the
   OCI base spec was ineffective because containerd 2.3 generates a separate
   sandbox spec. That experiment was rolled back; its obsolete scripts were removed.
 - Crun handled the sandbox after its system D-Bus prerequisite was supplied.
   Historical diagnostics remain in ignored state directories; no host-wide
   sysctl changes were made.
 
-## Alternative: Rancher Desktop with Moby plus kind
+## Alternative: additional Lima instances
 
-This path is implemented but **not acceptance-tested**, including native arm64.
-Rancher Desktop supports Apple Silicon and Intel Macs; its documented Linux
-requirements specify x86_64 and hardware virtualization. Check the official
-[installation requirements](https://docs.rancherdesktop.io/getting-started/installation/).
-Select [Moby](https://docs.rancherdesktop.io/ui/preferences/container-engine/general/)
-and disable built-in Kubernetes when using kind, to avoid running two clusters.
-
-Install the same host tools. On Apple Silicon use native arm64 binaries;
-the harness downloads Linux tools for the node architecture. Then use separate
-state and ports:
+For parallel test environments, start another named Lima k3s instance and use
+separate state and ports:
 
 ```bash
-export DOCKER_CONTEXT=rancher-desktop
-export KIND_EXPERIMENTAL_PROVIDER=docker
-export FACTORY_HARNESS_ROOTFUL=false
-export FACTORY_HARNESS_CLUSTER=factory-rancher
-export FACTORY_HARNESS_STATE=.local-factory/rancher-kind
+limactl start --name factory-k3s-alt template://k3s
+export FACTORY_HARNESS_CLUSTER=factory-k3s-alt
+export FACTORY_HARNESS_STATE=.local-factory/k3s-alt
 export FACTORY_HARNESS_JENKINS_PORT=18081
 export FACTORY_HARNESS_REGISTRY_PORT=15444
 tests/integration/kind/up.sh
 ```
 
-The Podman-specific crun provisioner does not configure Docker nodes. Run the
-runtime preflight and adapt the node runtime if the same sysfs issue appears;
-changing providers alone is not a confirmed fix. Direct Rancher Desktop
-Kubernetes still needs image-loading and endpoint adaptation. Confirm every
-production image and application supports the target architecture.
+Validate runtime behavior with the same preflight and diagnostics before relying
+on alternate instances for review evidence.
 
 ## Teardown
 
@@ -191,7 +174,8 @@ Collect evidence first. Jenkins and registry use disposable emptyDir storage.
 
 ```bash
 sudo -v
-FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind tests/integration/kind/down.sh
+FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s tests/integration/kind/down.sh
+limactl stop factory-k3s
 ```
 
 Only the recorded harness cluster is deleted; saved artifacts remain on disk.
