@@ -77,8 +77,7 @@ python3 tests/integration/kind/jenkins.py --state "$FACTORY_HARNESS_STATE" run
 Bootstrap uses a dedicated kubeconfig and saves its provider, cluster and port
 settings. Existing state must match those settings. Existing clusters with too
 few IDs per pod are rejected; bootstrap does not silently reconfigure or delete
-nodes. Ordinary rootless Podman's default ID allocation is too small for this
-nested topology and is rejected before cluster creation.
+nodes.
 
 For rootful Podman, bootstrap installs and probes crun when no usable saved
 RuntimeClass exists. The successful class is saved in `STATE/runtime-class`;

@@ -26,9 +26,6 @@ if [[ -z ${FACTORY_BUILDKIT_ADDR:-} && -n ${FACTORY_BUILDKIT_LIMA_INSTANCE:-} ]]
     exit 2
   }
 fi
-scripts/require_rootless.sh podman
-scripts/require_rootless.sh buildkit
-
 local_root=${LOCAL_FACTORY_ROOT:-.local-factory}
 registry=${LOCAL_REGISTRY:-127.0.0.1:5000}
 registry_image=${LOCAL_REGISTRY_IMAGE:-docker.io/library/registry:2}

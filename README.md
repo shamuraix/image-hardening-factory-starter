@@ -19,7 +19,7 @@ Minimum local prerequisites:
 - Python 3.11+
 - `git`, `curl`
 - `jq`, `yq`
-- Podman (rootless)
+- Podman
 - Skopeo
 - Lima (`limactl`) with `template://buildkit`
 - BuildKit client (`buildctl`)

@@ -63,7 +63,6 @@ if [[ ${1:-} == --inside-rootlesskit ]]; then
   exit "${status}"
 fi
 
-[[ $(id -u) != 0 ]] || { echo "BuildKit must run rootless" >&2; exit 1; }
 for tool in buildctl; do
   command -v "${tool}" >/dev/null || { echo "required command is missing: ${tool}" >&2; exit 2; }
 done
@@ -76,6 +75,7 @@ if [[ -n ${FACTORY_BUILDKIT_ADDR:-} ]]; then
   buildctl --addr "${FACTORY_BUILDKIT_ADDR}" "$@"
   exit 0
 fi
+[[ $(id -u) != 0 ]] || { echo "embedded BuildKit mode must run rootless" >&2; exit 1; }
 for tool in rootlesskit buildkitd buildkit-runc; do
   command -v "${tool}" >/dev/null || { echo "required command is missing: ${tool}" >&2; exit 2; }
 done

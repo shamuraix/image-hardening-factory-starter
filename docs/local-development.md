@@ -10,7 +10,7 @@ Install these first:
 
 - Python 3.11+
 - Git, Curl
-- Podman (rootless), Skopeo
+- Podman, Skopeo
 - Lima (`limactl`) with the `template://buildkit` VM
 - BuildKit client (`buildctl`) pointed at the Lima BuildKit socket
 - `jq`, `yq`, `umoci`
@@ -45,7 +45,7 @@ All local outputs remain development-only and are not releasable artifacts.
 
 ### Build modes
 
-The local development workflow uses rootless Podman, a Lima BuildKit VM, and a
+The local development workflow uses Podman, a Lima BuildKit VM, and a
 temporary loopback OCI registry. Three RPM source modes are available:
 
 | Mode | Flag | Credentials required |
@@ -76,8 +76,7 @@ Prerequisites are Python 3.11+, Git, Curl, Podman, Skopeo, `yq`, `jq`,
 `FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit` (or set
 `FACTORY_BUILDKIT_ADDR` directly to a BuildKit socket address).
 Use the versions recorded in `tools/versions.lock.yaml`. Umoci is also required
-for malware and compliance scans. Podman must run rootless.
-Provide subordinate UID/GID ranges and working `newuidmap`/`newgidmap` helpers.
+for malware and compliance scans.
 For local mirror testing, `LOCAL_RPM_REPO_DIR` must point to a complete RPM
 repository containing
 `repodata/repomd.xml`. Signature checking remains enabled by default, so the
@@ -148,8 +147,7 @@ disables repository TLS verification and should be used only as a last-resort
 diagnostic override.
 
 The generated repository configuration is transferred using a BuildKit secret,
-not a host bind mount requiring SELinux `:Z` relabeling. The host's SELinux and
-AppArmor policies must still permit rootless BuildKit. Newer Skopeo releases
+not a host bind mount requiring SELinux `:Z` relabeling. Newer Skopeo releases
 may also refuse to copy upstream transport
 signatures into local registries or OCI archives that cannot store them; the
 local workflow explicitly removes those transport signatures while retaining
