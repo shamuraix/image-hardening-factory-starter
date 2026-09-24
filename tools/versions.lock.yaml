@@ -8,6 +8,14 @@ tools:
     project: https://github.com/rootless-containers/rootlesskit
     license: Apache-2.0
     version: 3.1.0
+  lima:
+    project: https://github.com/lima-vm/lima
+    license: Apache-2.0
+    version: 1.1.0
+  k3s:
+    project: https://github.com/k3s-io/k3s
+    license: Apache-2.0
+    version: v1.31.4+k3s1
   skopeo:
     project: https://github.com/containers/skopeo
     license: Apache-2.0

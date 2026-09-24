@@ -5,12 +5,17 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 # shellcheck disable=SC1090,SC1091
 source "${work_dir}/build.env"
-if ! jq -e '.localDevelopment == true' "${work_dir}/resource-lock.json" >/dev/null; then
+if jq -e '.localDevelopment == true' "${work_dir}/resource-lock.json" >/dev/null; then
+  local_development=true
+else
+  local_development=false
+fi
+if [[ ${local_development} != true ]]; then
+  scripts/require_rootless.sh buildkit
   for override in FACTORY_RPM_BASE_URL FACTORY_RPM_UPSTREAM_UBI_BASE FACTORY_UBI_REPO_PREFIX; do
     [[ -z ${!override:-} ]] || { echo "${override} is development-only" >&2; exit 2; }
   done
 fi
-scripts/require_rootless.sh buildkit
 
 containerfile=$(yq -r '.source.containerfile' "${catalog}")
 platform=$(yq -r '.build.platforms[0]' "${catalog}")

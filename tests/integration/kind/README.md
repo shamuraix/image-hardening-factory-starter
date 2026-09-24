@@ -8,29 +8,28 @@ using synthetic fixtures.
 ### Start
 
 ```bash
-sudo -v
-export FACTORY_HARNESS_ROOTFUL=true
-export FACTORY_HARNESS_CLUSTER=factory-proc-fixed
-export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind
+limactl start --name factory-k3s template://k3s
+export FACTORY_HARNESS_CLUSTER=factory-k3s
+export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s
 export FACTORY_HARNESS_JENKINS_PORT=18083
 export FACTORY_HARNESS_REGISTRY_PORT=15446
 tests/integration/kind/up.sh
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind run
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s run
 ```
 
 ### Check and collect
 
 ```bash
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind status
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind log
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind collect
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s status
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s log
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s collect
 ```
 
 ### Stop
 
 ```bash
-sudo -v
-FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind tests/integration/kind/down.sh
+FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s tests/integration/kind/down.sh
+limactl stop factory-k3s
 ```
 
 ---
@@ -45,7 +44,7 @@ production certification path.
 
 ### Runtime and host prerequisites
 
-- Linux host, Podman/kind/kubectl/Skopeo/curl/OpenSSL/Python/jq
+- Linux or macOS host, Lima (`limactl`), kubectl/Skopeo/curl/OpenSSL/Python/jq
 - cgroup v2 and pod user-namespace support
 - rootful cluster mode for the default tested topology
 
@@ -60,18 +59,18 @@ production certification path.
 
 ```bash
 git ls-files --cached --others --exclude-standard -z |
-  tar --null -T - -czf .local-factory/proc-fixed-kind/source.tar.gz
-kubectl --kubeconfig .local-factory/proc-fixed-kind/kubeconfig -n factory-harness \
+  tar --null -T - -czf .local-factory/proc-fixed-k3s/source.tar.gz
+kubectl --kubeconfig .local-factory/proc-fixed-k3s/kubeconfig -n factory-harness \
   create configmap factory-source \
-  --from-file=source.tar.gz=.local-factory/proc-fixed-kind/source.tar.gz \
+  --from-file=source.tar.gz=.local-factory/proc-fixed-k3s/source.tar.gz \
   --dry-run=client -o yaml |
-  kubectl --kubeconfig .local-factory/proc-fixed-kind/kubeconfig apply \
+  kubectl --kubeconfig .local-factory/proc-fixed-k3s/kubeconfig apply \
     --server-side --field-manager=factory-harness --force-conflicts -f -
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind refresh
+python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s refresh
 ```
 
 ### Additional checks
 
 ```bash
-python3 tests/integration/kind/jenkins-stage-checks.py --state .local-factory/proc-fixed-kind
+python3 tests/integration/kind/jenkins-stage-checks.py --state .local-factory/proc-fixed-k3s
 ```

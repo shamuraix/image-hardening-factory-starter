@@ -19,10 +19,10 @@ Minimum local prerequisites:
 - Python 3.11+
 - `git`, `curl`
 - `jq`, `yq`
-- Podman (rootless)
+- Podman
 - Skopeo
-- BuildKit (`buildctl`, `buildkitd`, `buildkit-runc`)
-- RootlessKit
+- Lima (`limactl`) with `template://buildkit`
+- BuildKit client (`buildctl`)
 - `umoci` (required by scan/compliance scripts)
 
 Optional but commonly needed:
@@ -65,6 +65,8 @@ What these do:
 ### 4) Run a local build (development-only)
 
 ```bash
+limactl start --name factory-buildkit template://buildkit
+export FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit
 make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
 ```
 
@@ -89,6 +91,8 @@ All local outputs are marked development-only and are not releasable.
 | `policies/rego/` | OPA release policy and policy tests |
 | `tests/` | Unit and integration test coverage |
 | `config/` | Bundled config defaults (including RPM repo definitions) |
+| `vendir/` | Source-pin mapping for Repo One mirrors used by `make update-pins` |
+| `renovate.json` | Renovate rules for automated tool version lock updates |
 | `docs/` | Architecture, operations, local development, and configuration references |
 
 ---

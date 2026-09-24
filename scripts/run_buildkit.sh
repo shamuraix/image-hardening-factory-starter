@@ -63,11 +63,22 @@ if [[ ${1:-} == --inside-rootlesskit ]]; then
   exit "${status}"
 fi
 
-[[ $(id -u) != 0 ]] || { echo "BuildKit must run rootless" >&2; exit 1; }
-for tool in rootlesskit buildkitd buildctl buildkit-runc; do
+for tool in buildctl; do
   command -v "${tool}" >/dev/null || { echo "required command is missing: ${tool}" >&2; exit 2; }
 done
 [[ ${1:-} == build ]] || { echo "usage: scripts/run_buildkit.sh build [buildctl options]" >&2; exit 2; }
+if [[ -z ${FACTORY_BUILDKIT_ADDR:-} && -n ${FACTORY_BUILDKIT_LIMA_INSTANCE:-} ]]; then
+  socket=${FACTORY_BUILDKIT_LIMA_SOCKET:-${HOME}/.lima/${FACTORY_BUILDKIT_LIMA_INSTANCE}/sock/buildkitd.sock}
+  FACTORY_BUILDKIT_ADDR="unix://${socket}"
+fi
+if [[ -n ${FACTORY_BUILDKIT_ADDR:-} ]]; then
+  buildctl --addr "${FACTORY_BUILDKIT_ADDR}" "$@"
+  exit 0
+fi
+[[ $(id -u) != 0 ]] || { echo "embedded BuildKit mode must run rootless" >&2; exit 1; }
+for tool in rootlesskit buildkitd buildkit-runc; do
+  command -v "${tool}" >/dev/null || { echo "required command is missing: ${tool}" >&2; exit 2; }
+done
 sandbox=${FACTORY_BUILDKIT_NO_PROCESS_SANDBOX:-false}
 case "${sandbox}" in
   true|false) ;;

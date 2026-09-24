@@ -32,6 +32,10 @@
 confirm matching product versions, build arguments, manifest checksums, and
 overlay applicability against the new upstream revision.
 
+`make update-pins` runs `vendir sync` by default to refresh `vendor/repo1/`.
+Set `FACTORY_VENDIR_SYNC=false` only when you intentionally need metadata-only
+pin updates.
+
 Never auto-merge source pin diffs.
 
 ### Required testing depth

@@ -193,15 +193,25 @@ Optional concept-stage commands:
 ### Source-pin management
 
 - `vendir/config.yml` pins Repo One Git sources.
-- `vendir sync` refreshes checked-out content under `vendor/repo1/`.
 - `scripts/update_source_pins.sh` updates `source.revision` and matching
-  `vendir/config.yml` entries.
+  `vendir/config.yml` entries from `FACTORY_UPSTREAM_BRANCH`.
+- By default, `scripts/update_source_pins.sh` also runs
+  `vendir sync --file vendir/config.yml` to refresh `vendor/repo1/`.
+  Set `FACTORY_VENDIR_SYNC=false` to skip sync (for metadata-only updates).
 
 Run from a connected intake environment:
 
 ```bash
 FACTORY_UPSTREAM_BRANCH="${FACTORY_UPSTREAM_BRANCH:?}" make update-pins
 ```
+
+### Renovate usage
+
+- `renovate.json` manages GitHub-backed tool version updates in
+  `tools/versions.lock.yaml`.
+- Renovate does not update image source pins in `catalog/images/*.yaml` or
+  `vendir/config.yml`; those remain controlled by `make update-pins`.
+- Source pin updates must continue manual review and must not be auto-merged.
 
 ### Toolchain pinning
 

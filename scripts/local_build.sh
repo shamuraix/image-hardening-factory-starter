@@ -15,9 +15,17 @@ fi
 for command in git curl python3 podman buildctl skopeo yq jq; do
   command -v "${command}" >/dev/null || { echo "required command is missing: ${command}" >&2; exit 2; }
 done
-scripts/require_rootless.sh podman
-scripts/require_rootless.sh buildkit
-
+if [[ -z ${FACTORY_BUILDKIT_ADDR:-} && -z ${FACTORY_BUILDKIT_LIMA_INSTANCE:-} ]]; then
+  export FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit
+fi
+if [[ -z ${FACTORY_BUILDKIT_ADDR:-} && -n ${FACTORY_BUILDKIT_LIMA_INSTANCE:-} ]]; then
+  command -v limactl >/dev/null || { echo "required command is missing: limactl" >&2; exit 2; }
+  lima_socket=${FACTORY_BUILDKIT_LIMA_SOCKET:-${HOME}/.lima/${FACTORY_BUILDKIT_LIMA_INSTANCE}/sock/buildkitd.sock}
+  [[ -S ${lima_socket} ]] || {
+    echo "BuildKit socket not found at ${lima_socket}. Start Lima with: limactl start --name ${FACTORY_BUILDKIT_LIMA_INSTANCE} template://buildkit" >&2
+    exit 2
+  }
+fi
 local_root=${LOCAL_FACTORY_ROOT:-.local-factory}
 registry=${LOCAL_REGISTRY:-127.0.0.1:5000}
 registry_image=${LOCAL_REGISTRY_IMAGE:-docker.io/library/registry:2}
