@@ -1,0 +1,23 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update GitHub-backed tool versions in tools/versions.lock.yaml",
+      "fileMatch": ["^tools/versions\\.lock\\.yaml$"],
+      "matchStrings": [
+        "  [a-z0-9._-]+:\\n    project: https://github\\.com/(?<depName>[^/]+/[^\\n/]+)\\n    license: [^\\n]+\\n    version: (?<currentValue>[^\\s#]+)"
+      ],
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "semver-coerced"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Tool pin updates require human review",
+      "matchManagers": ["custom.regex"],
+      "automerge": false
+    }
+  ]
+}

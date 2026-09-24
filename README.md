@@ -91,6 +91,8 @@ All local outputs are marked development-only and are not releasable.
 | `policies/rego/` | OPA release policy and policy tests |
 | `tests/` | Unit and integration test coverage |
 | `config/` | Bundled config defaults (including RPM repo definitions) |
+| `vendir/` | Source-pin mapping for Repo One mirrors used by `make update-pins` |
+| `renovate.json` | Renovate rules for automated tool version lock updates |
 | `docs/` | Architecture, operations, local development, and configuration references |
 
 ---
