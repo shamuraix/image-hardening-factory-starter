@@ -72,12 +72,10 @@ class LocalWorkflowTests(unittest.TestCase):
 
     def test_internal_ubi_cache_uses_auth_and_honors_tls_override(self) -> None:
         repo_config = (ROOT / "scripts/write_repo_config.sh").read_text(encoding="utf-8")
-        cache_config = repo_config.split(
-            "if [[ -n ${FACTORY_RPM_UPSTREAM_UBI_BASE:-} ]]", maxsplit=1
-        )[0]
+        cache_config = repo_config.split("private-mirror)")[1].split(";;")[0]
 
         self.assertEqual(cache_config.count("sslverify=${FACTORY_RPM_SSLVERIFY:-1}"), 2)
-        self.assertEqual(cache_config.count("password=${FACTORY_RPM_REPO_PASSWORD}"), 2)
+        self.assertEqual(cache_config.count("username="), 2)
         self.assertNotIn("cdn-ubi.redhat.com", cache_config)
 
     def test_ci_buildkit_is_rootless_and_podman_retains_vfs(self) -> None:

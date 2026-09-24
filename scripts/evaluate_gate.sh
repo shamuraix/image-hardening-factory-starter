@@ -8,6 +8,15 @@ evidence="${work_dir}/evidence"
 backend=${FACTORY_SCANNER_BACKEND:-delegated-scanners}
 case "${backend}" in
   delegated-scanners) status="${evidence}/scans/delegated/status.json" ;;
+  grype)
+    status="${evidence}/scans/grype/status.json"
+    jq -e 'type == "object" and (.findings | type == "array")' \
+      "${evidence}/scans/grype/findings.json" >/dev/null
+    jq -e 'type == "object" and .valid == true and (.error | not)' \
+      "${evidence}/scans/grype/database.json" >/dev/null
+    cp "${evidence}/scans/grype/findings.json" "${evidence}/findings.json"
+    cp "${evidence}/scans/grype/database.json" "${evidence}/database-status.json"
+    ;;
   *) echo "Unknown scanner backend: ${backend}" >&2; exit 1 ;;
 esac
 
