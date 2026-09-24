@@ -2,7 +2,45 @@
 
 [Project overview](../README.md) · [Operations](operations.md)
 
-## Build modes
+## Quick start (new contributors)
+
+### Dependencies
+
+Install these first:
+
+- Python 3.11+
+- Git, Curl
+- Podman (rootless), Skopeo
+- BuildKit (`buildctl`, `buildkitd`, `buildkit-runc`) and RootlessKit
+- `jq`, `yq`, `umoci`
+
+Use pinned tool versions from `tools/versions.lock.yaml` whenever possible.
+
+### Fastest local build/test/assessment flow
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -e '.[dev]'
+
+make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
+make local-test IMAGE=ubi9-minimal
+make local-assessment IMAGE=ubi9-minimal
+```
+
+### Choose an RPM source mode
+
+| Mode | Example |
+|---|---|
+| Direct public UBI CDN | `make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true` |
+| Artifactory pull-through cache | `make local-build IMAGE=ubi9-minimal` (with `ARTIFACTORY_URL`, `ARTIFACTORY_READ_TOKEN`, `LOCAL_RPM_CACHE_REPOSITORY`) |
+| Existing local repository directory | `make local-build IMAGE=ubi9-minimal LOCAL_RPM_REPO_DIR=/absolute/path/to/repo` |
+
+All local outputs remain development-only and are not releasable artifacts.
+
+## Advanced local development reference
+
+### Build modes
 
 The local development workflow uses rootless Podman and BuildKit with a temporary
 loopback OCI registry. Three RPM source modes are available:
