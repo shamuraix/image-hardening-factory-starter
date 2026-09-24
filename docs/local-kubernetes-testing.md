@@ -7,7 +7,7 @@ repository workflow (build, evidence, gate, import/sign/promote mechanics).
 
 Minimal flow:
 
-1. Satisfy host prerequisites (Linux or macOS, `limactl`, kubectl, Skopeo, Python, jq, curl, OpenSSL).
+1. Satisfy host prerequisites (Linux or macOS, `limactl`, kubectl, Skopeo, Python, jq, curl, OpenSSL, and `sudo` access for diagnostics/teardown helpers).
 2. Start the harness:
 
    ```bash
@@ -58,7 +58,7 @@ isolation, delegated-assessment compatibility, or application qualification.
 ## Lima k3s on the local host
 
 Requirements: Linux or macOS, Lima (`limactl`), kubectl, Skopeo, Git, Python 3.11+, jq, curl,
-and OpenSSL. Bootstrap downloads pinned Linux tools and Jenkins
+OpenSSL, and sudo access for runtime diagnostics/teardown scripts. Bootstrap downloads pinned Linux tools and Jenkins
 plugins. Allow access to GitHub releases, Debian mirrors, Docker Hub and Jenkins
 update sites. A starting allocation is 6 CPUs, 12 GiB RAM and 30 GiB free disk.
 
