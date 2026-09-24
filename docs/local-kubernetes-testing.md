@@ -106,7 +106,7 @@ python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind
 
 Collection pins artifact downloads to the reported build number. To refresh
 source and job definitions without rebuilding images, follow the
-[harness README](../tests/integration/kind/README.md#updating-the-source-snapshot).
+[harness README](../tests/integration/kind/README.md#refreshing-source-bundle-in-running-harness).
 Source ConfigMaps use server-side apply to avoid duplicating the archive in a
 size-limited annotation. The archive must still fit the ConfigMap's 1 MiB limit;
 a larger repository should use an internal SCM/artifact server.

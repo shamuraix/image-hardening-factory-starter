@@ -49,7 +49,7 @@ loopback OCI registry. Three RPM source modes are available:
 |---|---|---|
 | **Direct public CDN** | `LOCAL_USE_UPSTREAM_UBI_REPOS=true` | None — UBI is publicly accessible |
 | **Artifactory pull-through cache** | `ARTIFACTORY_URL`, `ARTIFACTORY_READ_TOKEN`, `LOCAL_RPM_CACHE_REPOSITORY` | Artifactory token |
-| **Complete local snapshot** | `LOCAL_RPM_REPO_DIR=/path/to/snapshot` | None |
+| **Complete local mirror directory** | `LOCAL_RPM_REPO_DIR=/path/to/repo` | None |
 
 The direct CDN mode builds against `cdn-ubi.redhat.com` without Artifactory.
 It is convenient for initial setup and zero-credential development, but upstream
@@ -58,8 +58,9 @@ resulting lock is marked `localDevelopment: true` and cannot enter import,
 signing, or promotion.
 
 The Artifactory pull-through cache mode fetches RPMs via the internal Artifactory
-remote repository.  The complete local snapshot mode serves an existing snapshot
-from a loopback HTTP server.  Both modes also produce development-only locks.
+remote repository. The complete local mirror mode serves an existing local RPM
+repository from a loopback HTTP server. Both modes also produce development-only
+locks.
 
 The workflow applies the catalog overlay, downloads and checksum-verifies
 manifest resources, generates a clearly marked development resource lock, and
@@ -71,8 +72,8 @@ Prerequisites are Python 3.11+, Git, Curl, Podman, Skopeo, `yq`, `jq`, BuildKit
 Use the versions recorded in `tools/versions.lock.yaml`. Umoci is also required
 for malware and compliance scans. Podman and BuildKit must run rootless.
 Provide subordinate UID/GID ranges and working `newuidmap`/`newgidmap` helpers.
-For snapshot-based testing,
-`LOCAL_RPM_REPO_DIR` must point to a complete RPM repository containing
+For local mirror testing, `LOCAL_RPM_REPO_DIR` must point to a complete RPM
+repository containing
 `repodata/repomd.xml`. Signature checking remains enabled by default, so the
 repository must also contain valid RPM and repository signatures trusted by
 the source image.
@@ -108,11 +109,11 @@ To build an Atlassian image and its UBI dependency:
 make local-build IMAGE=jira-lts
 ```
 
-To build from a complete local snapshot instead of Artifactory:
+To build from a complete local mirror instead of Artifactory:
 
 ```bash
 make local-build IMAGE=ubi9-minimal \
-  LOCAL_RPM_REPO_DIR=/absolute/path/to/ubi9-snapshot
+  LOCAL_RPM_REPO_DIR=/absolute/path/to/ubi9-repo
 ```
 
 By default, sources are cloned from each catalog entry's upstream URL. For
