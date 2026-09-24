@@ -1,5 +1,45 @@
 # Local Kubernetes testing
 
+## Quick start
+
+Use this harness when you need an end-to-end disposable validation path for the
+repository workflow (build, evidence, gate, import/sign/promote mechanics).
+
+Minimal flow:
+
+1. Satisfy host prerequisites (Linux, Podman/kind/kubectl/Skopeo/Python/jq/curl/OpenSSL/sudo).
+2. Start the harness:
+
+   ```bash
+   sudo -v
+   export KIND_EXPERIMENTAL_PROVIDER=podman
+   export FACTORY_HARNESS_ROOTFUL=true
+   export FACTORY_HARNESS_CLUSTER=factory-proc-fixed
+   export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind
+   export FACTORY_HARNESS_JENKINS_PORT=18083
+   export FACTORY_HARNESS_REGISTRY_PORT=15446
+   tests/integration/kind/up.sh
+   python3 tests/integration/kind/jenkins.py --state "$FACTORY_HARNESS_STATE" run
+   ```
+
+3. Collect status/artifacts:
+
+   ```bash
+   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind status
+   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-kind collect
+   ```
+
+4. Tear down:
+
+   ```bash
+   sudo -v
+   FACTORY_HARNESS_STATE=.local-factory/proc-fixed-kind tests/integration/kind/down.sh
+   ```
+
+---
+
+## Advanced harness details
+
 ## Tested configuration
 
 The Linux harness passes with **rootful Podman → kind → containerd/crun →
@@ -15,7 +55,7 @@ node needs a system D-Bus service for crun's systemd cgroup manager.
 
 These are diagnostic workloads with synthetic development images and evidence.
 Passing this harness does not establish production FIPS compliance, network
-isolation, FCS compatibility, or application qualification.
+isolation, delegated-assessment compatibility, or application qualification.
 
 ## Rootful Podman on the existing Linux host
 
