@@ -40,7 +40,7 @@ python3 -m venv .venv
 pip install -e '.[dev]'
 ```
 
-Offline install example:
+Offline install example (`/path/to/wheels` is the directory that contains your pre-downloaded `.whl` files, for example `$(pwd)/dist/factory-wheel`):
 
 ```bash
 pip install --no-index --find-links /path/to/wheels -e '.[dev]'
