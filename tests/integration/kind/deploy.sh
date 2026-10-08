@@ -25,23 +25,18 @@ git ls-files --cached --others --exclude-standard -z | tar --null -T - -czf "${s
 # last-applied annotation. The harness owns this entire source snapshot, including
 # when taking over from client-side apply. Remove the older annotation as well.
 "${k[@]}" -n factory-harness annotate configmap factory-source kubectl.kubernetes.io/last-applied-configuration-
-"${k[@]}" -n factory-harness create configmap jenkins-init \
-  --from-file="init.groovy=${harness}/init.groovy" --dry-run=client -o yaml | "${k[@]}" apply -f -
-"${k[@]}" -n factory-harness create configmap harness-pipeline \
-  --from-file="Pipeline.groovy=${harness}/Pipeline.groovy" --dry-run=client -o yaml | "${k[@]}" apply -f -
-python3 - "${state}/jenkins-password" <<'PY'
-import pathlib,secrets,sys
-p=pathlib.Path(sys.argv[1])
-if not p.exists():
-    p.write_text(secrets.token_urlsafe(24)); p.chmod(0o600)
-PY
-"${k[@]}" -n factory-harness create secret generic jenkins-login \
-  --from-file="password=${state}/jenkins-password" --dry-run=client -o yaml | "${k[@]}" apply -f -
-"${k[@]}" apply -f "${harness}/jenkins.yaml"
+# Tekton Pipelines (version pinned in tools/versions.lock.yaml).
+tekton_version=$(yq -r '.tools."tekton-pipelines".version' tools/versions.lock.yaml)
+"${k[@]}" apply --server-side -f \
+  "${TEKTON_PIPELINE_RELEASE_URL:-https://github.com/tektoncd/pipeline/releases/download/${tekton_version}/release.yaml}"
+"${k[@]}" -n tekton-pipelines rollout status deployment/tekton-pipelines-controller --timeout=300s
+"${k[@]}" -n tekton-pipelines rollout status deployment/tekton-pipelines-webhook --timeout=300s
+# Factory ServiceAccounts, settings, Tasks and Pipelines in the harness namespace.
+"${k[@]}" -n factory-harness apply -f deploy/base/serviceaccounts.yaml
+"${k[@]}" -n factory-harness apply -f deploy/base/settings.yaml
+"${k[@]}" -n factory-harness apply -f .tekton/tasks/ -f .tekton/pipelines/
+"${k[@]}" -n factory-harness apply -f "${harness}/harness-pipeline.yaml"
 "${k[@]}" -n factory-harness rollout status deployment/registry --timeout=180s
 skopeo copy --dest-creds oidc:harness --dest-cert-dir "${state}/client-ca" \
   docker://docker.io/library/ubuntu:24.04 "docker://localhost:${FACTORY_HARNESS_REGISTRY_PORT:-15443}/seed:base"
-"${k[@]}" -n factory-harness rollout status deployment/jenkins --timeout=300s
-python3 "${harness}/jenkins.py" --state "${state}" refresh
-printf 'Jenkins: http://127.0.0.1:%s (user review; password in %s/jenkins-password)\n' "${FACTORY_HARNESS_JENKINS_PORT:-18080}" "${state}"
-printf 'Run: python3 tests/integration/kind/jenkins.py run\n'
+printf 'Run: python3 tests/integration/kind/tekton.py --state %s run\n' "${state}"

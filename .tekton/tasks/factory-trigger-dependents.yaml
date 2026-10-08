@@ -1,0 +1,59 @@
+# After a base image (e.g. ubi9-minimal) is promoted, rebuild and re-gate every
+# catalog image built on it by triggering its <image>-on-base-release
+# PipelineRun through the Pipelines-as-Code incoming webhook. Inline script: the
+# step holds the incoming secret, so it executes no workspace code and only
+# reads catalog files as data.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-trigger-dependents
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: offline
+spec:
+  params:
+    - name: image
+    - name: environment
+    - name: runner-image
+  workspaces:
+    - name: shared
+  steps:
+    - name: trigger
+      image: $(params.runner-image)
+      workingDir: $(workspaces.shared.path)/source
+      envFrom:
+        - configMapRef:
+            name: factory-settings
+      env:
+        - {name: RELEASED_IMAGE, value: $(params.image)}
+        - {name: RELEASED_ENVIRONMENT, value: $(params.environment)}
+        - name: FACTORY_PAC_INCOMING_SECRET
+          valueFrom:
+            secretKeyRef: {name: factory-pac-incoming, key: secret}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        [[ ${RELEASED_ENVIRONMENT} == "${FACTORY_POINTER_ENVIRONMENT:-commercial}" ]] || {
+          echo "dependents rebuild only after ${FACTORY_POINTER_ENVIRONMENT:-commercial} base releases"; exit 0;
+        }
+        : "${FACTORY_PAC_CONTROLLER_URL:?}" "${FACTORY_PAC_REPOSITORY:?}"
+        for catalog in "${FACTORY_CATALOG_DIR:-catalog/images}"/*.yaml; do
+          [[ $(yq -r '.build.base.image // ""' "${catalog}") == "${RELEASED_IMAGE}" ]] || continue
+          [[ $(yq -r '.metadata.track' "${catalog}") == release ]] || continue
+          name=$(yq -r '.metadata.name' "${catalog}")
+          [[ ${name} =~ ^[a-z0-9][a-z0-9-]{0,40}$ ]] || continue
+          printf 'url = "%s/incoming?repository=%s&branch=%s&pipelinerun=%s-on-base-release&secret=%s"\n' \
+            "${FACTORY_PAC_CONTROLLER_URL%/}" "${FACTORY_PAC_REPOSITORY}" \
+            "${FACTORY_DEFAULT_BRANCH:-main}" "${name}" "${FACTORY_PAC_INCOMING_SECRET}" |
+            curl --fail --silent --show-error --request POST --config - >/dev/null
+          echo "triggered ${name}-on-base-release"
+        done

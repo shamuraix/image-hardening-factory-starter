@@ -210,7 +210,7 @@ def main():
         (args.state / "runtime-class").write_text(handler + "\n")
         print(f"Sandbox, private proc mount and UID mapping passed with RuntimeClass {handler}.")
         print(
-            "This does not yet qualify the full Jenkins build. RuntimeClass retained for that next test."
+            "This does not yet qualify the full Tekton build. RuntimeClass retained for that next test."
         )
     except subprocess.CalledProcessError as error:
         (output / "command-error.txt").write_text(str(error) + "\n" + (error.stderr or ""))

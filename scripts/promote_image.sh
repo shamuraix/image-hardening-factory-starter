@@ -11,10 +11,10 @@ source "${work_dir}/import.env"
 : "${ARTIFACTORY_RELEASE_TOKEN:?}"
 
 if [[ ${FACTORY_RELEASE_ENV:-commercial} =~ ^gov[12]$ ]]; then
-  : "${FACTORY_APPROVER_ID:?Gov promotion requires an authenticated Jenkins approver}"
+  : "${FACTORY_APPROVER_ID:?Gov promotion requires the approving merger (release request sender)}"
   : "${FACTORY_GOV_APPROVER_PATTERN:?FACTORY_GOV_APPROVER_PATTERN is required}"
   [[ ${FACTORY_APPROVER_ID} =~ ${FACTORY_GOV_APPROVER_PATTERN} ]] || {
-    echo "Jenkins approver is not authorized for Gov promotion" >&2
+    echo "release approver is not authorized for Gov promotion" >&2
     exit 1
   }
 fi

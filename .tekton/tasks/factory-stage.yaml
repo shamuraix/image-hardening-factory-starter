@@ -1,0 +1,118 @@
+# Generic internal-only factory stage (validate, sbom, scan, assessment,
+# compliance, gate, and optional Konflux-style evidence stages).
+#
+# Equivalent of the Jenkins runFactoryStage helper:
+#   verify step  -> unstash + input integrity check
+#   run step     -> the stage command (onError: continue so evidence is kept)
+#   seal step    -> archive/stash, then fail unless the stage is non-blocking
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-stage
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: offline
+spec:
+  description: Run one credential-free factory stage against sealed inputs.
+  params:
+    - name: image
+      description: Catalog image name.
+    - name: stage
+      description: Stage name; also the seal name and log file name.
+    - name: command
+      description: Shell command run from the repository root.
+    - name: outputs
+      type: array
+      description: Repository-relative globs sealed after the command.
+    - name: inputs
+      type: array
+      default: []
+      description: Seals to verify first, as <stage>=<sha256>.
+    - name: allow-failure
+      default: "false"
+      description: '"true" keeps the TaskRun green and reports status=failed instead.'
+    - name: runner-image
+      description: Digest-pinned factory runner image.
+    - name: commit
+    - name: source-url
+      default: ""
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+    - name: release-env
+      default: commercial
+  workspaces:
+    - name: shared
+      description: PipelineRun workspace holding source/ and work/.
+  results:
+    - name: seal
+      description: SHA-256 of this stage's seal manifest.
+    - name: status
+      description: '"succeeded" or "failed".'
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_STAGE, value: $(params.stage)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SOURCE_URL, value: $(params.source-url)}
+      - {name: FACTORY_BRANCH_NAME, value: $(params.branch)}
+      - {name: FACTORY_CHANGE_ID, value: $(params.change-id)}
+      - {name: FACTORY_RELEASE_ENV, value: $(params.release-env)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: run
+      onError: continue
+      env:
+        - {name: FACTORY_STAGE_COMMAND, value: $(params.command)}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        bash -o pipefail -c "${FACTORY_STAGE_COMMAND}" 2>&1 \
+          | tee "${FACTORY_WORK_DIR}/logs/${FACTORY_STAGE}.log"
+    - name: seal
+      args: ["$(params.outputs[*])"]
+      env:
+        - {name: FACTORY_ALLOW_FAILURE, value: $(params.allow-failure)}
+        - {name: FACTORY_RUN_EXIT_CODE_PATH, value: $(steps.step-run.exitCode.path)}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        code=$(cat "${FACTORY_RUN_EXIT_CODE_PATH}")
+        # Evidence is sealed even when the stage failed, matching the Jenkins
+        # "archive in finally" behaviour, so remediation and triage can read it.
+        scripts/tekton/artifacts.sh seal "${FACTORY_STAGE}" "$(results.seal.path)" \
+          "$@" "${FACTORY_WORK_DIR}/logs/${FACTORY_STAGE}.log"
+        if [[ ${code} == 0 ]]; then
+          printf succeeded >"$(results.status.path)"
+          exit 0
+        fi
+        printf failed >"$(results.status.path)"
+        echo "stage ${FACTORY_STAGE} exited ${code}" >&2
+        [[ ${FACTORY_ALLOW_FAILURE} == true ]] || exit "${code}"

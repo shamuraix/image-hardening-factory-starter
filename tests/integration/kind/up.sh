@@ -48,7 +48,6 @@ python3 - "${state}" "${cluster}" "${provider}" "${rootful}" <<'PYTHON'
 import json, os, pathlib, sys
 state, cluster, provider = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 settings = dict(cluster=cluster, provider=provider, rootful=sys.argv[4] == "true",
-    jenkinsPort=int(os.environ.get('FACTORY_HARNESS_JENKINS_PORT', '18080')),
     registryPort=int(os.environ.get('FACTORY_HARNESS_REGISTRY_PORT', '15443')))
 path = state / 'settings.json'
 previous = json.loads(path.read_text()) if path.exists() else settings
@@ -61,8 +60,7 @@ config = {'kind':'Cluster', 'apiVersion':'kind.x-k8s.io/v1alpha4',
     # 65536-ID pod namespace cannot contain that range.
     'kubeadmConfigPatches': ['kind: KubeletConfiguration\nuserNamespaces:\n  idsPerPod: 262144\n'],
     'networking':{'apiServerAddress':'127.0.0.1'}, 'nodes':[{'role':'control-plane',
-    'extraPortMappings':[{'containerPort':30080, 'hostPort':settings['jenkinsPort'], 'listenAddress':'127.0.0.1'},
-                         {'containerPort':30500, 'hostPort':settings['registryPort'], 'listenAddress':'127.0.0.1'}]}]}
+    'extraPortMappings':[{'containerPort':30500, 'hostPort':settings['registryPort'], 'listenAddress':'127.0.0.1'}]}]}
 (state / 'cluster.json').write_text(json.dumps(config))
 PYTHON
 if ! "${kind_command[@]}" get clusters | grep -qx "${cluster}"; then
@@ -98,22 +96,20 @@ cp "${state}/tls/ca.crt" "${state}/runner/ca.crt"
 cp "${harness}/configure-uidmap.py" "${state}/runner/configure-uidmap.py"
 architecture=$("${k[@]}" get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}')
 "${harness}/download-tools.sh" "${state}/runner/tools" "${architecture}"
-"${runtime[@]}" build -t localhost/factory-review-jenkins:review -f "${harness}/Containerfile.jenkins" "${harness}"
 subuid_start=100000
 subuid_count=65536
 "${runtime[@]}" build --build-arg "FACTORY_SUBUID_START=${subuid_start}" --build-arg "FACTORY_SUBUID_COUNT=${subuid_count}" -t localhost/factory-review-runner:review -f "${harness}/Containerfile.runner" "${state}/runner"
-for image in jenkins runner; do
-  rm -f "${state}/${image}.tar"
-  if [[ ${provider} == podman ]]; then
-    "${runtime[@]}" save --format docker-archive -o "${state}/${image}.tar" "localhost/factory-review-${image}:review"
-  else
-    docker save -o "${state}/${image}.tar" "localhost/factory-review-${image}:review"
-  fi
-  if [[ ${rootful} == true ]]; then
-    sudo -n chown "$(id -u):$(id -g)" "${state}/${image}.tar"
-  fi
-  "${kind_command[@]}" load image-archive --name "${cluster}" "${state}/${image}.tar"
-done
+image=runner
+rm -f "${state}/${image}.tar"
+if [[ ${provider} == podman ]]; then
+  "${runtime[@]}" save --format docker-archive -o "${state}/${image}.tar" "localhost/factory-review-${image}:review"
+else
+  docker save -o "${state}/${image}.tar" "localhost/factory-review-${image}:review"
+fi
+if [[ ${rootful} == true ]]; then
+  sudo -n chown "$(id -u):$(id -g)" "${state}/${image}.tar"
+fi
+"${kind_command[@]}" load image-archive --name "${cluster}" "${state}/${image}.tar"
 FACTORY_HARNESS_STATE="${state}" "${harness}/deploy.sh"
 if [[ ${rootful} == true ]]; then
   # The tested rootful kind node needs crun for user-namespaced sandbox sysfs
@@ -126,5 +122,4 @@ if [[ ${rootful} == true ]]; then
     jq -e --arg handler "${handler}" 'any(.status.runtimeHandlers[]?; .name == $handler and .features.userNamespaces == true)' >/dev/null; then
     python3 "${harness}/probe-crun.py" --state "${state}"
   fi
-  python3 "${harness}/jenkins.py" --state "${state}" refresh
 fi

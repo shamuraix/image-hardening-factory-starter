@@ -1,0 +1,188 @@
+# Pipelines-as-Code has no cron trigger, so CronJobs call its incoming webhook.
+# Each job runs an inline script (no repository code) with the incoming secret.
+# Times are UTC; stagger them so builds do not contend for the same nodes.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-schedules
+data:
+  trigger.sh: |
+    #!/bin/sh
+    set -eu
+    for pipelinerun in "$@"; do
+      printf 'url = "%s/incoming?repository=%s&branch=%s&pipelinerun=%s&secret=%s"\n' \
+        "${FACTORY_PAC_CONTROLLER_URL%/}" "${FACTORY_PAC_REPOSITORY}" \
+        "${FACTORY_DEFAULT_BRANCH:-main}" "${pipelinerun}" "${FACTORY_PAC_INCOMING_SECRET}" |
+        curl --fail --silent --show-error --request POST --config - >/dev/null
+      echo "triggered ${pipelinerun}"
+    done
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-rescan
+spec:
+  # Re-gate every pinned image against fresh vulnerability data well inside the
+  # 72h database freshness window; a deny hands off to the remediation agent.
+  schedule: "17 2 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {factory.dev/needs-pac: "true"}
+        spec:
+          serviceAccountName: factory-scheduler
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: trigger
+              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              command: ["/bin/sh", "/scripts/trigger.sh"]
+              args: [bitbucket-lts-on-schedule, confluence-lts-on-schedule, jira-lts-on-schedule]
+              envFrom:
+                - configMapRef: {name: factory-settings}
+              env:
+                - name: FACTORY_PAC_INCOMING_SECRET
+                  valueFrom:
+                    secretKeyRef: {name: factory-pac-incoming, key: secret}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: scripts
+              configMap: {name: factory-schedules}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: nightly-base-rescan
+spec:
+  schedule: "47 1 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {factory.dev/needs-pac: "true"}
+        spec:
+          serviceAccountName: factory-scheduler
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: trigger
+              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              command: ["/bin/sh", "/scripts/trigger.sh"]
+              args: [ubi9-minimal-on-schedule, ubi10-minimal-on-schedule]
+              envFrom:
+                - configMapRef: {name: factory-settings}
+              env:
+                - name: FACTORY_PAC_INCOMING_SECRET
+                  valueFrom:
+                    secretKeyRef: {name: factory-pac-incoming, key: secret}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: scripts
+              configMap: {name: factory-schedules}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: daily-upstream-sync
+spec:
+  # Intake refreshes signed locks for the current pins; independently, the
+  # upstream-sync agent looks for new Iron Bank commits and proposes rebased
+  # overlays. When such a proposal merges, intake must run for the new pins
+  # (the next scheduled run, or trigger intake-on-schedule manually).
+  schedule: "7 5 * * 1-5"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {factory.dev/needs-pac: "true"}
+        spec:
+          serviceAccountName: factory-scheduler
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: trigger
+              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              command: ["/bin/sh", "/scripts/trigger.sh"]
+              args: [intake-on-schedule, agent-upstream-sync-on-schedule]
+              envFrom:
+                - configMapRef: {name: factory-settings}
+              env:
+                - name: FACTORY_PAC_INCOMING_SECRET
+                  valueFrom:
+                    secretKeyRef: {name: factory-pac-incoming, key: secret}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: scripts
+              configMap: {name: factory-schedules}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: weekly-exception-review
+spec:
+  schedule: "23 6 * * 1"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {factory.dev/needs-pac: "true"}
+        spec:
+          serviceAccountName: factory-scheduler
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: trigger
+              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              command: ["/bin/sh", "/scripts/trigger.sh"]
+              args: [agent-exception-steward-on-schedule]
+              envFrom:
+                - configMapRef: {name: factory-settings}
+              env:
+                - name: FACTORY_PAC_INCOMING_SECRET
+                  valueFrom:
+                    secretKeyRef: {name: factory-pac-incoming, key: secret}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: scripts
+              configMap: {name: factory-schedules}

@@ -1,230 +1,139 @@
 # Configuration reference
 
-[Project overview](../README.md) · [Operations](operations.md)
+[Project overview](../README.md) · [Operations](operations.md) · [Agents](agents.md)
 
-## Quick setup checklist (new operators)
+## Quick setup checklist
 
-Use this section when you are standing up the pipeline for the first time.
+1. **Cluster prerequisites** (versions in `tools/versions.lock.yaml`)
+   - Kubernetes ≥ 1.30 with unprivileged user namespaces on build nodes
+   - Tekton Pipelines **v1.15 LTS**, Pipelines-as-Code **v0.51**, Tekton Chains **v0.28**
+   - A default StorageClass for per-run `volumeClaimTemplate` workspaces
+   - Nodes for compliance labelled `factory.dev/fips-node=true` and tainted
+     `factory.dev/fips-node=true:NoSchedule`
+2. **Publish runner images** and record their digests in the Repository CR params:
+   `runner_image` (`toolchain/Containerfile.factory-runner`), `intake_runner_image`,
+   `agent_image` (`toolchain/Containerfile.factory-agent`).
+3. **Apply the factory objects**: `kubectl apply -k deploy/base` after editing
+   `settings.yaml`, `repository.yaml`, and the CIDRs in `network-policies.yaml`.
+4. **Create the Secrets** listed in `deploy/secrets.example.yaml` with your secret manager.
+5. **Configure Chains** with `deploy/chains/chains-config.yaml` and a signing key
+   (KMS recommended).
+6. **Install the PaC GitHub App** (or GitLab/Bitbucket webhook) for the repository
+   and protect `main`: required reviews, CODEOWNERS, required status checks.
+7. Confirm contributors can run `make ci` locally.
 
-1. **Prepare Jenkins Kubernetes pod templates**
-   - Configure trust-class templates and map them to `FACTORY_K8S_*_POD_TEMPLATE` settings.
-   - Use unprivileged/rootless-compatible templates (no host mounts, no engine socket mounts, no privileged mode).
+## Pipelines-as-Code Repository (`deploy/base/repository.yaml`)
 
-2. **Publish runner images and pin by digest**
-   - Set `FACTORY_RUNNER_IMAGE` and `FACTORY_INTAKE_RUNNER_IMAGE` to signed digest-qualified references.
+| Field | Value | Why |
+|---|---|---|
+| `settings.pipelinerun_provenance` | `default_branch` | PR runs use PipelineRun definitions from `main`, never from the PR |
+| `settings.policy.pull_request` / `ok_to_test` | maintainer team (+ bot) | who may trigger PR runs |
+| `concurrency_limit` | `3` | bounds concurrent runs (PVC + up to 8 CPUs each) |
+| `params` | `runner_image`, `intake_runner_image`, `agent_image`, `git_provider` | digest-pinned images and provider, templated into PipelineRuns |
+| `incoming` | `webhook-url`, Secret `factory-pac-incoming`, target `main` | schedules and base-release fan-out |
 
-3. **Set required repository and routing settings**
-   - `INTERNAL_GIT_BASE_URL`
-   - `ARTIFACTORY_URL`, `ARTIFACTORY_REGISTRY`
-   - `FACTORY_SOURCE_REPOSITORY`, `UPSTREAM_OCI_REPOSITORY`
-   - quarantine/release repositories (`FACTORY_BASE_QUARANTINE_REPOSITORY`, `FACTORY_APPLICATION_QUARANTINE_REPOSITORY`, `FACTORY_RELEASE_REPOSITORY`, `FACTORY_CANARY_REPOSITORY`)
+## Settings (`deploy/base/settings.yaml`, ConfigMap `factory-settings`)
 
-4. **Bind Jenkins credential ID settings**
-   - Configure read/write/sign/release Artifactory credential IDs.
-   - Configure Cosign key/password/public-key credential IDs.
-   - Configure SCM mirror/remediation credential IDs if remediation flows are enabled.
+Injected into every factory step with `envFrom`; replaces the Jenkins global settings.
 
-5. **Run minimal pipeline stages first**
-   - Start with `VALIDATE`, `PREPARE`, `BUILD`, `SBOM`, `SCAN`, `COMPLIANCE`, `TEST`, `GATE`.
-   - Enable `IMPORT`/`ATTEST`/`PROMOTE` only after validation and access controls are confirmed.
-
-6. **Verify local contributor workflow**
-   - Confirm contributors can run `make validate`, `make test`, `make lint`, and `make plan`.
-
----
-
-## Advanced configuration reference
-
-### Jenkins on unprivileged Kubernetes agents
-
-`Jenkinsfile` runs the image factory and `Jenkinsfile.intake` runs connected
-intake. Both use the Jenkins Kubernetes plugin and add a `factory` container to
-an administrator-managed pod template.
-
-- Set `privileged: false`.
-- Do not mount host paths, container-engine sockets, or host devices.
-- Do not add Linux capabilities just to bypass rootless constraints.
-
-The runner executes as UID 10001, uses subordinate IDs for rootless BuildKit
-and Podman, and relies on the outer pod for cgroup enforcement. BuildKit uses
-its native snapshotter; Podman VFS remains for scanner/product-test storage.
-
-Nodes must allow unprivileged user namespaces. `/tmp` and `/home/factory` must
-be writable.
-
-Pod template trust classes are selected with these settings:
-
-| Setting | Trust class |
+| Key | Purpose |
 |---|---|
-| `FACTORY_K8S_INTAKE_POD_TEMPLATE` | Approved upstream and intake-only writes |
-| `FACTORY_K8S_OFFLINE_POD_TEMPLATE` | Internal read-only analysis |
-| `FACTORY_K8S_BUILDKIT_POD_TEMPLATE` | Rootless, internal-only build |
-| `FACTORY_K8S_FIPS_POD_TEMPLATE` | FIPS-node compliance |
-| `FACTORY_K8S_TEST_POD_TEMPLATE` | Rootless product tests |
-| `FACTORY_K8S_AI_POD_TEMPLATE` | AI endpoint and read-only evidence |
-| `FACTORY_K8S_REMEDIATION_POD_TEMPLATE` | SCM branch publication only |
-| `FACTORY_K8S_IMPORT_POD_TEMPLATE` | Quarantine writes only |
-| `FACTORY_K8S_SIGNING_POD_TEMPLATE` | Signature/referrer writes only |
-| `FACTORY_K8S_PROMOTION_POD_TEMPLATE` | Verified release copy only |
+| `INTERNAL_GIT_BASE_URL` | internal SCM namespace with source mirrors |
+| `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Artifactory API base and OCI registry host |
+| `FACTORY_SOURCE_REPOSITORY` | generic repo for locks, intake files, release pointers |
+| `UPSTREAM_OCI_REPOSITORY` | digest-pinned upstream bases |
+| `FACTORY_{BASE,APPLICATION}_QUARANTINE_REPOSITORY` | protected candidate repositories |
+| `FACTORY_RELEASE_REPOSITORY` / `FACTORY_CANARY_REPOSITORY` | release and canary repositories |
+| `FACTORY_DEFAULT_BRANCH` | branch the generated triggers and broker target |
+| `FACTORY_GOV_APPROVER_PATTERN` | regex the merging approver must match for gov1/gov2 |
+| `FACTORY_POINTER_ENVIRONMENT` | environment whose base releases update the release pointer (`commercial`) |
+| `FACTORY_UPSTREAM_BRANCH` | Repo One branch followed by intake and upstream-sync |
+| `FACTORY_PAC_CONTROLLER_URL` / `FACTORY_PAC_REPOSITORY` | PaC incoming endpoint and Repository CR name |
+| `FACTORY_GITHUB_API_URL` / `FACTORY_GITLAB_API_URL` | provider APIs for agent comments and change requests |
+| `SCM_BOT_AUTHOR_NAME` / `SCM_BOT_AUTHOR_EMAIL` | commit identity for agent proposals and release requests |
+| `ANTHROPIC_BASE_URL` | Anthropic-format LLM gateway for Claude Code |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` / `_OPUS_MODEL` | optional gateway model names for the aliases |
+| `FACTORY_AGENT_TIMEOUT` | wall-clock cap per agent run |
 
-Set runner images as signed digest-qualified references:
+## Secrets
 
-- `FACTORY_RUNNER_IMAGE`
-- `FACTORY_INTAKE_RUNNER_IMAGE`
+Names and keys are fixed by the Tasks (see `deploy/secrets.example.yaml`). Each is
+mounted into exactly one step.
 
-Use object-storage-backed Jenkins artifact storage for large OCI evidence.
+| Secret | Keys | Pipeline task |
+|---|---|---|
+| `factory-artifactory-read` | `token` | prepare, build, resolve, evidence-context |
+| `factory-intake-cosign-public-key` | `cosign.pub` | prepare |
+| `factory-artifactory-quarantine` | `token` | quarantine |
+| `factory-artifactory-sign` | `token` | attest |
+| `factory-artifactory-release` | `token` | promote |
+| `factory-artifactory-pointer` | `token` | promote (pointer step) |
+| `factory-cosign-{commercial,gov1,gov2}` | `cosign.key`, `password`, `cosign.pub` | attest, promote |
+| `factory-artifactory-intake` | `token` | intake |
+| `factory-intake-cosign` | `cosign.key`, `password`, `cosign.pub` | intake |
+| `factory-scm-mirror` | `username`, `token` | intake |
+| `factory-scm-bot` | `username`, `token` | agent publish step (default branch only) |
+| `factory-ai-gateway` | `token` | agent step |
+| `factory-pac-incoming` | `secret` | Repository incoming, schedules, dependents |
 
-### BuildKit pod template details
-
-Register [the BuildKit pod YAML](../toolchain/jenkins-buildkit-pod.yaml) as the
-template named by `FACTORY_K8S_BUILDKIT_POD_TEMPLATE`, then replace image
-placeholder and service account with deployment-specific values.
-
-The build runs an ephemeral `buildkitd` **inside the factory container**.
-No shared daemon, no host socket, no privileged sidecar.
-
-`FACTORY_BUILD_NETWORK` accepts:
-
-- `default` (production)
-- `none`
-- `host` (explicit only)
-
-Build inputs are digest-verified OCI layouts. A native source policy blocks
-remote image/HTTP/Git sources during solve.
-
-### Jenkins settings and credentials
-
-#### Core settings
-
-| Setting | Purpose |
-|---|---|
-| `INTERNAL_GIT_BASE_URL` | Internal SCM namespace containing source mirrors |
-| `SCM_REPOSITORY_URL` | Factory repository push URL used by remediation broker |
-| `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Artifactory API base URL and OCI registry host |
-| `FACTORY_SOURCE_REPOSITORY` | Repository for locks and intake content |
-| `UPSTREAM_OCI_REPOSITORY` | OCI repository for digest-pinned upstream bases |
-| `FACTORY_BASE_QUARANTINE_REPOSITORY` / `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | Protected candidate repositories |
-| `FACTORY_RELEASE_REPOSITORY` / `FACTORY_CANARY_REPOSITORY` | Release and canary repositories |
-| `FACTORY_DEFAULT_BRANCH` | Only branch allowed to import/sign/promote |
-| `FACTORY_IMPORT_LOCK_PREFIX` / `FACTORY_PROMOTION_LOCK_PREFIX` | Lockable Resources prefixes |
-| `FACTORY_GOV_APPROVERS` / `FACTORY_GOV_APPROVER_PATTERN` | Gov approval guardrails |
-| `SCM_REMEDIATION_AUTHOR_NAME` / `SCM_REMEDIATION_AUTHOR_EMAIL` | Bot identity for remediation commits |
-| `FACTORY_UPSTREAM_BRANCH` | Upstream branch used by source-pin maintenance |
-| `AI_BASE_URL` / `AI_MODEL` | Approved inference endpoint and model |
-
-#### Credential ID settings
-
-| Credential ID setting | Bound value |
-|---|---|
-| `ARTIFACTORY_READ_CREDENTIAL_ID` | Read-only Artifactory token |
-| `ARTIFACTORY_INTAKE_WRITE_CREDENTIAL_ID` | Intake-only write token |
-| `ARTIFACTORY_WRITE_CREDENTIAL_ID` | Quarantine importer token |
-| `ARTIFACTORY_SIGN_CREDENTIAL_ID` | Referrer-write token |
-| `ARTIFACTORY_RELEASE_CREDENTIAL_ID` | Release-copy token |
-| `COSIGN_INTAKE_KEY_CREDENTIAL_ID` / `COSIGN_INTAKE_PASSWORD_CREDENTIAL_ID` | Intake signing key and password |
-| `COSIGN_INTAKE_PUBLIC_KEY_CREDENTIAL_ID` | Intake verification key |
-| `COSIGN_KEY_CREDENTIAL_ID` / `COSIGN_PASSWORD_CREDENTIAL_ID` | Environment signing key and password |
-| `COSIGN_PUBLIC_KEY_CREDENTIAL_ID` | Promotion verification key |
-| `AI_API_KEY_CREDENTIAL_ID` | Inference credential |
-| `SCM_MIRROR_CREDENTIAL_ID` / `SCM_REMEDIATION_CREDENTIAL_ID` | Mirror and branch-publisher credentials |
-
-### Scanner evidence configuration (delegated scanners)
-
-The authoritative assessment backend is `delegated-scanners`, using normalized
-evidence from Grype, Trivy, Syft metadata, and OSV Scanner outputs.
-
-- Grype database and KEV freshness are enforced by policy through the prepared
-  evidence payload.
-- Assessment status is produced in
-  `work/<image>/evidence/scans/delegated/status.json`.
-- Policy may warn (instead of deny) for fixable high/critical findings outside
-  the application archive depending on normalized location context.
-
-### Signing with Artifactory
-
-The release pipeline uses Cosign key-pair signing. Artifactory stores subject,
-signature, and in-toto attestations as digest-linked registry artifacts. Keep
-private keys in Jenkins file credentials, never in the repository.
-
-Create separate key pairs per `FACTORY_RELEASE_ENV`:
+Create one Cosign key pair per release environment:
 
 ```bash
 cosign generate-key-pair --output-key-prefix cosign-commercial
 ```
 
-Before production promotion, verify discoverability of referrers:
+## Stage toggles
 
-```bash
-oras discover "${ARTIFACTORY_REGISTRY}/${FACTORY_APPLICATION_QUARANTINE_REPOSITORY}/${FACTORY_IMAGE_PATH}@${IMAGE_DIGEST}"
-```
+Toggles are PipelineRun params rendered by `factory/tekton.py`; change the
+renderer and run `make tekton-render` rather than editing the generated files.
 
-### Pipeline stage toggles
+| Param | PR | push | schedule | base-release |
+|---|---|---|---|---|
+| `publish` | false | true | false | true |
+| `enable-agents` (triage) | true | true | true | true |
+| `enable-remediation` | false | true | true | true |
+| `enable-release-request` | false | true | false | true |
+| `enable-copa` / `enable-helmper` / `enable-hummingbird` | false | false | false | false |
 
-Each stage is controlled by a Jenkins boolean parameter.
+Optional stage commands (`FACTORY_COPA_COMMAND`, `FACTORY_HELMPER_COMMAND`,
+`FACTORY_HUMMINGBIRD_COMMAND`) can be added to `factory-settings`.
 
-| Variable | Default | Stage controlled |
-|---|---|---|
-| `FACTORY_ENABLE_VALIDATE` | `true` | Schema and context validation |
-| `FACTORY_ENABLE_PREPARE` | `false` | Resource-lock resolution and context assembly |
-| `FACTORY_ENABLE_BUILD` | `false` | Rootless BuildKit OCI build |
-| `FACTORY_ENABLE_SBOM` | `false` | Syft SBOM generation |
-| `FACTORY_ENABLE_SCAN` | `false` | Grype/Trivy/OSV/ClamAV evidence collection |
-| `FACTORY_ENABLE_ASSESSMENT` | `false` | Delegated scanner assessment artifact stage |
-| `FACTORY_ENABLE_HELMPER` | `false` | Helmper-style chart inventory evidence |
-| `FACTORY_ENABLE_COPA` | `false` | Copacetic-style patch planning evidence |
-| `FACTORY_ENABLE_COMPLIANCE` | `false` | OpenSCAP compliance scan |
-| `FACTORY_ENABLE_TEST` | `false` | Product integration tests |
-| `FACTORY_ENABLE_GATE` | `false` | OPA policy gate |
-| `FACTORY_ENABLE_REMEDIATE` | `false` | AI read-only remediation summary |
-| `FACTORY_ENABLE_REMEDIATION_BRANCH` | `false` | Protected publication of remediation branch |
-| `FACTORY_ENABLE_IMPORT` | `false` | Protected quarantine import |
-| `FACTORY_ENABLE_ATTEST` | `false` | Cosign signing and attestation |
-| `FACTORY_ENABLE_HUMMINGBIRD` | `false` | Reproducibility summary |
-| `FACTORY_ENABLE_PROMOTE` | `false` | Pull-based release promotion |
+## BuildKit and Podman
 
-Optional concept-stage commands:
+The build and test run steps execute an ephemeral rootless `buildkitd` or
+rootless Podman inside the step container: no shared daemon, host socket, or
+privileged sidecar. They need `allowPrivilegeEscalation: true` and Unconfined
+seccomp/AppArmor for setuid `newuidmap`/`newgidmap`; every other step uses
+`RuntimeDefault` seccomp with all capabilities dropped. Hence the namespace's
+Pod Security level is `privileged` with `restricted` warnings and audit.
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `FACTORY_HELMPER_COMMAND` | unset | Command run by `scripts/helmper_inventory.sh` |
-| `FACTORY_COPA_COMMAND` | unset | Command run by `scripts/copacetic_patch_plan.sh` |
-| `FACTORY_HUMMINGBIRD_COMMAND` | unset | Optional extra verification command in `scripts/hummingbird_verify.sh` |
+`FACTORY_BUILD_NETWORK` accepts `default` (production), `none`, or `host`
+(explicit only).
 
-### Source-pin management
+## Tekton Chains
 
-- `vendir/config.yml` pins Repo One Git sources.
-- `scripts/update_source_pins.sh` updates `source.revision` and matching
-  `vendir/config.yml` entries from `FACTORY_UPSTREAM_BRANCH`.
-- By default, `scripts/update_source_pins.sh` also runs
-  `vendir sync --file vendir/config.yml` to refresh `vendor/repo1/`.
-  Set `FACTORY_VENDIR_SYNC=false` to skip sync (for metadata-only updates).
+`deploy/chains/chains-config.yaml` sets SLSA v1 provenance for TaskRuns and
+PipelineRuns, OCI storage, and no public transparency log. Use a KMS signer in
+production. Chains signs the digests in `IMAGE_URL`/`IMAGE_DIGEST` results
+(quarantine and promotion) with its own key; the factory's environment keys
+still produce the release-gating attestations.
 
-Run from a connected intake environment:
+## Source pins and Renovate
 
-```bash
-FACTORY_UPSTREAM_BRANCH="${FACTORY_UPSTREAM_BRANCH:?}" make update-pins
-```
+- `vendir/config.yml` pins Repo One sources; `source.revision` and the matching
+  vendir ref must move together (enforced for agent changes).
+- `scripts/update_source_pins.sh` / `make update-pins` updates pins manually; the
+  `upstream-sync` agent does the same with overlay rebasing and opens a PR.
+- `renovate.json` updates `tools/versions.lock.yaml` (including Tekton, PaC,
+  Chains, tkn, and Claude Code); updates require human review.
 
-### Renovate usage
+## Vulnerability exceptions
 
-- `renovate.json` manages GitHub-backed tool version updates in
-  `tools/versions.lock.yaml`.
-- Renovate does not update image source pins in `catalog/images/*.yaml` or
-  `vendir/config.yml`; those remain controlled by `make update-pins`.
-- Source pin updates must continue manual review and must not be auto-merged.
+`policies/exceptions/approved.json` affects vulnerability-threshold denials only,
+never evidence identity, freshness, compliance, tests, or signatures. Humans add
+exceptions; the `exception-steward` agent may only propose removals.
 
-### Toolchain pinning
+## Cosign storage and promotion compatibility
 
-`tools/versions.lock.yaml` records pinned tools and source URLs for runner
-images. Update pins deliberately, rebuild toolchain images, and re-sign them.
-
-### Vulnerability exclusions
-
-`policies/exceptions/approved.json` holds approved vulnerability exclusions.
-These affect vulnerability-threshold denials only; they do not bypass evidence
-identity/freshness, compliance, tests, or signature checks.
-
-### Cosign storage and promotion compatibility
-
-Cosign 2.x uses digest-derived attachment tags. Promotion must copy both ORAS
-recursive referrers and Cosign attachment tags.
+Cosign 2.x uses digest-derived attachment tags. Promotion copies both ORAS
+recursive referrers (including the evidence bundle) and Cosign attachment tags.

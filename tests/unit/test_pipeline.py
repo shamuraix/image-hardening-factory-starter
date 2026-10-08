@@ -7,6 +7,14 @@ from pathlib import Path
 
 from factory.catalog import load_catalog
 from factory.pipeline import render_plan
+from tests.unit.tekton_support import (
+    param,
+    pipeline,
+    pipeline_task,
+    seal_inputs,
+    secret_names,
+    step,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -39,21 +47,30 @@ class PipelineTests(unittest.TestCase):
             render_plan(self.images, {"unknown-image"})
 
     def test_gate_requires_build_evidence_and_selects_assessment(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("GATE: ['BUILD', 'SBOM', 'COMPLIANCE', 'TEST']", jenkinsfile)
-        self.assertIn("assessmentArtifact", jenkinsfile)
+        self.assertEqual(
+            seal_inputs("factory-image-build", "gate"),
+            {"build", "sbom", "scan", "assessment", "compliance", "test"},
+        )
+        self.assertEqual(seal_inputs("factory-image-build", "assessment"), {"scan"})
 
     def test_konflux_concept_stages_have_dependencies(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("HELMPER: ['PREPARE']", jenkinsfile)
-        self.assertIn("COPA: ['BUILD', 'SBOM']", jenkinsfile)
-        self.assertIn("HUMMINGBIRD: ['BUILD', 'SBOM']", jenkinsfile)
+        self.assertEqual(seal_inputs("factory-image-build", "helmper"), {"prepare"})
+        self.assertTrue({"build", "sbom"} <= seal_inputs("factory-image-build", "copacetic"))
+        self.assertTrue({"build", "sbom"} <= seal_inputs("factory-image-build", "hummingbird"))
 
     def test_concept_stage_parameters_are_exposed(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("FACTORY_ENABLE_HELMPER", jenkinsfile)
-        self.assertIn("FACTORY_ENABLE_COPA", jenkinsfile)
-        self.assertIn("FACTORY_ENABLE_HUMMINGBIRD", jenkinsfile)
+        params = {item["name"] for item in pipeline("factory-image-build")["spec"]["params"]}
+        for stage, flag in (
+            ("helmper", "enable-helmper"),
+            ("copacetic", "enable-copa"),
+            ("hummingbird", "enable-hummingbird"),
+        ):
+            self.assertIn(flag, params)
+            guard = pipeline_task("factory-image-build", stage)["when"][0]
+            self.assertEqual(guard["input"], f"$(params.{flag})")
+            self.assertEqual(
+                param(pipeline_task("factory-image-build", stage), "allow-failure"), "true"
+            )
 
     def test_helmper_hook_writes_skipped_status_without_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -276,10 +293,14 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('[[ "${digest}" == "${candidate_digest}" ]]', script)
 
     def test_delegated_scanners_feed_policy_and_gate(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("'FACTORY_ENABLE_ASSESSMENT'", jenkinsfile)
-        self.assertIn("catchInterruptions: false", jenkinsfile)
-        self.assertIn("stageName == 'gate' ? 'FAILURE' : 'SUCCESS'", jenkinsfile)
+        # Scan is non-blocking so evidence always reaches assessment and triage;
+        # the gate itself is blocking and fails the PipelineRun on deny.
+        self.assertEqual(
+            param(pipeline_task("factory-image-build", "scan"), "allow-failure"), "true"
+        )
+        gate = pipeline_task("factory-image-build", "gate")
+        self.assertNotIn("allow-failure", {item["name"] for item in gate["params"]})
+        self.assertEqual(step("factory-stage", "run")["onError"], "continue")
 
         policy = (ROOT / "policies/rego/factory/release/release.rego").read_text(encoding="utf-8")
         self.assertIn("input.assessment.assessmentPassed", policy)
@@ -289,35 +310,38 @@ class PipelineTests(unittest.TestCase):
         self.assertIn('(.findings | type == "array")', gate_script)
         self.assertIn('--assessment-status "${status}"', gate_script)
 
-    def test_attestation_job_downloads_assessment_and_all_signed_evidence(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        for artifact in (
-            "importArtifact",
-            "gateArtifact",
-            "sbomArtifact",
-            "assessmentArtifact",
-            "complianceArtifact",
-            "testArtifact",
-        ):
-            self.assertIn(artifact, jenkinsfile)
+    def test_quarantine_verifies_every_signed_evidence_seal(self) -> None:
+        self.assertEqual(
+            seal_inputs("factory-image-build", "quarantine"),
+            {"prepare", "build", "sbom", "scan", "assessment", "compliance", "test", "gate"},
+        )
+        guard = pipeline_task("factory-image-build", "quarantine")["when"][0]
+        self.assertEqual(guard["input"], "$(params.publish)")
 
-    def test_signing_stage_uses_scoped_jenkins_credentials(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("COSIGN_KEY_CREDENTIAL_ID", jenkinsfile)
-        self.assertIn("ARTIFACTORY_SIGN_CREDENTIAL_ID", jenkinsfile)
-        self.assertIn("FACTORY_K8S_SIGNING_POD_TEMPLATE", jenkinsfile)
+    def test_signing_stage_uses_scoped_environment_credentials(self) -> None:
+        self.assertEqual(
+            secret_names("factory-attest"),
+            {"factory-cosign-$(params.environment)", "factory-artifactory-sign"},
+        )
+        sign = step("factory-attest", "sign")
+        self.assertIn("/credentials/signing", sign["volumeMounts"][0]["mountPath"])
+        verify = step("factory-attest", "verify")
+        self.assertNotIn("volumeMounts", verify)
+        self.assertNotIn("env", verify)
 
-    def test_promotion_downloads_import_identity_and_attestation(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("[importArtifact, attestArtifact]", jenkinsfile)
-        self.assertIn("FACTORY_PROMOTION_LOCK_PREFIX", jenkinsfile)
+    def test_promotion_requires_resolved_evidence_and_attestation(self) -> None:
+        self.assertEqual(seal_inputs("factory-image-release", "promote"), {"resolve", "attest"})
+        self.assertEqual(seal_inputs("factory-image-release", "attest"), {"resolve"})
 
     def test_change_requests_cannot_publish_to_quarantine(self) -> None:
         script = (ROOT / "scripts/import_image.sh").read_text(encoding="utf-8")
         self.assertIn("FACTORY_PROTECTED_PUBLISH", script)
         self.assertIn("candidateOnly:true", script)
 
-    def test_jenkins_uses_parameterized_kubernetes_pod_templates(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
-        self.assertIn("podTemplate(", jenkinsfile)
-        self.assertIn("inheritFrom: podTemplateName", jenkinsfile)
+    def test_build_pipeline_has_no_signing_or_promotion(self) -> None:
+        names = {
+            entry["name"]
+            for entry in pipeline("factory-image-build")["spec"]["tasks"]
+            + pipeline("factory-image-build")["spec"]["finally"]
+        }
+        self.assertFalse({"attest", "promote"} & names)

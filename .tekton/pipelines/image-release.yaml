@@ -1,0 +1,110 @@
+# Release pipeline: runs when a reviewed release request under
+# releases/<environment>/<image>.yaml is merged to the default branch.
+#
+# The merge is the approval. CODEOWNERS on releases/gov*/ enforce who may
+# approve Gov releases, and the merging user ({{ sender }}) becomes the recorded
+# approver, re-checked against FACTORY_GOV_APPROVER_PATTERN by the signing and
+# promotion scripts. This replaces the Jenkins `input` step.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: factory-image-release
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+spec:
+  params:
+    - name: repo-url
+    - name: revision
+    - name: sender
+    - name: runner-image
+    - name: agent-image
+    - name: git-provider
+      default: github
+    - name: git-auth-secret
+      default: factory-git-auth-disabled
+  workspaces:
+    - name: shared
+    - name: git-auth
+      optional: true
+  tasks:
+    - name: checkout
+      taskRef: {name: factory-checkout}
+      params:
+        - {name: url, value: $(params.repo-url)}
+        - {name: revision, value: $(params.revision)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+        - {name: basic-auth, workspace: git-auth}
+
+    - name: resolve
+      taskRef: {name: factory-release-resolve}
+      params:
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: sender, value: $(params.sender)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: attest
+      taskRef: {name: factory-attest}
+      params:
+        - {name: image, value: $(tasks.resolve.results.image)}
+        - {name: environment, value: $(tasks.resolve.results.environment)}
+        - {name: approver, value: $(tasks.resolve.results.approver)}
+        - name: inputs
+          value: ["resolve=$(tasks.resolve.results.seal)"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: promote
+      taskRef: {name: factory-promote}
+      params:
+        - {name: image, value: $(tasks.resolve.results.image)}
+        - {name: environment, value: $(tasks.resolve.results.environment)}
+        - {name: approver, value: $(tasks.resolve.results.approver)}
+        - name: inputs
+          value:
+            - "resolve=$(tasks.resolve.results.seal)"
+            - "attest=$(tasks.attest.results.seal)"
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+  finally:
+    - name: dependents
+      when:
+        - {input: $(tasks.promote.status), operator: in, values: ["Succeeded"]}
+      taskRef: {name: factory-trigger-dependents}
+      params:
+        - {name: image, value: $(tasks.resolve.results.image)}
+        - {name: environment, value: $(tasks.resolve.results.environment)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: triage
+      when:
+        - {input: $(tasks.status), operator: in, values: ["Failed"]}
+      taskRef: {name: factory-claude-agent}
+      params:
+        - {name: agent, value: failure-triage}
+        - {name: mode, value: report}
+        - {name: image, value: factory}
+        - name: task-statuses
+          value:
+            - "resolve=$(tasks.resolve.status)"
+            - "attest=$(tasks.attest.status)"
+            - "promote=$(tasks.promote.status)"
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: agent-image, value: $(params.agent-image)}
+        - {name: commit, value: $(params.revision)}
+        - {name: source-url, value: $(params.repo-url)}
+        - {name: event-type, value: push}
+        - {name: git-provider, value: $(params.git-provider)}
+        - {name: git-auth-secret, value: $(params.git-auth-secret)}
+      workspaces:
+        - {name: shared, workspace: shared}

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "image-hardening-factory"
 version = "0.1.0"
-description = "Offline-first Jenkins image hardening factory"
+description = "Offline-first Tekton image hardening factory with Claude Code operations agents"
 requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0,<7",

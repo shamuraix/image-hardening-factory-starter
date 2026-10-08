@@ -8,16 +8,16 @@ evidence="${work_dir}/evidence"
 source "${work_dir}/import.env"
 : "${IMPORTED_IMAGE_REF:?}"
 : "${IMPORTED_IMAGE_DIGEST:?}"
-: "${COSIGN_KEY_PATH:?COSIGN_KEY_PATH must name the Jenkins file credential containing the encrypted Cosign private key}"
+: "${COSIGN_KEY_PATH:?COSIGN_KEY_PATH must name the mounted factory-cosign-<env> key file}"
 : "${COSIGN_PASSWORD:?COSIGN_PASSWORD is required to decrypt the Cosign private key}"
 : "${ARTIFACTORY_REGISTRY:?}"
 : "${ARTIFACTORY_SIGN_TOKEN:?ARTIFACTORY_SIGN_TOKEN must be a short-lived token with write access to quarantine referrers}"
 
 if [[ ${FACTORY_RELEASE_ENV:-commercial} =~ ^gov[12]$ ]]; then
-  : "${FACTORY_APPROVER_ID:?Gov signing requires an authenticated Jenkins approver}"
+  : "${FACTORY_APPROVER_ID:?Gov signing requires the approving merger (release request sender)}"
   : "${FACTORY_GOV_APPROVER_PATTERN:?FACTORY_GOV_APPROVER_PATTERN is required}"
   [[ ${FACTORY_APPROVER_ID} =~ ${FACTORY_GOV_APPROVER_PATTERN} ]] || {
-    echo "Jenkins approver is not authorized for Gov signing" >&2
+    echo "release approver is not authorized for Gov signing" >&2
     exit 1
   }
 fi
@@ -36,7 +36,7 @@ export REGISTRY_AUTH_FILE="${authfile}"
 
 # Cosign stores the signature and attestations beside the subject in
 # Artifactory as digest-tagged Cosign attachments. The private key is supplied by a
-# protected, release-job-scoped Jenkins file credential and is never uploaded.
+# release-pipeline-only Secret mounted into the sign step and is never uploaded.
 cosign sign --yes --tlog-upload=false --key "${COSIGN_KEY_PATH}" "${subject}"
 
 jq -n --arg digest "${IMPORTED_IMAGE_DIGEST}" --arg approver "${FACTORY_APPROVER_ID:-}" \

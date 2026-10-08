@@ -1,0 +1,27 @@
+# Tekton Chains configuration for the factory (apply in the tekton-chains
+# namespace, e.g. as a patch to the operator's TektonConfig or this ConfigMap).
+#
+# Chains watches TaskRuns and signs what they declare through the IMAGE_URL /
+# IMAGE_DIGEST type-hint results (factory-quarantine and factory-promote), and
+# records SLSA v1 provenance for TaskRuns and PipelineRuns. The Chains signing
+# key lives only in the Chains controller (secret `signing-secrets` in
+# tekton-chains, or a KMS key) - task pods never see it. This complements the
+# factory's own environment-key attestations produced by factory-attest.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chains-config
+  namespace: tekton-chains
+data:
+  artifacts.taskrun.format: slsa/v1
+  artifacts.taskrun.storage: oci
+  artifacts.pipelinerun.format: slsa/v1
+  artifacts.pipelinerun.storage: oci
+  artifacts.pipelinerun.enable-deep-inspection: "true"
+  artifacts.oci.storage: oci
+  # Air-gapped default: no public transparency log. Point at an internal Rekor
+  # (transparency.url) and set "true" if you run one.
+  transparency.enabled: "false"
+  builder.id: https://image-factory.internal.example/tekton-chains
+  # Prefer a KMS-backed key in production:
+  # signers.kms.kmsref: azurekms://<vault>.vault.azure.net/<key>

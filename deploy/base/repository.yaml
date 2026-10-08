@@ -1,0 +1,36 @@
+# Pipelines-as-Code Repository: binds the git repository to this namespace.
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  name: image-hardening-factory
+spec:
+  url: https://github.com/shamuraix/image-hardening-factory-starter
+  # Bounds concurrent PipelineRuns (each holds a PVC and up to 8 CPUs for the
+  # build). Release ordering does not depend on this: one release request per
+  # merge, digest-tagged destinations, and idempotent evidence copies.
+  concurrency_limit: 3
+  settings:
+    # Load PipelineRun definitions from the default branch only. A pull request
+    # cannot add, edit, or re-target a PipelineRun to reach protected secrets.
+    pipelinerun_provenance: default_branch
+    policy:
+      # Teams allowed to trigger PR runs and /ok-to-test. Include the bot
+      # account so agent-proposed changes are validated automatically.
+      pull_request: [image-factory-maintainers]
+      ok_to_test: [image-factory-maintainers]
+  params:
+    # Digest-pinned images; promote new runner/agent images by changing these.
+    - name: runner_image
+      value: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+    - name: intake_runner_image
+      value: artifactory.internal.example/factory-tools/factory-intake-runner@sha256:REPLACE
+    - name: agent_image
+      value: artifactory.internal.example/factory-tools/factory-agent@sha256:REPLACE
+    - name: git_provider
+      value: github
+  incoming:
+    - type: webhook-url
+      secret:
+        name: factory-pac-incoming
+        key: secret
+      targets: [main]

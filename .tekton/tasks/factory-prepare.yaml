@@ -1,0 +1,96 @@
+# Resolves the signed resource lock, applies overlays, and assembles the build
+# context. Trust class: internal read (Artifactory read token, intake public key).
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-prepare
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: internal-read
+spec:
+  params:
+    - name: image
+    - name: inputs
+      type: array
+      default: []
+    - name: runner-image
+    - name: commit
+    - name: source-url
+      default: ""
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+  workspaces:
+    - name: shared
+  results:
+    - name: seal
+    - name: status
+  volumes:
+    - name: intake-public-key
+      secret:
+        secretName: factory-intake-cosign-public-key
+        items:
+          - {key: cosign.pub, path: cosign.pub}
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SOURCE_URL, value: $(params.source-url)}
+      - {name: FACTORY_BRANCH_NAME, value: $(params.branch)}
+      - {name: FACTORY_CHANGE_ID, value: $(params.change-id)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: run
+      onError: continue
+      env:
+        - name: ARTIFACTORY_READ_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-read, key: token}
+        - {name: COSIGN_INTAKE_PUBLIC_KEY, value: /credentials/intake/cosign.pub}
+      volumeMounts:
+        - {name: intake-public-key, mountPath: /credentials/intake, readOnly: true}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/prepare_context.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}" 2>&1 \
+          | tee "${FACTORY_WORK_DIR}/logs/prepare.log"
+    - name: seal
+      env:
+        - {name: FACTORY_RUN_EXIT_CODE_PATH, value: $(steps.step-run.exitCode.path)}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        w=${FACTORY_WORK_DIR}
+        scripts/tekton/artifacts.sh seal prepare "$(results.seal.path)" \
+          "${w}/context/**" "${w}/resource-lock.json" "${w}/resource-lock.sig" \
+          "${w}/build.env" "${w}/base.oci.tar" "${w}/logs/prepare.log"
+        code=$(cat "${FACTORY_RUN_EXIT_CODE_PATH}")
+        [[ ${code} == 0 ]] && printf succeeded >"$(results.status.path)" || printf failed >"$(results.status.path)"
+        exit "${code}"

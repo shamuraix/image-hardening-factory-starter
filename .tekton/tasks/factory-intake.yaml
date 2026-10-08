@@ -1,0 +1,97 @@
+# Connected intake: mirror pinned upstream sources and publish signed resource
+# locks. Replaces Jenkinsfile.intake. Trust class: intake (approved upstream
+# egress plus intake-only writes); never runs on pull requests.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-intake
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: intake
+spec:
+  params:
+    - name: images
+      default: ""
+      description: Comma-separated catalog roots; empty selects every image.
+    - name: intake-runner-image
+    - name: commit
+  workspaces:
+    - name: shared
+  volumes:
+    - name: intake-keys
+      secret:
+        secretName: factory-intake-cosign
+        items:
+          - {key: cosign.key, path: cosign.key}
+          - {key: cosign.pub, path: cosign.pub}
+  stepTemplate:
+    image: $(params.intake-runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_CHANGED_IMAGES, value: $(params.images)}
+      - {name: HOME, value: /tmp/home}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: plan
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        export PYTHONPATH="${PWD}"
+        scripts/render_plan.sh work/intake-plan.json
+        jq -r '.images[].name' work/intake-plan.json
+    - name: mirror
+      env:
+        - name: SCM_MIRROR_USERNAME
+          valueFrom:
+            secretKeyRef: {name: factory-scm-mirror, key: username}
+        - name: SCM_MIRROR_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-scm-mirror, key: token}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p "${HOME}"
+        scripts/mirror_sources.sh
+    - name: lock
+      env:
+        - name: ARTIFACTORY_WRITE_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-intake, key: token}
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: factory-intake-cosign, key: password}
+        - {name: COSIGN_INTAKE_KEY_REF, value: /credentials/intake/cosign.key}
+        - {name: COSIGN_INTAKE_PUBLIC_KEY, value: /credentials/intake/cosign.pub}
+      volumeMounts:
+        - {name: intake-keys, mountPath: /credentials/intake, readOnly: true}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p "${HOME}"
+        export PYTHONPATH="${PWD}"
+        catalog_dir=${FACTORY_CATALOG_DIR:-catalog/images}
+        for image in $(jq -r '.images[].name' work/intake-plan.json); do
+          catalog="${catalog_dir}/${image}.yaml"
+          mirror=$(yq -r '.source.mirrorPath' "${catalog}")
+          revision=$(yq -r '.source.revision' "${catalog}")
+          rm -rf "work/${image}/source"
+          mkdir -p "work/${image}"
+          git clone --quiet --no-checkout "${INTERNAL_GIT_BASE_URL%/}/${mirror}.git" "work/${image}/source"
+          git -C "work/${image}/source" checkout --quiet --detach "${revision}"
+          python3 -m factory.cli intake --image "${catalog}" \
+            --source-dir "work/${image}/source" --cache-dir "work/${image}/cache" \
+            --output "work/${image}/resource-lock.json"
+          scripts/publish_intake.sh "${image}"
+        done

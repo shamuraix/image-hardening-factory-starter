@@ -14,13 +14,16 @@
 3. Run checks before opening a PR:
 
    ```bash
-   make validate
-   make test
-   make lint
-   make policy-test
+   make ci            # validate, tekton-check, release-requests, lint, test (+ policy-test with OPA)
    ```
 
 `policy-test` requires OPA; Python tests do not validate Rego policy behavior.
+
+4. If you changed `catalog/images/` or `factory/tekton.py`, run `make tekton-render`
+   and commit the regenerated `.tekton/*-on-*.yaml` files.
+5. Changes proposed by agents arrive as draft PRs labelled `agent-proposed`.
+   Review them like any contribution; a green factory pipeline is required and
+   nothing agent-proposed is auto-merged.
 
 ---
 

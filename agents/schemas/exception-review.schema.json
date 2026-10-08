@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:image-hardening-factory:schema:agent:exception-review:v1",
+  "title": "exception-review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "removals",
+    "reviewNeeded",
+    "confidence"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "removals": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "id",
+          "component",
+          "reason"
+        ],
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "reviewNeeded": {
+      "type": "array",
+      "maxItems": 200,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "id",
+          "component",
+          "reason"
+        ],
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

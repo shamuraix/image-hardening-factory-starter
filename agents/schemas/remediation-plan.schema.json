@@ -1,28 +1,97 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:image-hardening-factory:schema:agent:remediation-plan:v1",
+  "title": "remediation-plan",
   "type": "object",
   "additionalProperties": false,
-  "required": ["image", "summary", "actions", "blocked", "confidence"],
+  "required": [
+    "image",
+    "summary",
+    "actions",
+    "blocked",
+    "changedFiles",
+    "confidence"
+  ],
   "properties": {
-    "image": {"type": "string"},
-    "summary": {"type": "string"},
+    "image": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
     "actions": {
       "type": "array",
+      "maxItems": 50,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["finding", "component", "action", "evidence", "verification"],
+        "required": [
+          "finding",
+          "component",
+          "action",
+          "candidateVersion",
+          "evidence",
+          "verification"
+        ],
         "properties": {
-          "finding": {"type": "string"},
-          "component": {"type": "string"},
-          "action": {"type": "string"},
-          "candidateVersion": {"type": ["string", "null"]},
-          "evidence": {"type": "array", "items": {"type": "string"}},
-          "verification": {"type": "array", "items": {"type": "string"}}
+          "finding": {
+            "type": "string"
+          },
+          "component": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "candidateVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          },
+          "verification": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          }
         }
       }
     },
-    "blocked": {"type": "array", "items": {"type": "string"}},
-    "confidence": {"enum": ["high", "medium", "low"]}
+    "blocked": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "maxItems": 50
+    },
+    "changedFiles": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "maxItems": 50
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
   }
 }

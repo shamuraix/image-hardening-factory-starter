@@ -1,0 +1,38 @@
+# Connected intake (replaces Jenkinsfile.intake): mirror pinned sources and
+# publish signed resource locks for the selected images.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: factory-intake
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+spec:
+  params:
+    - name: repo-url
+    - name: revision
+    - name: runner-image
+    - name: intake-runner-image
+    - name: images
+      default: ""
+  workspaces:
+    - name: shared
+    - name: git-auth
+      optional: true
+  tasks:
+    - name: checkout
+      taskRef: {name: factory-checkout}
+      params:
+        - {name: url, value: $(params.repo-url)}
+        - {name: revision, value: $(params.revision)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+        - {name: basic-auth, workspace: git-auth}
+    - name: intake
+      taskRef: {name: factory-intake}
+      params:
+        - {name: images, value: $(params.images)}
+        - {name: intake-runner-image, value: $(params.intake-runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}

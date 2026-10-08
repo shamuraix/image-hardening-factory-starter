@@ -1,181 +1,90 @@
-# Local Kubernetes testing
+# Local Kubernetes testing (Tekton harness)
 
-## Quick start
+[Local development](local-development.md) · [Harness README](../tests/integration/kind/README.md)
 
-Use this harness when you need an end-to-end disposable validation path for the
-repository workflow (build, evidence, gate, import/sign/promote mechanics).
+## What the harness proves
 
-Minimal flow:
+A disposable Lima k3s (or kind) cluster with Tekton Pipelines, the factory
+ServiceAccounts/settings, all factory Tasks and Pipelines, and a TLS-authenticated
+fixture registry. `tests/integration/kind/tekton.py run` executes the
+`harness-smoke` Pipeline:
 
-1. Satisfy host prerequisites (Linux or macOS, `limactl`, kubectl, Skopeo, Python, jq, curl, OpenSSL, and `sudo` access for diagnostics/teardown helpers).
-2. Start the harness:
+| Task | Expectation | Proves |
+|---|---|---|
+| `checkout` (`harness-source`) | succeeds | source snapshot committed into the run workspace |
+| `validate` (`factory-stage`) | succeeds, emits a 64-hex `seal` result | real verify → run → seal on a factory pod as UID 10001 |
+| `consume` (`factory-stage`) | succeeds | a downstream task verifies the upstream seal before reading |
+| `tamper-detected` (`factory-stage`) | **fails** | a wrong seal digest is rejected in-cluster |
 
-   ```bash
-   limactl start --name factory-k3s template://k3s
-   export FACTORY_HARNESS_CLUSTER=factory-k3s
-   export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s
-   export FACTORY_HARNESS_JENKINS_PORT=18083
-   export FACTORY_HARNESS_REGISTRY_PORT=15446
-   tests/integration/kind/up.sh
-   python3 tests/integration/kind/jenkins.py --state "$FACTORY_HARNESS_STATE" run
-   ```
+It does **not** run the rootless BuildKit/Podman stages, PaC, Chains, or agents;
+those need the production-like node configuration below and real credentials.
+Passing the harness does not establish production FIPS compliance, network
+isolation, or application qualification.
 
-3. Collect status/artifacts:
+## Run it
 
-   ```bash
-   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s status
-   python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s collect
-   ```
-
-4. Tear down:
-
-   ```bash
-   FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s tests/integration/kind/down.sh
-   limactl stop factory-k3s
-   ```
-
----
-
-## Advanced harness details
-
-## Tested configuration
-
-The harness target is **Lima k3s template → Kubernetes → containerd/crun →
-non-root Jenkins agents**. Jenkins and a TLS-authenticated fixture registry run
-inside the local k3s cluster. Factory pods use UID/GID 10001, `hostUsers: false`,
-`procMount: Unmasked`, and a tested crun RuntimeClass. The node's default runtime
-remains runc.
-
-The kubelet allocates 262144 IDs per pod, containing the runner's full
-`factory:100000:65536` subordinate range. The Debian runner grants file capabilities
-to newuidmap/newgidmap and disables Podman's unnecessary default sysctls. The
-node needs a system D-Bus service for crun's systemd cgroup manager.
-
-These are diagnostic workloads with synthetic development images and evidence.
-Passing this harness does not establish production FIPS compliance, network
-isolation, delegated-assessment compatibility, or application qualification.
-
-## Lima k3s on the local host
-
-Requirements: Linux or macOS, Lima (`limactl`), kubectl, Skopeo, Git, Python 3.11+, jq, curl,
-OpenSSL, and sudo access for runtime diagnostics/teardown scripts. Bootstrap downloads pinned Linux tools and Jenkins
-plugins. Allow access to GitHub releases, Debian mirrors, Docker Hub and Jenkins
-update sites. A starting allocation is 6 CPUs, 12 GiB RAM and 30 GiB free disk.
-
-Run as your normal user from the repository root:
+Requirements: Linux or macOS, Lima (`limactl`), kubectl, Skopeo, Git, Python 3.11+,
+jq, yq, curl, OpenSSL. Allow access to GitHub releases (Tekton release manifest,
+pinned tools), Debian mirrors, and Docker Hub. Start with 6 CPUs, 12 GiB RAM, 30 GiB disk.
 
 ```bash
 limactl start --name factory-k3s template://k3s
 export FACTORY_HARNESS_CLUSTER=factory-k3s
-export FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s
-export FACTORY_HARNESS_JENKINS_PORT=18083
+export FACTORY_HARNESS_STATE=.local-factory/tekton-k3s
 export FACTORY_HARNESS_REGISTRY_PORT=15446
 tests/integration/kind/up.sh
-python3 tests/integration/kind/jenkins.py --state "$FACTORY_HARNESS_STATE" run
+python3 tests/integration/kind/tekton.py --state "$FACTORY_HARNESS_STATE" run
+python3 tests/integration/kind/tekton.py --state "$FACTORY_HARNESS_STATE" log
 ```
 
-Bootstrap uses a dedicated kubeconfig and saves its provider, cluster and port
-settings. Existing state must match those settings. Existing clusters with too
-few IDs per pod are rejected; bootstrap does not silently reconfigure or delete
-nodes.
+The Tekton version comes from `tools/versions.lock.yaml`; override the manifest
+with `TEKTON_PIPELINE_RELEASE_URL` for a mirrored copy.
 
-For rootful Podman, bootstrap installs and probes crun when no usable saved
-RuntimeClass exists. The successful class is saved in `STATE/runtime-class`;
-Jenkins pipeline refreshes apply it to all harness jobs. Crun and D-Bus are
-installed only inside the disposable node. A failed runtime probe restores the
-original containerd configuration and removes its test RuntimeClass; installed
-packages and the node-local D-Bus service remain available.
+To refresh the source snapshot or Tekton definitions without rebuilding images,
+rerun `FACTORY_HARNESS_STATE=... KUBECONFIG=.../kubeconfig tests/integration/kind/deploy.sh`.
+The snapshot must fit the 1 MiB ConfigMap limit.
 
-- Jenkins: http://127.0.0.1:18083, user `review`, generated password in
-  `STATE/jenkins-password`.
-- Registry: https://localhost:15446, public **test-only** credentials `oidc/harness`.
-- CA certificate: `STATE/client-ca/ca.crt`; dedicated kubeconfig: `STATE/kubeconfig`.
-- State and diagnostics are ignored by Git. Keep generated credentials out of commits.
+## Running the rootless build stages locally
 
-## Results and source refresh
+The production Tasks need what the earlier harness established for nested
+rootless containers:
 
-```bash
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s status
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s collect
-```
+- kubelet `userNamespaces.idsPerPod: 262144` so the runner's
+  `factory:100000:65536` subordinate range fits (`up.sh` configures kind this way);
+- `hostUsers: false` pods, `procMount: Unmasked` on the run step, and a crun
+  RuntimeClass on local clusters where runc fails sandbox sysfs mounting with user
+  namespaces (`probe-crun.py` provisions and probes it in rootful mode);
+- Debian mapping helpers with explicit SETUID/SETGID file capabilities and no
+  default Podman ping-group sysctl (the harness runner image handles both).
 
-Collection pins artifact downloads to the reported build number. To refresh
-source and job definitions without rebuilding images, follow the
-[harness README](../tests/integration/kind/README.md#refreshing-source-bundle-in-running-harness).
-Source ConfigMaps use server-side apply to avoid duplicating the archive in a
-size-limited annotation. The archive must still fit the ConfigMap's 1 MiB limit;
-a larger repository should use an internal SCM/artifact server.
-
-Jenkins build 5 completed **SUCCESS** with 98 unit tests, 12 OPA
-policy tests, five catalogs, real build/export and image execution, failing-RUN
-rejection/cleanup, registry import/signing/promotion/retry, and artifact handoff
-into a second fresh pod. Evidence: `.local-factory/proc-fixed-k3s/results/5/`.
+Apply these through `taskRunSpecs[].podTemplate` (`runtimeClassName`) and a
+harness-only copy of the build Task before attempting the full image pipeline
+in the harness. Production clusters with native user-namespace support need none
+of the RuntimeClass workarounds.
 
 ## Runtime troubleshooting
 
-Start with pod events when containers are waiting; a log request can return
-HTTP 400 before the container exists. Avoid sharing unredacted pod environment
-variables, which include Jenkins agent credentials.
-
 ```bash
-kubectl --kubeconfig .local-factory/proc-fixed-k3s/kubeconfig -n factory-harness get events --sort-by=.lastTimestamp
-sudo -v
-tests/integration/kind/node-diagnostics.sh
+kubectl --kubeconfig "$FACTORY_HARNESS_STATE/kubeconfig" -n factory-harness get events --sort-by=.lastTimestamp
+kubectl --kubeconfig "$FACTORY_HARNESS_STATE/kubeconfig" -n factory-harness get taskruns
+sudo -v && tests/integration/kind/node-diagnostics.sh
 ```
 
-`node-diagnostics.sh` reads node mappings, mount layout, runtime configuration
-and recent security denials. The controlled runtime comparison is:
+Background from the earlier investigation, still relevant to the build stages:
 
-```bash
-sudo -v
-python3 tests/integration/kind/probe-crun.py --state .local-factory/proc-fixed-k3s
-python3 tests/integration/kind/jenkins.py --state .local-factory/proc-fixed-k3s refresh
-```
-
-It waits for kubelet to advertise the RuntimeClass's user-namespace support,
-then tests sandbox startup, private `/proc` mounting and Podman's UID mapping.
-Passing the probe selects the runtime; the full Jenkins test remains necessary.
-
-The investigation established:
-
-- Debian mapping helpers needed explicit SETUID/SETGID file capabilities.
-  [Related Podman discussion](https://github.com/containers/podman/discussions/19931).
-- Nested Podman required unmasked proc and no default ping-group sysctl.
-  [Kubernetes proc configuration](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/)
-  and [Podman issue](https://github.com/containers/podman/issues/13194).
-- Runc failed sandbox sysfs mounting with user namespaces in local clusters. Editing the
-  OCI base spec was ineffective because containerd 2.3 generates a separate
-  sandbox spec. That experiment was rolled back; its obsolete scripts were removed.
-- Crun handled the sandbox after its system D-Bus prerequisite was supplied.
-  Historical diagnostics remain in ignored state directories; no host-wide
-  sysctl changes were made.
-
-## Alternative: additional Lima instances
-
-For parallel test environments, start another named Lima k3s instance and use
-separate state and ports:
-
-```bash
-limactl start --name factory-k3s-alt template://k3s
-export FACTORY_HARNESS_CLUSTER=factory-k3s-alt
-export FACTORY_HARNESS_STATE=.local-factory/k3s-alt
-export FACTORY_HARNESS_JENKINS_PORT=18081
-export FACTORY_HARNESS_REGISTRY_PORT=15444
-tests/integration/kind/up.sh
-```
-
-Validate runtime behavior with the same preflight and diagnostics before relying
-on alternate instances for review evidence.
+- Debian mapping helpers needed explicit SETUID/SETGID file capabilities
+  ([Podman discussion](https://github.com/containers/podman/discussions/19931)).
+- Nested Podman required unmasked proc and no default ping-group sysctl
+  ([Kubernetes security context](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/),
+  [Podman issue](https://github.com/containers/podman/issues/13194)).
+- runc failed sandbox sysfs mounting with user namespaces in local clusters; crun
+  worked once its system D-Bus prerequisite was supplied.
 
 ## Teardown
 
-Collect evidence first. Jenkins and registry use disposable emptyDir storage.
-
 ```bash
-sudo -v
-FACTORY_HARNESS_STATE=.local-factory/proc-fixed-k3s tests/integration/kind/down.sh
+FACTORY_HARNESS_STATE=.local-factory/tekton-k3s tests/integration/kind/down.sh
 limactl stop factory-k3s
 ```
 
-Only the recorded harness cluster is deleted; saved artifacts remain on disk.
-Cleanup of source code does not itself tear down a running harness.
+Only the recorded harness cluster is deleted; state stays on disk and is ignored by git.

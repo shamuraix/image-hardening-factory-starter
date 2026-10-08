@@ -1,0 +1,99 @@
+# Scheduled operational agents (upstream-sync, exception-steward) and on-demand
+# reviewers. Every proposal leaves as a draft change request; nothing here can
+# merge, sign, publish, or approve.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: factory-agent-maintenance
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+spec:
+  params:
+    - name: agent
+      description: upstream-sync | exception-steward | pipeline-reviewer
+    - name: mode
+      default: propose-change
+    - name: repo-url
+    - name: revision
+    - name: runner-image
+    - name: intake-runner-image
+      default: ""
+    - name: agent-image
+    - name: event-type
+      default: incoming
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+    - name: git-provider
+      default: github
+    - name: git-auth-secret
+      default: factory-git-auth-disabled
+    - name: scm-secret
+      default: factory-scm-disabled
+    - name: base-branch
+      default: ""
+      description: Fetched alongside the revision so reviewers can diff against it.
+    - name: sync-images
+      default: "bitbucket-lts,confluence-lts,jira-lts"
+    - name: checkout-depth
+      default: "2"
+  workspaces:
+    - name: shared
+    - name: git-auth
+      optional: true
+  tasks:
+    - name: checkout
+      taskRef: {name: factory-checkout}
+      params:
+        - {name: url, value: $(params.repo-url)}
+        - {name: revision, value: $(params.revision)}
+        - {name: depth, value: $(params.checkout-depth)}
+        - {name: base-branch, value: $(params.base-branch)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+        - {name: basic-auth, workspace: git-auth}
+
+    - name: upstream-context
+      when:
+        - {input: $(params.agent), operator: in, values: ["upstream-sync"]}
+      runAfter: [checkout]
+      taskRef: {name: factory-upstream-context}
+      params:
+        - {name: images, value: $(params.sync-images)}
+        - {name: intake-runner-image, value: $(params.intake-runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: evidence-context
+      when:
+        - {input: $(params.agent), operator: in, values: ["exception-steward"]}
+      runAfter: [checkout]
+      taskRef: {name: factory-evidence-context}
+      params:
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: agent
+      runAfter: [upstream-context, evidence-context]
+      taskRef: {name: factory-claude-agent}
+      params:
+        - {name: agent, value: $(params.agent)}
+        - {name: mode, value: $(params.mode)}
+        - {name: image, value: factory}
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: agent-image, value: $(params.agent-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: source-url, value: $(tasks.checkout.results.url)}
+        - {name: branch, value: $(params.branch)}
+        - {name: change-id, value: $(params.change-id)}
+        - {name: event-type, value: $(params.event-type)}
+        - {name: git-provider, value: $(params.git-provider)}
+        - {name: git-auth-secret, value: $(params.git-auth-secret)}
+        - {name: scm-secret, value: $(params.scm-secret)}
+      workspaces:
+        - {name: shared, workspace: shared}

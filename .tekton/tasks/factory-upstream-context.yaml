@@ -1,0 +1,50 @@
+# Read-only upstream reconnaissance for the upstream-sync agent: resolves the
+# current Iron Bank (Repo One) head for each Atlassian image, fetches the new
+# revision, diffs the hardening manifest and Dockerfile against the pinned
+# revision, and test-applies the factory overlays. No write credentials; the
+# agent itself never gets upstream network access.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-upstream-context
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: intake-read
+spec:
+  params:
+    - name: images
+      default: "bitbucket-lts,confluence-lts,jira-lts"
+    - name: intake-runner-image
+    - name: commit
+  workspaces:
+    - name: shared
+  results:
+    - name: drifted
+      description: Comma-separated images whose upstream head moved.
+  steps:
+    - name: recon
+      image: $(params.intake-runner-image)
+      workingDir: $(workspaces.shared.path)/source
+      envFrom:
+        - configMapRef:
+            name: factory-settings
+      env:
+        - {name: FACTORY_SYNC_IMAGES, value: $(params.images)}
+        - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+        - {name: FACTORY_AGENT_ROOT, value: $(workspaces.shared.path)/agent}
+        - {name: HOME, value: /tmp/home}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p "${HOME}"
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/agents/upstream_context.sh "$(results.drifted.path)"

@@ -1,0 +1,41 @@
+# Repository checks for every pull request: catalog/schema validation, unit
+# tests, lint, OPA policy tests, Tekton/PaC drift and invariant checks, and
+# release-request validation. Credential-free.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: factory-checks
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+spec:
+  params:
+    - name: repo-url
+    - name: revision
+    - name: runner-image
+  workspaces:
+    - name: shared
+    - name: git-auth
+      optional: true
+  tasks:
+    - name: checkout
+      taskRef: {name: factory-checkout}
+      params:
+        - {name: url, value: $(params.repo-url)}
+        - {name: revision, value: $(params.revision)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+        - {name: basic-auth, workspace: git-auth}
+    - name: checks
+      taskRef: {name: factory-stage}
+      params:
+        - {name: image, value: factory}
+        - {name: stage, value: checks}
+        - name: command
+          value: make ci
+        - name: outputs
+          value: ["work/factory/checks/**"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}

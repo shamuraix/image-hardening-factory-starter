@@ -1,13 +1,33 @@
-/policies/                             @shamuraix
+# Trust-boundary files require review from the factory owners. Pipelines-as-Code
+# loads PipelineRun definitions from the default branch, so these reviews are
+# what actually protects the release path.
+/policies/                              @shamuraix
 /factory/schemas/                       @shamuraix
-/Jenkinsfile                           @shamuraix
-/Jenkinsfile.intake                    @shamuraix
-/scripts/sign_and_attest.sh            @shamuraix
-/scripts/promote_image.sh              @shamuraix
-/scripts/import_image.sh               @shamuraix
-/scripts/publish_remediation_branch.sh @shamuraix
-/agents/                               @shamuraix
-/factory/gate.py                      @shamuraix
-/scripts/verify_release_evidence.sh    @shamuraix
-/scripts/validate_remediation.py       @shamuraix
-/scripts/parse_oscap.py                @shamuraix
+/factory/agents.py                      @shamuraix
+/factory/agent_runtime.py               @shamuraix
+/factory/release.py                     @shamuraix
+/factory/tekton.py                      @shamuraix
+/factory/gate.py                        @shamuraix
+/.tekton/                               @shamuraix
+/deploy/                                @shamuraix
+/.claude/                               @shamuraix
+/agents/                                @shamuraix
+/CLAUDE.md                              @shamuraix
+/scripts/tekton/                        @shamuraix
+/scripts/agents/                        @shamuraix
+/scripts/sign_and_attest.sh             @shamuraix
+/scripts/promote_image.sh               @shamuraix
+/scripts/import_image.sh                @shamuraix
+/scripts/publish_evidence_bundle.sh     @shamuraix
+/scripts/fetch_evidence_bundle.sh       @shamuraix
+/scripts/publish_release_pointer.sh     @shamuraix
+/scripts/verify_release_evidence.sh     @shamuraix
+/scripts/validate_remediation.py        @shamuraix
+/scripts/parse_oscap.py                 @shamuraix
+
+# Release requests: merging one signs and promotes. Gov environments need Gov
+# approvers (replace with your Gov release team); the merger's identity is
+# re-checked against FACTORY_GOV_APPROVER_PATTERN by the signing scripts.
+/releases/commercial/                   @shamuraix
+/releases/gov1/                         @shamuraix
+/releases/gov2/                         @shamuraix

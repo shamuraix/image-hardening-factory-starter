@@ -1,0 +1,88 @@
+# Signs the quarantined digest and attaches every release-critical predicate
+# with the environment-specific Cosign key. Trust class: signing.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-attest
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: signing
+spec:
+  params:
+    - name: image
+    - name: environment
+    - name: approver
+    - name: inputs
+      type: array
+    - name: runner-image
+    - name: commit
+  workspaces:
+    - name: shared
+  results:
+    - name: seal
+  volumes:
+    - name: signing-key
+      secret:
+        # One key pair per release environment: factory-cosign-commercial,
+        # factory-cosign-gov1, factory-cosign-gov2.
+        secretName: factory-cosign-$(params.environment)
+        items:
+          - {key: cosign.key, path: cosign.key}
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_RELEASE_ENV, value: $(params.environment)}
+      - {name: FACTORY_APPROVER_ID, value: $(params.approver)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: sign
+      env:
+        - {name: COSIGN_KEY_PATH, value: /credentials/signing/cosign.key}
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: factory-cosign-$(params.environment), key: password}
+        - name: ARTIFACTORY_SIGN_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-sign, key: token}
+      volumeMounts:
+        - {name: signing-key, mountPath: /credentials/signing, readOnly: true}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/sign_and_attest.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}" 2>&1 \
+          | tee "${FACTORY_WORK_DIR}/logs/attest.log"
+    - name: seal
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        e="${FACTORY_WORK_DIR}/evidence"
+        scripts/tekton/artifacts.sh seal attest "$(results.seal.path)" \
+          "${e}/signing-result.json" "${e}/provenance.json" "${e}/approval.json" \
+          "${FACTORY_WORK_DIR}/logs/attest.log"

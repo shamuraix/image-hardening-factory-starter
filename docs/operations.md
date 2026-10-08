@@ -1,117 +1,88 @@
 # Operations guide
 
-[Project overview](../README.md) · [Configuration](configuration.md) · [Architecture](architecture.md)
+[Project overview](../README.md) · [Configuration](configuration.md) · [Architecture](architecture.md) · [Agents](agents.md)
 
-## Quick operations runbook
+## Bootstrap sequence
 
-Use this section for first production activation and day-1 readiness checks.
+1. Build and sign the runner, intake-runner, and agent images; record digests in
+   `deploy/base/repository.yaml`.
+2. Install Tekton Pipelines, Pipelines-as-Code, and Chains; apply
+   `deploy/chains/chains-config.yaml`.
+3. Create Artifactory repositories for source, upstream OCI, quarantine, release,
+   and canary flows with the write separation in the table below.
+4. Create the Secrets (`deploy/secrets.example.yaml`), edit settings and network
+   CIDRs, and `kubectl apply -k deploy/base`.
+5. Trigger intake: `scripts/tekton/trigger_incoming.sh intake-on-schedule` (needs
+   `FACTORY_PAC_*` env and the incoming secret) and confirm signed locks under
+   `locks/<image>/<revision>/`.
+6. Open a trivial PR touching `catalog/images/jira-lts.yaml` comments to exercise
+   the PR pipeline end to end; inspect evidence in the TaskRun logs and workspace.
+7. Merge it; review the quarantine import and the release request PR.
+8. Merge a **commercial** release request first. Enable gov1/gov2 only after the
+   approver flow and environment keys are verified.
 
-### 1) Prepare core infrastructure
+## Releasing an image
 
-- Create Artifactory repositories for source, upstream OCI, quarantine, release,
-  and canary flows.
-- Configure Jenkins Kubernetes trust classes (`FACTORY_K8S_*_POD_TEMPLATE`).
-- Configure runner image settings as digest-qualified references.
-- Configure Jenkins credential ID settings and workload identity mapping.
+1. A merge to `main` that changes an image's inputs (or a base release) builds,
+   gates, imports to quarantine, and opens `release(<env>): <image> <version> @ <digest>`.
+2. Read the PR: the deterministic request (digest, evidence digests, gate
+   warnings) and the `release-readiness` briefing.
+3. Approve per CODEOWNERS. **Merging is the approval of record**; for gov1/gov2 the
+   merger must match `FACTORY_GOV_APPROVER_PATTERN`.
+4. `release-on-push` signs, attests, promotes by digest, re-verifies, and — for a
+   base image in the pointer environment — publishes `releases/<base>/current.json`
+   and triggers dependents' `on-base-release` runs.
 
-### 2) Run intake and verify locks
+To release the same candidate to another environment, copy the request file to
+`releases/<other-env>/<image>.yaml`, set `metadata.environment`, and open a PR.
+One release request per merge (enforced).
 
-- Run `Jenkinsfile.intake` in connected mode.
-- Confirm signed resource locks are produced and stored under:
-  `locks/<image>/<source-revision>/resource-lock.json` (+ `.sig`).
+## Artifactory layout and ownership
 
-### 3) Run controlled release path
-
-Enable only core stages first:
-
-- `VALIDATE`, `PREPARE`, `BUILD`, `SBOM`, `SCAN`, `ASSESSMENT`,
-  `COMPLIANCE`, `TEST`, `GATE`
-
-Then, after evidence review:
-
-- `IMPORT`, `ATTEST`, `PROMOTE`
-
-### 4) Verify release invariants
-
-- Digest remains unchanged across import/sign/promotion.
-- Required attestations verify against the promoted subject digest.
-- Quarantine and release permissions are still least-privilege.
-
----
-
-## Advanced operations reference
-
-### Artifactory layout and ownership
-
-| Setting | Type | Primary writer |
+| Setting | Type | Only writer |
 |---|---|---|
-| `FACTORY_SOURCE_REPOSITORY` | Generic | Intake only |
-| `UPSTREAM_OCI_REPOSITORY` | OCI | Intake only |
-| `FACTORY_BASE_QUARANTINE_REPOSITORY` | OCI | Protected importer |
-| `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | OCI | Protected importer |
-| `FACTORY_RELEASE_REPOSITORY` | OCI | Protected promotion broker |
-| `FACTORY_CANARY_REPOSITORY` | OCI | Protected promotion broker |
-| `LOCAL_RPM_CACHE_REPOSITORY` | RPM remote | Local development read-through |
+| `FACTORY_SOURCE_REPOSITORY` | Generic | intake (files, locks); promote (release pointers, separate credential) |
+| `UPSTREAM_OCI_REPOSITORY` | OCI | intake |
+| `FACTORY_BASE_QUARANTINE_REPOSITORY` / `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | OCI | quarantine task |
+| `FACTORY_RELEASE_REPOSITORY` / `FACTORY_CANARY_REPOSITORY` | OCI | promote task |
 
-Keep release repos immutable and enforce write separation by trust class.
+Keep release repositories immutable.
 
-### Jenkins Kubernetes trust classes
+## Day-2 cadence
 
-Each pod template setting should map to an independently governed Kubernetes
-trust class with dedicated ServiceAccount and NetworkPolicy.
-
-| Setting | Network expectation | Credential scope |
+| When | What runs | Human action |
 |---|---|---|
-| `FACTORY_K8S_INTAKE_POD_TEMPLATE` | Connected upstream + internal | Intake-only write |
-| `FACTORY_K8S_OFFLINE_POD_TEMPLATE` | Internal only | Evidence/read workloads |
-| `FACTORY_K8S_BUILDKIT_POD_TEMPLATE` | Internal mirrors only | Build read-only inputs |
-| `FACTORY_K8S_TEST_POD_TEMPLATE` | Internal only | Test read |
-| `FACTORY_K8S_FIPS_POD_TEMPLATE` | Internal only/FIPS nodes | Compliance read |
-| `FACTORY_K8S_IMPORT_POD_TEMPLATE` | Quarantine endpoints | Import write |
-| `FACTORY_K8S_SIGNING_POD_TEMPLATE` | Artifactory referrers | Signing write |
-| `FACTORY_K8S_PROMOTION_POD_TEMPLATE` | Source + release registries | Promotion write |
+| Every PR | factory-checks, image PR builds, triage on failure, pipeline-reviewer on risky paths | review comments and evidence |
+| Nightly 01:47/02:17 UTC | base and app rescans | review remediation PRs |
+| Weekdays 05:07 UTC | intake, upstream-sync | review upstream PRs; run intake after merging new pins |
+| Mondays 06:23 UTC | exception-steward | approve or close removal PRs; act on review-needed items |
+| Each release request | readiness briefing | approve/merge |
+| Tool/data refresh | Renovate PRs, security-data bundle rebuild | review, rebuild and re-sign runner images, bump digests |
+| Key rotation | — | stage new env key Secret, verify, swap |
 
-### Jenkins authorization boundary
+## Failure runbooks
 
-Use separate jobs for untrusted change validation and protected release
-execution. Protected credentials must not be resolvable from untrusted PR jobs.
-Branch checks in an untrusted Jenkinsfile are not a security boundary.
-
-### Bootstrap sequence (recommended)
-
-1. Build and sign intake/factory runner images.
-2. Configure Jenkins settings, pod templates, credential IDs, lock prefixes.
-3. Run intake and verify lock signatures.
-4. Run factory through gate-only path and inspect evidence.
-5. Enable import/sign/promote with controlled approver flow.
-
-### Day-2 cadence
-
-| Event | Action | Evidence retained |
-|---|---|---|
-| Intake cycle | Review upstream lock inputs and signatures | Lock JSON + lock signature |
-| Release cycle | Review gate result + compliance + test evidence | Gate result + signed predicates |
-| Tool/data refresh | Rebuild/repin security data and runner images | Updated digests + version inventory |
-| Pin update | Run controlled source-pin update and review | Reviewed diff + clean pipeline results |
-| Key rotation | Stage and verify new signing key path | Key transition record + verification logs |
-
-### Failure runbooks
-
-| Symptom | Recovery focus |
+| Symptom | Start with |
 |---|---|
-| Build cannot resolve base | Validate digest-pinned base availability and trust-class read permissions |
-| Intake publish denied | Validate intake token scope and target repository path |
-| Gate denied | Inspect `work/<image>/evidence/gate-result.json` and evidence bundle |
-| Missing signature/attestation after copy | Validate ORAS/referrer + Cosign attachment copy and destination permissions |
-| Promotion digest mismatch | Stop promotion and investigate source/destination copy semantics |
+| Triage comment says `policy-deny` | `gate-result.json` deny list; wait for or review the remediation PR |
+| `seal <stage> manifest was modified` / `files sealed by <stage> were modified` | treat as tampering: preserve the PVC and TaskRuns, check who could write to the workspace, do not retry blindly |
+| `repository checkout was modified by an earlier task` | a task wrote outside `work/`; find it in the TaskRun list and fix the script |
+| Build cannot resolve base | release pointer exists? (`releases/<base>/current.json`), digest-pinned base in the internal registry, read token scope |
+| Overlay `git apply --check` fails after a pin move | upstream changed; run or re-run the upstream-sync agent, or rebase by hand (skill `ironbank-overlays`) |
+| Release request rejected by resolve | more than one request in the merge, or path/contents mismatch |
+| `evidence manifest is not attached to <digest>` | wrong request contents or quarantine was re-pushed; regenerate the request from the build |
+| Admission policy denies a pod | a PR run referenced a protected Secret — a trigger or task change is wrong; fix it in `factory/tekton.py` or the Task |
+| Agent outcome `change-rejected` | the agent tried to write outside its contract; read the note and the agent log; tighten the persona if needed |
+| Agent outcome `agent-failed` | gateway reachability/token, budget or turn cap, schema mismatch; see `agent.stderr.log` in the agent workspace |
+| Promotion digest mismatch | stop; investigate source/destination copy semantics |
 
-### Rollback model
+## Rollback
 
-Rollback is digest-based: use a previously approved digest whose signature and
-required attestations still verify. Re-run policy eligibility checks with
-current data before redeployment.
+Rollback is digest-based: open a release request for a previously approved
+digest whose signatures and attestations still verify (its old request file is in
+git history). Re-run policy eligibility with current data before redeploying.
 
-### Local development operational note
+## Local development
 
-Local builds are development-only and non-releasable. They are useful for
-workflow validation but must not replace protected intake/build/release flows.
+Local builds are development-only and non-releasable. Use them to iterate on
+overlays and tests; CI and the release pipeline remain the only path to release.

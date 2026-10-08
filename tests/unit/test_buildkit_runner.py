@@ -175,17 +175,25 @@ class BuildkitRunnerTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.log.exists())
 
-    def test_kubernetes_template_avoids_host_privileges(self) -> None:
-        pod = yaml.safe_load((ROOT / "toolchain/jenkins-buildkit-pod.yaml").read_text())
-        spec = pod["spec"]
-        self.assertFalse(spec["hostNetwork"])
-        self.assertFalse(spec["hostPID"])
-        self.assertFalse(spec["hostIPC"])
-        self.assertFalse(spec["shareProcessNamespace"])
-        self.assertFalse(spec["automountServiceAccountToken"])
-        self.assertFalse(any("hostPath" in volume for volume in spec["volumes"]))
-        security = spec["containers"][0]["securityContext"]
-        self.assertFalse(security["privileged"])
-        self.assertTrue(security["runAsNonRoot"])
-        self.assertTrue(security["allowPrivilegeEscalation"])
-        self.assertNotIn("add", security.get("capabilities", {}))
+    def test_kubernetes_build_task_avoids_host_privileges(self) -> None:
+        task = yaml.safe_load((ROOT / ".tekton/tasks/factory-rootless-build.yaml").read_text())
+        spec = task["spec"]
+        self.assertFalse(any("hostPath" in volume for volume in spec.get("volumes", [])))
+        steps = {step["name"]: step for step in spec["steps"]}
+        run = steps["run"]["securityContext"]
+        self.assertFalse(run["privileged"])
+        self.assertTrue(run["runAsNonRoot"])
+        # Required by setuid newuidmap/newgidmap; no added capabilities.
+        self.assertTrue(run["allowPrivilegeEscalation"])
+        self.assertNotIn("add", run.get("capabilities", {}))
+        # Only the run step relaxes the defaults; verify and seal stay restricted.
+        template = spec["stepTemplate"]["securityContext"]
+        self.assertFalse(template["allowPrivilegeEscalation"])
+        self.assertEqual(template["capabilities"], {"drop": ["ALL"]})
+        for name in ("verify", "seal"):
+            self.assertNotIn("securityContext", steps[name])
+        # Pods never get a Kubernetes API token.
+        run_template = yaml.safe_load((ROOT / ".tekton/jira-lts-on-push.yaml").read_text())["spec"][
+            "taskRunTemplate"
+        ]["podTemplate"]
+        self.assertFalse(run_template["automountServiceAccountToken"])

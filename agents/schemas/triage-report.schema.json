@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:image-hardening-factory:schema:agent:triage-report:v1",
+  "title": "triage-report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "failedStage",
+    "category",
+    "rootCause",
+    "evidence",
+    "retryRecommended",
+    "nextSteps",
+    "confidence"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "failedStage": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "category": {
+      "enum": [
+        "policy-deny",
+        "vulnerability",
+        "compliance",
+        "test",
+        "build",
+        "prepare",
+        "intake",
+        "signing",
+        "promotion",
+        "infrastructure",
+        "credentials",
+        "configuration",
+        "agent",
+        "unknown"
+      ]
+    },
+    "rootCause": {
+      "type": "string",
+      "maxLength": 3000
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "maxItems": 50
+    },
+    "retryRecommended": {
+      "type": "boolean"
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "maxItems": 50
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

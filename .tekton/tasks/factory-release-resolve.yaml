@@ -1,0 +1,76 @@
+# Resolves the single release request merged by the triggering push and
+# restores the candidate's evidence bundle into work/<image>/.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-release-resolve
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: internal-read
+spec:
+  params:
+    - name: runner-image
+    - name: commit
+    - name: sender
+      description: Pipelines-as-Code {{ sender }}; the user whose merge requested release.
+  workspaces:
+    - name: shared
+  results:
+    - name: image
+    - name: environment
+    - name: digest
+    - name: approver
+    - name: seal
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SENDER, value: $(params.sender)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: resolve
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        export PYTHONPATH="${PWD}"
+        python3 -m factory.cli release-request resolve \
+          --catalog "${FACTORY_CATALOG_DIR:-catalog/images}" \
+          --commit "${FACTORY_COMMIT_SHA}" \
+          --output work/release-request.json
+        jq -jer '.metadata.image' work/release-request.json >"$(results.image.path)"
+        jq -jer '.metadata.environment' work/release-request.json >"$(results.environment.path)"
+        jq -jer '.candidate.digest' work/release-request.json >"$(results.digest.path)"
+        printf '%s' "${FACTORY_SENDER}" >"$(results.approver.path)"
+    - name: fetch
+      env:
+        - name: ARTIFACTORY_READ_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-read, key: token}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        FACTORY_IMAGE=$(jq -er '.metadata.image' work/release-request.json)
+        export FACTORY_IMAGE
+        source scripts/tekton/env.sh
+        cp work/release-request.json "${FACTORY_WORK_DIR}/release-request.json"
+        scripts/fetch_evidence_bundle.sh "${FACTORY_WORK_DIR}/release-request.json" \
+          "${FACTORY_WORK_DIR}" 2>&1 | tee "${FACTORY_WORK_DIR}/logs/resolve.log"
+        scripts/tekton/artifacts.sh seal resolve "$(results.seal.path)" \
+          "${FACTORY_WORK_DIR}/release-request.json" "${FACTORY_WORK_DIR}/image-metadata.json" \
+          "${FACTORY_WORK_DIR}/resource-lock.json" "${FACTORY_WORK_DIR}/import.env" \
+          "${FACTORY_WORK_DIR}/import-result.json" "${FACTORY_WORK_DIR}/evidence/**"
