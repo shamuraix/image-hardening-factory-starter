@@ -1,0 +1,92 @@
+# Minimal, air-gap friendly replacement for the catalog git-clone task. It only
+# needs git, which the factory runner image already carries, so no external
+# task bundle has to be mirrored or trusted.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-checkout
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: offline
+spec:
+  description: Check out one exact commit into the shared workspace.
+  params:
+    - name: url
+      description: Repository clone URL ({{ repo_url }} from Pipelines-as-Code).
+    - name: revision
+      description: Full commit SHA ({{ revision }}).
+    - name: depth
+      default: "2"
+      description: History depth; release resolution needs the parent commit.
+    - name: base-branch
+      default: ""
+      description: Optional branch to fetch as origin/<branch> for diff-based reviewers.
+    - name: runner-image
+  workspaces:
+    - name: shared
+    - name: basic-auth
+      optional: true
+      readOnly: true
+      description: Pipelines-as-Code {{ git_auth_secret }} (.git-credentials, .gitconfig).
+  results:
+    - name: commit
+      description: Checked-out commit SHA.
+    - name: url
+      description: Repository URL without credentials.
+  steps:
+    - name: clone
+      image: $(params.runner-image)
+      env:
+        - {name: CHECKOUT_URL, value: $(params.url)}
+        - {name: CHECKOUT_REVISION, value: $(params.revision)}
+        - {name: CHECKOUT_DEPTH, value: $(params.depth)}
+        - {name: CHECKOUT_BASE_BRANCH, value: $(params.base-branch)}
+        - {name: HOME, value: /tmp/checkout-home}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        [[ ${CHECKOUT_REVISION} =~ ^[0-9a-f]{40}$ ]] || {
+          echo "revision must be a full commit SHA" >&2; exit 2;
+        }
+        [[ ${CHECKOUT_DEPTH} =~ ^[0-9]+$ ]] || { echo "depth must be an integer" >&2; exit 2; }
+        mkdir -p "${HOME}"
+        chmod 0700 "${HOME}"
+        if [[ "$(workspaces.basic-auth.bound)" == true ]]; then
+          auth="$(workspaces.basic-auth.path)"
+          if [[ -f ${auth}/.git-credentials ]]; then
+            install -m 0600 "${auth}/.git-credentials" "${HOME}/.git-credentials"
+            git config --global credential.helper "store --file=${HOME}/.git-credentials"
+          fi
+          [[ -f ${auth}/.gitconfig ]] && git config --global include.path "${auth}/.gitconfig"
+        fi
+        destination="$(workspaces.shared.path)/source"
+        rm -rf "${destination}"
+        git init --quiet "${destination}"
+        git -C "${destination}" remote add origin "${CHECKOUT_URL}"
+        git -C "${destination}" -c protocol.version=2 fetch --quiet --no-tags \
+          --depth "${CHECKOUT_DEPTH}" origin "${CHECKOUT_REVISION}"
+        git -C "${destination}" checkout --quiet --detach FETCH_HEAD
+        if [[ -n ${CHECKOUT_BASE_BRANCH} ]]; then
+          [[ ${CHECKOUT_BASE_BRANCH} =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "invalid base branch" >&2; exit 2; }
+          git -C "${destination}" fetch --quiet --no-tags --depth 50 origin \
+            "+refs/heads/${CHECKOUT_BASE_BRANCH}:refs/remotes/origin/${CHECKOUT_BASE_BRANCH}"
+          git -C "${destination}" fetch --quiet --no-tags --deepen 48 origin "${CHECKOUT_REVISION}" || true
+        fi
+        observed=$(git -C "${destination}" rev-parse HEAD)
+        [[ ${observed} == "${CHECKOUT_REVISION}" ]] || {
+          echo "fetched ${observed}, expected ${CHECKOUT_REVISION}" >&2; exit 1;
+        }
+        # Credentials never reach later tasks: they live only in this step's HOME.
+        rm -rf "${HOME}"
+        mkdir -p "${destination}/work"
+        printf '%s' "${observed}" >"$(results.commit.path)"
+        printf '%s' "${CHECKOUT_URL}" | sed -E 's#://[^/@]+@#://#' >"$(results.url.path)"

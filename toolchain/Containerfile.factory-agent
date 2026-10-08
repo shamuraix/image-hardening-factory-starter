@@ -1,0 +1,23 @@
+# Agent runner: the factory runner (python3, git, jq, yq, the factory package)
+# plus a pinned Claude Code CLI. Built and signed by the trusted toolchain
+# process like the other runner images; pipelines reference it by digest
+# through the Repository CR param `agent_image`.
+ARG FACTORY_RUNNER_REF
+FROM ${FACTORY_RUNNER_REF}
+
+ARG CLAUDE_CODE_VERSION
+LABEL org.opencontainers.image.title="Image Hardening Factory agent runner" \
+      io.image-factory.claude-code.version="${CLAUDE_CODE_VERSION}"
+
+# The native Claude Code binary is downloaded and checksum-verified by the
+# toolchain bootstrap (tools/versions.lock.yaml), never fetched at run time.
+COPY --chmod=0555 dist/claude/claude /usr/local/bin/claude
+RUN claude --version | grep -F "${CLAUDE_CODE_VERSION}"
+
+# Runtime posture: no auto-update, no non-essential traffic, no telemetry.
+ENV DISABLE_AUTOUPDATER=1 \
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    DISABLE_TELEMETRY=1
+USER 10001
+ENTRYPOINT []
+CMD ["/bin/bash"]

@@ -1,0 +1,39 @@
+# Non-secret environment settings, injected into every factory step with
+# envFrom. Replaces the Jenkins global settings. Values below are placeholders.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-settings
+data:
+  # Repositories and routing
+  INTERNAL_GIT_BASE_URL: https://git.internal.example/mirrors
+  ARTIFACTORY_URL: https://artifactory.internal.example
+  ARTIFACTORY_REGISTRY: artifactory.internal.example
+  FACTORY_SOURCE_REPOSITORY: factory-source
+  UPSTREAM_OCI_REPOSITORY: factory-upstream-oci
+  FACTORY_BASE_QUARANTINE_REPOSITORY: factory-base-quarantine
+  FACTORY_APPLICATION_QUARANTINE_REPOSITORY: factory-app-quarantine
+  FACTORY_RELEASE_REPOSITORY: factory-release
+  FACTORY_CANARY_REPOSITORY: factory-canary
+  FACTORY_CATALOG_DIR: catalog/images
+  FACTORY_DEFAULT_BRANCH: main
+  # Release governance
+  FACTORY_GOV_APPROVER_PATTERN: "^(alice|bob)$"
+  FACTORY_POINTER_ENVIRONMENT: commercial
+  # Upstream tracking (Repo One branch followed by intake and upstream-sync)
+  FACTORY_UPSTREAM_BRANCH: development
+  # Pipelines-as-Code incoming webhook (schedules and base-release fan-out)
+  FACTORY_PAC_CONTROLLER_URL: https://pac-controller.internal.example
+  FACTORY_PAC_REPOSITORY: image-hardening-factory
+  # Git provider APIs used by agents for comments and change requests
+  FACTORY_GITHUB_API_URL: https://api.github.com
+  # FACTORY_GITLAB_API_URL defaults to https://<git host>/api/v4 when unset.
+  SCM_BOT_AUTHOR_NAME: image-factory-bot
+  SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
+  # Claude Code agents: an Anthropic-format LLM gateway (for example your
+  # organization's enterprise gateway). The token lives in Secret
+  # factory-ai-gateway. If the gateway exposes its own model names, add
+  # ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL here so the
+  # aliases in .claude/agents/*.md resolve; leave them unset otherwise.
+  ANTHROPIC_BASE_URL: https://llm-gateway.internal.example
+  FACTORY_AGENT_TIMEOUT: 1500s

@@ -1,0 +1,113 @@
+# Harness-only Tekton objects. The disposable cluster has no access to the git
+# host, so harness-source unpacks the reviewed source snapshot from a ConfigMap
+# and commits it, standing in for factory-checkout. Everything after it uses the
+# real factory Tasks, so verify/run/seal, results, and security contexts are
+# exercised on real pods.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: harness-source
+spec:
+  params:
+    - name: runner-image
+  workspaces:
+    - name: shared
+  results:
+    - name: commit
+    - name: url
+  volumes:
+    - name: source
+      configMap: {name: factory-source}
+  steps:
+    - name: unpack
+      image: $(params.runner-image)
+      volumeMounts:
+        - {name: source, mountPath: /harness-source, readOnly: true}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+        seccompProfile: {type: RuntimeDefault}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        destination="$(workspaces.shared.path)/source"
+        rm -rf "${destination}"
+        mkdir -p "${destination}"
+        tar -xzf /harness-source/source.tar.gz -C "${destination}"
+        cd "${destination}"
+        git init --quiet
+        git add -A
+        GIT_AUTHOR_DATE=2000-01-01T00:00:00Z GIT_COMMITTER_DATE=2000-01-01T00:00:00Z \
+          git -c user.name=harness -c user.email=harness@invalid commit --quiet -m snapshot
+        mkdir -p work
+        git rev-parse HEAD | tr -d '\n' >"$(results.commit.path)"
+        printf 'harness://factory-source' >"$(results.url.path)"
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: harness-smoke
+spec:
+  params:
+    - name: runner-image
+  workspaces:
+    - name: shared
+  tasks:
+    - name: checkout
+      taskRef: {name: harness-source}
+      params:
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+    - name: validate
+      taskRef: {name: factory-stage}
+      params:
+        - {name: image, value: jira-lts}
+        - {name: stage, value: validate}
+        - name: command
+          value: >-
+            python3 -m factory.cli validate --catalog "${FACTORY_CATALOG_DIR}" &&
+            scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
+        - name: outputs
+          value: ["work/jira-lts/validation.json"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: source-url, value: $(tasks.checkout.results.url)}
+      workspaces:
+        - {name: shared, workspace: shared}
+    - name: consume
+      taskRef: {name: factory-stage}
+      params:
+        - {name: image, value: jira-lts}
+        - {name: stage, value: consume}
+        - name: command
+          value: jq -e '.valid == true' "${FACTORY_WORK_DIR}/validation.json"
+        - name: outputs
+          value: []
+        - name: inputs
+          value: ["validate=$(tasks.validate.results.seal)"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}
+    - name: tamper-detected
+      runAfter: [consume]
+      taskRef: {name: factory-stage}
+      params:
+        - {name: image, value: jira-lts}
+        - {name: stage, value: tamper}
+        # Proves sealing works in-cluster: the verify step must reject a
+        # deliberately wrong digest, so this stage is expected to fail. The
+        # harness runner asserts on its TaskRun status.
+        - name: command
+          value: "true"
+        - name: outputs
+          value: []
+        - name: inputs
+          value: ["validate=0000000000000000000000000000000000000000000000000000000000000000"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}

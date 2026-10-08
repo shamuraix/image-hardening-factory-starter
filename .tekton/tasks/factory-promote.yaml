@@ -1,0 +1,92 @@
+# Verified, digest-preserving promotion from quarantine to the release (or
+# canary) repository, then publication of the release pointer that dependent
+# images resolve as their base. Trust class: promotion.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-promote
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: promotion
+spec:
+  params:
+    - name: image
+    - name: environment
+    - name: approver
+    - name: inputs
+      type: array
+    - name: runner-image
+    - name: commit
+  workspaces:
+    - name: shared
+  results:
+    - name: IMAGE_URL
+    - name: IMAGE_DIGEST
+    - name: seal
+  volumes:
+    - name: verification-key
+      secret:
+        secretName: factory-cosign-$(params.environment)
+        items:
+          - {key: cosign.pub, path: cosign.pub}
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_RELEASE_ENV, value: $(params.environment)}
+      - {name: FACTORY_APPROVER_ID, value: $(params.approver)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+      - {name: COSIGN_PUBLIC_KEY, value: /credentials/verify/cosign.pub}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+    volumeMounts:
+      - {name: verification-key, mountPath: /credentials/verify, readOnly: true}
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: promote
+      env:
+        - name: ARTIFACTORY_RELEASE_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-release, key: token}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/promote_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}" 2>&1 \
+          | tee "${FACTORY_WORK_DIR}/logs/promote.log"
+        jq -jer '.imageRef' "${FACTORY_WORK_DIR}/promotion-result.json" >"$(results.IMAGE_URL.path)"
+        jq -jer '.digest' "${FACTORY_WORK_DIR}/promotion-result.json" >"$(results.IMAGE_DIGEST.path)"
+    - name: pointer
+      env:
+        - name: ARTIFACTORY_POINTER_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-pointer, key: token}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/publish_release_pointer.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        scripts/tekton/artifacts.sh seal promote "$(results.seal.path)" \
+          "${FACTORY_WORK_DIR}/promotion-result.json" "${FACTORY_WORK_DIR}/release-pointer.json" \
+          "${FACTORY_WORK_DIR}/logs/promote.log"

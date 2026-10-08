@@ -1,0 +1,93 @@
+# Protected quarantine import plus evidence attachment. Runs only for push or
+# scheduled runs on the default branch after the gate allowed the candidate.
+#
+# IMAGE_URL / IMAGE_DIGEST are Tekton Chains type hints: Chains signs the
+# quarantined image and attaches SLSA provenance for this TaskRun with a key the
+# task pod never sees. EVIDENCE_* results land in that provenance as well, which
+# binds the evidence bundle digest to the candidate digest.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-quarantine
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: import
+spec:
+  params:
+    - name: image
+    - name: inputs
+      type: array
+    - name: runner-image
+    - name: commit
+    - name: source-url
+      default: ""
+    - name: branch
+      default: ""
+  workspaces:
+    - name: shared
+  results:
+    - name: IMAGE_URL
+    - name: IMAGE_DIGEST
+    - name: EVIDENCE_URL
+      description: Evidence referrer as <repository>@<manifest digest>.
+    - name: EVIDENCE_SHA256
+    - name: seal
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SOURCE_URL, value: $(params.source-url)}
+      - {name: FACTORY_BRANCH_NAME, value: $(params.branch)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+      - {name: FACTORY_PROTECTED_PUBLISH, value: "true"}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: import
+      env:
+        - name: ARTIFACTORY_WRITE_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-quarantine, key: token}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        {
+          scripts/import_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+          scripts/publish_evidence_bundle.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        } 2>&1 | tee "${FACTORY_WORK_DIR}/logs/quarantine.log"
+    - name: results
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        w=${FACTORY_WORK_DIR}
+        jq -jer '.imageRef' "${w}/import-result.json" >"$(results.IMAGE_URL.path)"
+        jq -jer '.digest' "${w}/import-result.json" >"$(results.IMAGE_DIGEST.path)"
+        jq -jer '.repository + "@" + .manifestDigest' "${w}/evidence-bundle.json" >"$(results.EVIDENCE_URL.path)"
+        jq -jer '.sha256' "${w}/evidence-bundle.json" >"$(results.EVIDENCE_SHA256.path)"
+        scripts/tekton/artifacts.sh seal quarantine "$(results.seal.path)" \
+          "${w}/import-result.json" "${w}/import.env" "${w}/evidence-bundle.json" \
+          "${w}/image-metadata.json" "${w}/evidence/gate-result.json" "${w}/logs/quarantine.log"

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: image-factory
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    # Rootless BuildKit and Podman need user namespaces through setuid
+    # newuidmap/newgidmap, which requires allowPrivilegeEscalation plus
+    # Unconfined seccomp/AppArmor on the single build/test run step. Pod
+    # Security "baseline" forbids that, so enforcement is privileged-level while
+    # warnings/audit report anything beyond "restricted". The real limits are
+    # the Task securityContexts (no privileged, no host namespaces or paths)
+    # and admission-policy.yaml.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:image-hardening-factory:schema:agent:pipeline-review:v1",
+  "title": "pipeline-review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "verdict",
+    "findings",
+    "confidence"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "verdict": {
+      "enum": [
+        "no-concerns",
+        "concerns",
+        "blocking-concerns"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "detail",
+          "severity",
+          "file",
+          "invariant"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "invariant": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

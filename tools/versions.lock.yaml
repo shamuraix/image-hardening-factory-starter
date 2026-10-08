@@ -12,6 +12,26 @@ tools:
     project: https://github.com/lima-vm/lima
     license: Apache-2.0
     version: 1.1.0
+  tekton-pipelines:
+    project: https://github.com/tektoncd/pipeline
+    license: Apache-2.0
+    version: v1.15.0
+  tekton-chains:
+    project: https://github.com/tektoncd/chains
+    license: Apache-2.0
+    version: v0.28.0
+  pipelines-as-code:
+    project: https://github.com/tektoncd/pipelines-as-code
+    license: Apache-2.0
+    version: v0.51.0
+  tkn:
+    project: https://github.com/tektoncd/cli
+    license: Apache-2.0
+    version: v0.45.1
+  claude-code:
+    project: https://github.com/anthropics/claude-code
+    license: Proprietary (Anthropic Commercial Terms); validate entitlement before packaging
+    version: 2.1.294
   k3s:
     project: https://github.com/k3s-io/k3s
     license: Apache-2.0

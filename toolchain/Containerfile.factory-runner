@@ -8,7 +8,7 @@ COPY dist/security-data/ /opt/security-data/
 COPY dist/factory-wheel/ /tmp/wheels/
 
 RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman skopeo openscap-scanner \
-    && python3.12 -m pip install --no-index --find-links /tmp/wheels image-hardening-factory \
+    && python3.12 -m pip install --no-index --find-links /tmp/wheels 'image-hardening-factory[dev]' \
     && chmod 0555 /usr/local/bin/* \
     && test -x /usr/local/bin/umoci \
     && test -x /usr/local/bin/buildctl \

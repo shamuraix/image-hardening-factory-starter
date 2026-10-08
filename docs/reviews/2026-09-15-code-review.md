@@ -25,6 +25,16 @@ When reviewing new changes, prioritize:
 5. **Promotion safety**
    - Promotion must preserve content digest and re-verify signatures/attestations.
 
+6. **Pipeline trust boundaries (Tekton / PaC)**
+   - Pull-request runs never bind write, signing, release, or SCM-bot secrets.
+   - Secrets are scoped to one step; steps holding them never run workspace code
+     after PR code or an agent ran.
+   - Consumers verify seals (`artifacts.sh verify`) before reading evidence.
+   - Generated PipelineRuns change only via `factory/tekton.py`.
+7. **Agent guardrails**
+   - Personas keep `--bare`, `dontAsk`, caps, and strict schemas; writable paths
+     stay minimal; the broker validates from a fresh clone.
+
 ## Reviewer checklist
 
 - Validate updated schema and catalog compatibility.

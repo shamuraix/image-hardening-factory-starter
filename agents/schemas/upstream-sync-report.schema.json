@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:image-hardening-factory:schema:agent:upstream-sync-report:v1",
+  "title": "upstream-sync-report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "images",
+    "nextSteps",
+    "confidence"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "images": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "image",
+          "status",
+          "fromRevision",
+          "toRevision",
+          "productVersion",
+          "patchesRegenerated",
+          "patchesDropped",
+          "risks"
+        ],
+        "properties": {
+          "image": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "in-sync",
+              "updated",
+              "blocked"
+            ]
+          },
+          "fromRevision": {
+            "type": "string"
+          },
+          "toRevision": {
+            "type": "string"
+          },
+          "productVersion": {
+            "type": "string"
+          },
+          "patchesRegenerated": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          },
+          "patchesDropped": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          }
+        }
+      }
+    },
+    "nextSteps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "maxItems": 50
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

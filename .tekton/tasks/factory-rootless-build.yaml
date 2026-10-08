@@ -1,0 +1,120 @@
+# Rootless BuildKit build. The run step needs user namespaces (newuidmap and
+# newgidmap are setuid), so only that step relaxes allowPrivilegeEscalation and
+# the seccomp/AppArmor profiles - exactly the settings the former Jenkins
+# BuildKit pod template used. The verify and seal steps stay fully restricted.
+# No privileged mode, host paths, host networking, or engine sockets.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-rootless-build
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: buildkit
+spec:
+  params:
+    - name: image
+    - name: inputs
+      type: array
+      default: []
+    - name: runner-image
+    - name: commit
+    - name: source-url
+      default: ""
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+  workspaces:
+    - name: shared
+  results:
+    - name: seal
+    - name: status
+    - name: digest
+      description: Candidate manifest digest recorded in image-metadata.json.
+  volumes:
+    - name: buildkit-tmp
+      emptyDir:
+        sizeLimit: 50Gi
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SOURCE_URL, value: $(params.source-url)}
+      - {name: FACTORY_BRANCH_NAME, value: $(params.branch)}
+      - {name: FACTORY_CHANGE_ID, value: $(params.change-id)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: run
+      onError: continue
+      computeResources:
+        requests: {cpu: "1", memory: 2Gi, ephemeral-storage: 10Gi}
+        limits: {cpu: "4", memory: 8Gi, ephemeral-storage: 60Gi}
+      env:
+        - name: ARTIFACTORY_READ_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-read, key: token}
+        - {name: FACTORY_BUILDKIT_NO_PROCESS_SANDBOX, value: "true"}
+      volumeMounts:
+        - {name: buildkit-tmp, mountPath: /tmp}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        privileged: false
+        # Required by setuid newuidmap/newgidmap for rootless BuildKit.
+        allowPrivilegeEscalation: true
+        seccompProfile:
+          type: Unconfined
+        appArmorProfile:
+          type: Unconfined
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        {
+          scripts/runtime_preflight.sh "${FACTORY_WORK_DIR}/evidence/runtime"
+          scripts/build_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        } 2>&1 | tee "${FACTORY_WORK_DIR}/logs/build.log"
+    - name: seal
+      env:
+        - {name: FACTORY_RUN_EXIT_CODE_PATH, value: $(steps.step-run.exitCode.path)}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        w=${FACTORY_WORK_DIR}
+        scripts/tekton/artifacts.sh seal build "$(results.seal.path)" \
+          "${w}/image.oci.tar" "${w}/image-metadata.json" "${w}/build.env" \
+          "${w}/evidence/runtime/**" "${w}/logs/build.log"
+        code=$(cat "${FACTORY_RUN_EXIT_CODE_PATH}")
+        if [[ ${code} == 0 ]]; then
+          jq -jer '.digest' "${w}/image-metadata.json" >"$(results.digest.path)"
+          printf succeeded >"$(results.status.path)"
+        else
+          printf failed >"$(results.status.path)"
+        fi
+        exit "${code}"

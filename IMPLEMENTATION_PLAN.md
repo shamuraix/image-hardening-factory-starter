@@ -7,6 +7,7 @@
 3. SBOM + delegated scanner evidence + compliance/test evidence
 4. Policy-gated import, signing, and digest-preserving promotion
 5. Optional remediation/reproducibility extensions
+6. Tekton + Pipelines-as-Code orchestration with a Claude Code operations layer
 
 ---
 
@@ -85,13 +86,10 @@ Done when:
 Deliver:
 
 - Helmper/Copacetic/Hummingbird optional evidence hooks
-- Read-only AI remediation summary support
-- Guarded remediation-branch publication flow
 
 Done when:
 
 - Optional stages add evidence without weakening trust boundaries
-- Auto-merge remains disabled for remediation outputs
 
 ### Milestone 7 — UBI canary evolution
 
@@ -104,3 +102,27 @@ Done when:
 
 - Canary cannot be promoted to release by configuration mistake
 - Migration requires explicit catalog/policy/operator approval
+
+### Milestone 8 — Tekton, Pipelines-as-Code, and Claude Code agents
+
+Deliver:
+
+- Tekton Tasks/Pipelines replacing both Jenkinsfiles, with per-step credentials,
+  per-task ServiceAccounts, NetworkPolicies, and seal-verified evidence handoff
+- PaC triggers generated from the catalog (PR, push, nightly, base-release,
+  release, intake, agents) with `pipelinerun_provenance: default_branch`
+- Release requests in git as the approval mechanism; separate release pipeline
+- Tekton Chains SLSA provenance alongside environment-key attestations
+- Six Claude Code personas (triage, CVE remediation, upstream sync, release
+  readiness, exception stewardship, pipeline review) running headless in
+  isolated pods, with a fresh-clone change broker
+
+Done when:
+
+- Pull-request runs cannot reach write/signing/release/SCM-bot credentials
+  (tests + admission policy)
+- Every consumer verifies upstream seals before reading evidence
+- Agent output can only reach `main` as a reviewed change request that passed
+  the authoritative write-policy check
+- A real-cluster run builds, gates, quarantines, requests, signs, and promotes
+  all three Atlassian images

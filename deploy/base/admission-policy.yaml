@@ -1,0 +1,75 @@
+# Defence in depth for the most important PaC invariant: pods created for a
+# pull_request event never receive write, signing, release, mirror, SCM-bot, or
+# incoming-webhook secrets. Checked on Pods, where Tekton has resolved every
+# $(params...) secret name, so a parameterised secret cannot slip through.
+#
+# Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy GA). Tekton propagates
+# PipelineRun labels/annotations (including Pipelines-as-Code's event-type) to
+# TaskRuns and their pods; confirm with
+#   kubectl get pod -l tekton.dev/pipelineRun -o jsonpath='{.items[0].metadata}'
+# If the event-type marker is absent the policy fails open (eventType "none"),
+# so it never blocks a legitimate run; the generated PR PipelineRuns already
+# omit these secrets, so Deny is safe to enable from day one.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: image-factory-pr-secret-isolation
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE]
+        resources: [pods]
+  matchConditions:
+    - name: tekton-task-pod
+      expression: >-
+        has(object.metadata.labels) && 'tekton.dev/pipelineRun' in object.metadata.labels
+  variables:
+    - name: eventType
+      expression: >-
+        has(object.metadata.annotations) &&
+        'pipelinesascode.tekton.dev/event-type' in object.metadata.annotations
+        ? object.metadata.annotations['pipelinesascode.tekton.dev/event-type']
+        : ('pipelinesascode.tekton.dev/event-type' in object.metadata.labels
+           ? object.metadata.labels['pipelinesascode.tekton.dev/event-type'] : 'none')
+    - name: protected
+      expression: >-
+        ['factory-artifactory-quarantine', 'factory-artifactory-sign',
+         'factory-artifactory-release', 'factory-artifactory-pointer',
+         'factory-artifactory-intake', 'factory-intake-cosign',
+         'factory-cosign-commercial', 'factory-cosign-gov1', 'factory-cosign-gov2',
+         'factory-scm-bot', 'factory-scm-mirror', 'factory-pac-incoming']
+    - name: containers
+      expression: >-
+        object.spec.containers +
+        (has(object.spec.initContainers) ? object.spec.initContainers : [])
+  validations:
+    - expression: >-
+        variables.eventType != 'pull_request' ||
+        !variables.containers.exists(c, has(c.env) && c.env.exists(e,
+          has(e.valueFrom) && has(e.valueFrom.secretKeyRef) &&
+          e.valueFrom.secretKeyRef.name in variables.protected))
+      message: pull-request pods may not reference protected secrets in env
+    - expression: >-
+        variables.eventType != 'pull_request' ||
+        !variables.containers.exists(c, has(c.envFrom) && c.envFrom.exists(e,
+          has(e.secretRef) && e.secretRef.name in variables.protected))
+      message: pull-request pods may not reference protected secrets in envFrom
+    - expression: >-
+        variables.eventType != 'pull_request' || !has(object.spec.volumes) ||
+        !object.spec.volumes.exists(v, has(v.secret) && v.secret.secretName in variables.protected)
+      message: pull-request pods may not mount protected secrets
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: image-factory-pr-secret-isolation
+spec:
+  policyName: image-factory-pr-secret-isolation
+  validationActions: [Deny, Audit]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: image-factory

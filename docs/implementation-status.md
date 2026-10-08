@@ -1,41 +1,47 @@
 # Implementation status
 
-## Quick summary
+## Summary
 
-This repository is a strong integration reference implementation, but production
-readiness still depends on environment-specific Jenkins/Kubernetes, repository,
-credential, and organizational controls.
+The factory now runs on Tekton with Pipelines-as-Code triggers and a Claude Code
+agent layer. Unit tests (145), Ruff, shellcheck on all scripts and inline step
+scripts, and `tekton-lint` pass. Production readiness still depends on
+environment-specific cluster, repository, credential, network, and gateway work,
+and on a first end-to-end run in a real cluster.
 
----
-
-## Detailed status matrix
+## Status matrix
 
 | Capability | Code status | Environment work remaining |
 |---|---|---|
-| Five-image catalog and schema | Implemented and tested | Establish change ownership/governance |
-| Dependency-aware Jenkins execution plan | Implemented and tested | Validate against deployed Jenkins plugin versions |
-| Source mirroring and resource locks | Implemented and tested | Configure approved origins and retention policy |
-| Rootless BuildKit OCI build path | Implemented | Harden cluster runtime policy and trust-class isolation |
-| SBOM and scanner evidence pipeline | Implemented | Maintain signed tool/data bundle lifecycle |
-| Delegated scanner assessment backend | Implemented as gate input | Validate policy ownership and exception governance |
-| OpenSCAP compliance stage | Implemented | Finalize environment tailoring and rule applicability |
-| Product baseline tests | Implemented baseline | Add licensed data-service and clustering qualification |
-| OPA policy gate | Implemented | Enforce policy review/change control in release process |
-| Quarantine import | Implemented | Configure workload identity + least-privilege write scope |
-| Cosign signing/attestation | Implemented | Provision and rotate environment-specific signing keys |
-| Promotion/referrer copy | Implemented | Confirm destination registry behavior and verification SLO |
-| AI remediation summary/branch broker | Implemented with guardrails | Deploy approved inference endpoint and keep auto-merge disabled |
-| Optional Helmper/Copacetic/Hummingbird hooks | Implemented | Decide which are informational vs enforced in each environment |
-| UBI 10 canary path | Implemented in catalog/pipeline | Complete product/vendor compatibility acceptance |
+| Five-image catalog and schema | Implemented and tested | Change ownership/governance |
+| PaC triggers generated from the catalog | Implemented; drift-tested | Install PaC app/webhook; branch protection |
+| Build/evidence/gate pipeline (Tekton) | Implemented; invariants tested; harness-smoke for stage mechanics | First real-cluster run of rootless build/test stages |
+| Stage sealing (stash replacement) | Implemented and tested (`artifacts.sh`) | — |
+| Per-task trust classes | ServiceAccounts, NetworkPolicies, per-step secrets | Replace placeholder CIDRs; workload identity |
+| PR secret isolation admission policy | Implemented | Confirm PaC event-type propagation to pods |
+| Source mirroring and resource locks | Implemented and tested | Approved origins, retention |
+| Rootless BuildKit OCI build | Implemented | Node user-namespace support |
+| SBOM / scanner / compliance / tests | Implemented | Signed tool/data bundle lifecycle; FIPS node pool |
+| OPA gate | Implemented | Policy change control |
+| Quarantine import + evidence referrer | Implemented | Quarantine write scope |
+| Release requests (merge = approval) | Implemented and tested | CODEOWNERS teams for Gov paths |
+| Cosign signing/attestation | Implemented | Environment keys (KMS) and rotation |
+| Promotion + release pointer + dependent fan-out | Implemented | Destination registry verification SLO |
+| Tekton Chains provenance | Configured | Chains signing key (KMS), optional internal Rekor |
+| Claude Code agents (6 personas) | Implemented; loading, commands, write policy, hook tested | Approved LLM gateway; agent image build; evaluate before widening |
+| Optional Helmper/Copacetic/Hummingbird | Implemented (off by default) | Decide informational vs enforced |
+| UBI 10 canary | Implemented | Vendor compatibility acceptance |
 
----
+## Known gaps and follow-ups
+
+- The kind harness exercises stage mechanics, not the rootless build stages,
+  PaC, Chains, or agents (see `docs/local-kubernetes-testing.md`).
+- `docs/Image-Hardening-Factory-Introduction-v1.1.pptx` still describes Jenkins.
+- PaC native `settings.ai` analysis supports only OpenAI/Gemini providers; the
+  factory uses Claude Code Tasks instead and does not configure it.
 
 ## Activation guidance
 
-First production activation should stop after quarantine until evidence,
-policy, signing, and promotion behaviors are independently reviewed by release
-owners.
-
-Unit tests and local harness checks are necessary but not sufficient for full
-production activation; environment gates in `docs/operations.md` remain
-mandatory.
+First production activation should stop after quarantine until evidence, policy,
+signing, and promotion are independently reviewed, then release commercial
+before Gov environments. Keep agents in propose-only mode and measure them
+(`docs/agents.md`) before considering any wider authority.

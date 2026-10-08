@@ -1,0 +1,45 @@
+# Stages verified release evidence for agents that review the released fleet
+# (exception-steward). Trust class: internal read; no write credentials.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-evidence-context
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: internal-read
+spec:
+  params:
+    - name: runner-image
+    - name: commit
+  workspaces:
+    - name: shared
+  steps:
+    - name: stage
+      image: $(params.runner-image)
+      workingDir: $(workspaces.shared.path)/source
+      envFrom:
+        - configMapRef:
+            name: factory-settings
+      env:
+        - {name: FACTORY_AGENT_ROOT, value: $(workspaces.shared.path)/agent}
+        - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+        - {name: FACTORY_IMAGE, value: factory}
+        - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+        - name: ARTIFACTORY_READ_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-read, key: token}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/agents/evidence_context.sh

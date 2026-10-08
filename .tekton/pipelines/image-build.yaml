@@ -1,0 +1,404 @@
+# Build, evidence, and gate pipeline for one catalog image.
+#
+# The same definition serves pull requests (publish=false: candidate only) and
+# the default branch / nightly runs (publish=true: quarantine import, evidence
+# attachment, release request). Signing and promotion are deliberately absent:
+# they run in factory-image-release after a human merges the release request.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: factory-image-build
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+spec:
+  params:
+    - name: image
+    - name: repo-url
+    - name: revision
+    - name: runner-image
+    - name: agent-image
+    - name: event-type
+      default: pull_request
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+    - name: git-provider
+      default: github
+    - name: git-auth-secret
+      default: factory-git-auth-disabled
+    - name: scm-secret
+      default: factory-scm-disabled
+      description: factory-scm-bot on default-branch runs only.
+    - name: release-env
+      default: commercial
+    - name: publish
+      default: "false"
+      description: '"true" only for default-branch push/scheduled runs.'
+    - name: enable-agents
+      default: "true"
+      description: Failure triage agent in finally.
+    - name: enable-remediation
+      default: "false"
+      description: CVE remediation agent when the gate denies (default branch only).
+    - name: enable-release-request
+      default: "false"
+      description: Open a release request after a successful quarantine import.
+    - name: enable-copa
+      default: "false"
+    - name: enable-helmper
+      default: "false"
+    - name: enable-hummingbird
+      default: "false"
+  workspaces:
+    - name: shared
+    - name: git-auth
+      optional: true
+  tasks:
+    - name: checkout
+      taskRef: {name: factory-checkout}
+      params:
+        - {name: url, value: $(params.repo-url)}
+        - {name: revision, value: $(params.revision)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+        - {name: basic-auth, workspace: git-auth}
+
+    - name: validate
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: validate}
+        - name: command
+          value: >-
+            python3 -m factory.cli validate --catalog "${FACTORY_CATALOG_DIR}" &&
+            scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
+        - name: outputs
+          value: ["work/$(params.image)/validation.json"]
+        - &image {name: image, value: $(params.image)}
+        - &runner {name: runner-image, value: $(params.runner-image)}
+        - &commit {name: commit, value: $(tasks.checkout.results.commit)}
+        - &source {name: source-url, value: $(tasks.checkout.results.url)}
+        - &branch {name: branch, value: $(params.branch)}
+        - &change {name: change-id, value: $(params.change-id)}
+      workspaces: [&ws {name: shared, workspace: shared}]
+
+    - name: prepare
+      taskRef: {name: factory-prepare}
+      params:
+        - name: inputs
+          value: ["validate=$(tasks.validate.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: build
+      taskRef: {name: factory-rootless-build}
+      params:
+        - name: inputs
+          value: ["prepare=$(tasks.prepare.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: sbom
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: sbom}
+        - name: command
+          value: scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/sbom.*"]
+        - name: inputs
+          value: ["build=$(tasks.build.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: scan
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: scan}
+        - {name: allow-failure, value: "true"}
+        - name: command
+          value: scripts/scan_image.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        - name: outputs
+          value:
+            - "work/$(params.image)/evidence/scans/**"
+            - "work/$(params.image)/evidence/findings.json"
+            - "work/$(params.image)/evidence/database-status.json"
+        - name: inputs
+          value:
+            - "prepare=$(tasks.prepare.results.seal)"
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: assessment
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: assessment}
+        - name: command
+          value: test -f "${FACTORY_WORK_DIR}/evidence/scans/delegated/status.json"
+        - name: outputs
+          value:
+            - "work/$(params.image)/evidence/scans/delegated/status.json"
+            - "work/$(params.image)/evidence/scans/grype.json"
+            - "work/$(params.image)/evidence/scans/trivy.json"
+            - "work/$(params.image)/evidence/scans/osv.json"
+            - "work/$(params.image)/evidence/scans/syft.version.txt"
+        - name: inputs
+          value: ["scan=$(tasks.scan.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: compliance
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: compliance}
+        - name: command
+          value: scripts/compliance_scan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/compliance/**"]
+        - name: inputs
+          value:
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: test
+      taskRef: {name: factory-rootless-test}
+      params:
+        - name: inputs
+          value: ["build=$(tasks.build.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: copacetic
+      when:
+        - {input: $(params.enable-copa), operator: in, values: ["true"]}
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: copacetic}
+        - {name: allow-failure, value: "true"}
+        - name: command
+          value: scripts/copacetic_patch_plan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/copacetic/**"]
+        - name: inputs
+          value:
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+            - "scan=$(tasks.scan.results.seal)"
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: helmper
+      when:
+        - {input: $(params.enable-helmper), operator: in, values: ["true"]}
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: helmper}
+        - {name: allow-failure, value: "true"}
+        - name: command
+          value: scripts/helmper_inventory.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/helmper/**"]
+        - name: inputs
+          value: ["prepare=$(tasks.prepare.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: gate
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: gate}
+        - name: command
+          value: scripts/evaluate_gate.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        - name: outputs
+          value:
+            - "work/$(params.image)/evidence/gate-input.json"
+            - "work/$(params.image)/evidence/gate-result.json"
+            - "work/$(params.image)/gate.env"
+        - name: inputs
+          value:
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+            - "scan=$(tasks.scan.results.seal)"
+            - "assessment=$(tasks.assessment.results.seal)"
+            - "compliance=$(tasks.compliance.results.seal)"
+            - "test=$(tasks.test.results.seal)"
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: hummingbird
+      when:
+        - {input: $(params.enable-hummingbird), operator: in, values: ["true"]}
+      taskRef: {name: factory-stage}
+      params:
+        - {name: stage, value: hummingbird}
+        - {name: allow-failure, value: "true"}
+        - name: command
+          value: scripts/hummingbird_verify.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/hummingbird/**"]
+        - name: inputs
+          value:
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+            - "assessment=$(tasks.assessment.results.seal)"
+            - "gate=$(tasks.gate.results.seal)"
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: quarantine
+      when:
+        - {input: $(params.publish), operator: in, values: ["true"]}
+      taskRef: {name: factory-quarantine}
+      params:
+        - name: inputs
+          value:
+            - "prepare=$(tasks.prepare.results.seal)"
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+            - "scan=$(tasks.scan.results.seal)"
+            - "assessment=$(tasks.assessment.results.seal)"
+            - "compliance=$(tasks.compliance.results.seal)"
+            - "test=$(tasks.test.results.seal)"
+            - "gate=$(tasks.gate.results.seal)"
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+      workspaces: [*ws]
+
+    - name: release-request
+      when:
+        - {input: $(params.publish), operator: in, values: ["true"]}
+        - {input: $(params.enable-release-request), operator: in, values: ["true"]}
+      taskRef: {name: factory-claude-agent}
+      params:
+        - {name: agent, value: release-readiness}
+        - {name: mode, value: release-request}
+        - {name: quarantine-seal, value: $(tasks.quarantine.results.seal)}
+        - {name: scm-secret, value: $(params.scm-secret)}
+        - {name: agent-image, value: $(params.agent-image)}
+        - {name: release-env, value: $(params.release-env)}
+        - {name: event-type, value: $(params.event-type)}
+        - {name: git-provider, value: $(params.git-provider)}
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+  finally:
+    - name: triage
+      when:
+        - {input: $(tasks.status), operator: in, values: ["Failed"]}
+        - {input: $(params.enable-agents), operator: in, values: ["true"]}
+      taskRef: {name: factory-claude-agent}
+      params:
+        - {name: agent, value: failure-triage}
+        - {name: mode, value: report}
+        - name: task-statuses
+          value:
+            - "validate=$(tasks.validate.status)"
+            - "prepare=$(tasks.prepare.status)"
+            - "build=$(tasks.build.status)"
+            - "sbom=$(tasks.sbom.status)"
+            - "scan=$(tasks.scan.status)"
+            - "assessment=$(tasks.assessment.status)"
+            - "compliance=$(tasks.compliance.status)"
+            - "test=$(tasks.test.status)"
+            - "gate=$(tasks.gate.status)"
+            - "quarantine=$(tasks.quarantine.status)"
+        - {name: agent-image, value: $(params.agent-image)}
+        - {name: event-type, value: $(params.event-type)}
+        - {name: git-provider, value: $(params.git-provider)}
+        - {name: git-auth-secret, value: $(params.git-auth-secret)}
+        - {name: commit, value: $(params.revision)}
+        - {name: source-url, value: $(params.repo-url)}
+        - *image
+        - *runner
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: remediation
+      when:
+        - {input: $(tasks.gate.status), operator: in, values: ["Failed"]}
+        - {input: $(params.enable-remediation), operator: in, values: ["true"]}
+      taskRef: {name: factory-claude-agent}
+      params:
+        - {name: agent, value: cve-remediation}
+        - {name: mode, value: propose-change}
+        - {name: scm-secret, value: $(params.scm-secret)}
+        - {name: agent-image, value: $(params.agent-image)}
+        - {name: event-type, value: $(params.event-type)}
+        - {name: git-provider, value: $(params.git-provider)}
+        - {name: git-auth-secret, value: $(params.git-auth-secret)}
+        - {name: commit, value: $(params.revision)}
+        - {name: source-url, value: $(params.repo-url)}
+        - *image
+        - *runner
+        - *branch
+        - *change
+      workspaces: [*ws]

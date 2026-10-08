@@ -9,7 +9,10 @@ The following changes require protected CODEOWNER approval:
 
 - Release policy, exceptions and VEX handling.
 - Signing, attestation, importer or promotion code.
-- Jenkins/Kubernetes pod-template trust boundaries, RBAC and credential scopes.
+- Tekton/Pipelines-as-Code trust boundaries: trigger provenance, per-step credential scope,
+  NetworkPolicies, the pull-request secret admission policy, and stage seal verification.
+- Claude Code agent isolation: bare-mode invocation, permission rules, and the fresh-clone
+  change broker.
 - Cosign key material, Artifactory signing identities or key references.
 - AI prompts, schemas, tools or writable-path policy.
 - Scanner thresholds or database-freshness policy.

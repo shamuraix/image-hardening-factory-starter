@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(nc *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(git push *)",
+      "Bash(git remote *)",
+      "Bash(git fetch *)",
+      "Bash(git clone *)",
+      "Bash(cosign *)",
+      "Bash(skopeo *)",
+      "Bash(oras *)",
+      "Bash(kubectl *)",
+      "Bash(env *)",
+      "Bash(env)",
+      "Bash(printenv *)",
+      "Bash(printenv)",
+      "Bash(set)",
+      "Bash(export *)",
+      "Bash(cat /proc/*)",
+      "Read(//proc/**)",
+      "Read(//var/run/secrets/**)",
+      "Read(//tekton/**)",
+      "Read(//tmp/home/**)",
+      "Edit(/.claude/**)",
+      "Edit(/.tekton/**)",
+      "Edit(/agents/**)",
+      "Edit(/deploy/**)",
+      "Edit(/policies/rego/**)",
+      "Edit(/releases/**)",
+      "Edit(/scripts/**)",
+      "Edit(/factory/**)",
+      "Edit(/CODEOWNERS)",
+      "Edit(/CLAUDE.md)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "DISABLE_AUTOUPDATER": "1",
+    "DISABLE_TELEMETRY": "1"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${FACTORY_SHARED_SOURCE}/.claude/hooks/guard-paths.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

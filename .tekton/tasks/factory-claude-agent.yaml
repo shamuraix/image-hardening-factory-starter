@@ -1,0 +1,262 @@
+# Runs one Claude Code agent persona (.claude/agents/<agent>.md) headlessly.
+#
+# Isolation model - one pod, sequential containers, credentials per container:
+#   context  : gathers read-only evidence into agent/context (no credentials)
+#   agent    : claude --bare -p in a git worktree; only the LLM gateway token
+#   validate : schema + path-allowlist checks; emits agent/change.patch
+#   publish  : SCM bot token; fresh clone of the pinned commit, re-validates the
+#              patch with the fresh clone's code, pushes a branch, opens a draft
+#              change request. The agent's output is treated purely as data.
+#   report   : Pipelines-as-Code provider token; posts the agent's report.
+# The agent container never shares a lifetime or environment with either token.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-claude-agent
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: agent
+spec:
+  params:
+    - name: agent
+      description: Agent persona name under .claude/agents/.
+    - name: image
+      default: factory
+      description: Catalog image the agent works on, or "factory" for repo-wide agents.
+    - name: mode
+      default: report
+      description: report | propose-change | release-request
+    - name: task-statuses
+      type: array
+      default: []
+      description: <pipelineTask>=<status> pairs for triage context.
+    - name: runner-image
+    - name: agent-image
+      description: Digest-pinned image with the pinned Claude Code CLI.
+    - name: commit
+    - name: source-url
+      default: ""
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+    - name: release-env
+      default: commercial
+    - name: event-type
+      default: ""
+    - name: git-provider
+      default: github
+      description: github | gitlab (selects the comment and change-request API).
+    - name: git-auth-secret
+      default: factory-git-auth-disabled
+      description: >-
+        Pipelines-as-Code {{ git_auth_secret }}. The default names no Secret
+        (an empty name is invalid in a secretKeyRef), which disables reporting.
+    - name: scm-secret
+      default: factory-scm-disabled
+      description: >-
+        Secret with the SCM bot username/token used to publish proposals. Only
+        default-branch PipelineRuns set this to factory-scm-bot; the default
+        names no Secret, so pull-request pods never receive the token.
+    - name: quarantine-seal
+      default: ""
+      description: Seal of the quarantine task; required for release-request mode.
+  workspaces:
+    - name: shared
+  results:
+    - name: outcome
+      description: no-op | report | change-proposed | change-rejected | agent-failed
+    - name: report-sha256
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_AGENT, value: $(params.agent)}
+      - {name: FACTORY_AGENT_MODE, value: $(params.mode)}
+      - {name: FACTORY_AGENT_ROOT, value: $(workspaces.shared.path)/agent}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SOURCE_URL, value: $(params.source-url)}
+      - {name: FACTORY_BRANCH_NAME, value: $(params.branch)}
+      - {name: FACTORY_CHANGE_ID, value: $(params.change-id)}
+      - {name: FACTORY_RELEASE_ENV, value: $(params.release-env)}
+      - {name: FACTORY_EVENT_TYPE, value: $(params.event-type)}
+      - {name: FACTORY_GIT_PROVIDER, value: $(params.git-provider)}
+      - {name: FACTORY_QUARANTINE_SEAL, value: $(params.quarantine-seal)}
+      - {name: FACTORY_SHARED_SOURCE, value: $(workspaces.shared.path)/source}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+      - {name: HOME, value: /tmp/home}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: context
+      args: ["$(params.task-statuses[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p "${HOME}"
+        scripts/agents/collect_context.sh "$@"
+    - name: agent
+      image: $(params.agent-image)
+      onError: continue
+      computeResources:
+        requests: {cpu: 500m, memory: 1Gi}
+        limits: {cpu: "2", memory: 4Gi}
+      env:
+        - name: ANTHROPIC_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-ai-gateway, key: token}
+        - {name: CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, value: "1"}
+        - {name: DISABLE_AUTOUPDATER, value: "1"}
+        - {name: DISABLE_TELEMETRY, value: "1"}
+      script: |
+        #!/usr/bin/env bash
+        set -uo pipefail
+        mkdir -p "${HOME}"
+        scripts/agents/run_agent.sh
+        status=$?
+        # Assume anything this container can read may reach the model. Scrub the
+        # one secret it holds from every agent output before later steps publish
+        # them; a proposal that embeds it is discarded outright.
+        python3 - "${FACTORY_AGENT_ROOT}" <<'PYTHON'
+        import base64, os, pathlib, subprocess, sys
+        root = pathlib.Path(sys.argv[1])
+        token = os.environ.get("ANTHROPIC_AUTH_TOKEN", "")
+        if len(token) >= 8:
+            needles = {token, base64.b64encode(token.encode()).decode()}
+            for path in root.glob("*"):
+                if path.is_file():
+                    text = path.read_text(errors="replace")
+                    if any(n in text for n in needles):
+                        for n in needles:
+                            text = text.replace(n, "[REDACTED]")
+                        path.write_text(text)
+                        print(f"redacted credential from {path.name}", file=sys.stderr)
+            repo = root / "repo"
+            if repo.is_dir():
+                subprocess.run(["git", "add", "-A"], cwd=repo, check=False)
+                diff = subprocess.run(["git", "diff", "--cached"], cwd=repo,
+                                      capture_output=True, text=True).stdout
+                if any(n in diff for n in needles):
+                    subprocess.run(["git", "reset", "--hard", "-q"], cwd=repo, check=False)
+                    subprocess.run(["git", "clean", "-fdq"], cwd=repo, check=False)
+                    print("discarded repository changes containing a credential", file=sys.stderr)
+                else:
+                    subprocess.run(["git", "reset", "-q"], cwd=repo, check=False)
+        PYTHON
+        exit "${status}"
+    - name: validate
+      env:
+        - {name: FACTORY_AGENT_EXIT_CODE_PATH, value: $(steps.step-agent.exitCode.path)}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        python3 -m factory.cli agent-validate \
+          --agent "${FACTORY_AGENT}" \
+          --root "${FACTORY_AGENT_ROOT}" \
+          --exit-code "$(cat "${FACTORY_AGENT_EXIT_CODE_PATH}")" \
+          --outcome-file "$(results.outcome.path)" \
+          --report-sha256-file "$(results.report-sha256.path)"
+    - name: publish
+      env:
+        - name: SCM_BOT_USERNAME
+          valueFrom:
+            secretKeyRef: {name: $(params.scm-secret), key: username, optional: true}
+        - name: SCM_BOT_TOKEN
+          valueFrom:
+            secretKeyRef: {name: $(params.scm-secret), key: token, optional: true}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        outcome=$(cat "$(results.outcome.path)" 2>/dev/null || true)
+        case "${FACTORY_AGENT_MODE}:${outcome}" in
+          propose-change:change-proposed|release-request:*) ;;
+          *) echo "nothing to publish (mode=${FACTORY_AGENT_MODE}, outcome=${outcome})"; exit 0 ;;
+        esac
+        [[ -n ${SCM_BOT_TOKEN:-} ]] || {
+          echo "no SCM bot credential is bound to this run; proposal kept as evidence only" >&2
+          exit 0
+        }
+        mkdir -p "${HOME}"
+        export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
+        # The broker never runs code or reads git objects from the shared
+        # workspace, which the agent could have altered. It fetches the pinned
+        # commit afresh (objects are hash-verified on transfer) and runs that.
+        askpass=$(mktemp)
+        printf '#!/bin/sh\ncase "$1" in *sername*) echo "$SCM_BOT_USERNAME";; *) echo "$SCM_BOT_TOKEN";; esac\n' >"${askpass}"
+        chmod 0700 "${askpass}"
+        broker_root=$(mktemp -d)
+        git init --quiet "${broker_root}"
+        GIT_ASKPASS="${askpass}" git -C "${broker_root}" fetch --quiet --depth 1 \
+          "${FACTORY_SOURCE_URL}" "${FACTORY_COMMIT_SHA}"
+        git -C "${broker_root}" checkout --quiet --detach FETCH_HEAD
+        [[ $(git -C "${broker_root}" rev-parse HEAD) == "${FACTORY_COMMIT_SHA}" ]]
+        export FACTORY_BROKER_ROOT="${broker_root}" FACTORY_BROKER_ASKPASS="${askpass}"
+        cd "${broker_root}"
+        exec bash scripts/agents/publish_change.sh
+    - name: report
+      env:
+        - name: SCM_PROVIDER_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: $(params.git-auth-secret)
+              key: git-provider-token
+              optional: true
+      # Inline on purpose: this step holds a provider token, so it must not run
+      # any script from the shared workspace, which the agent could have edited.
+      # It only reads report.md as data and posts it as a comment.
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        report="${FACTORY_AGENT_ROOT}/report.md"
+        [[ -n ${SCM_PROVIDER_TOKEN:-} && -s ${report} ]] || { echo "reporting disabled or no report"; exit 0; }
+        # Neutralise @-mentions so agent text cannot page people.
+        body=$(head -c 60000 "${report}" | sed 's/@/@\xe2\x80\x8b/g' | jq -Rs .)
+        url=${FACTORY_SOURCE_URL%.git}
+        host=$(sed -E 's#^https?://([^/]+)/.*#\1#' <<<"${url}")
+        path=$(sed -E 's#^https?://[^/]+/##' <<<"${url}")
+        case "${FACTORY_GIT_PROVIDER}" in
+          github)
+            api=${FACTORY_GITHUB_API_URL:-https://api.github.com}
+            if [[ -n ${FACTORY_CHANGE_ID} ]]; then
+              endpoint="${api}/repos/${path}/issues/${FACTORY_CHANGE_ID}/comments"
+            else
+              endpoint="${api}/repos/${path}/commits/${FACTORY_COMMIT_SHA}/comments"
+            fi
+            curl --fail --silent --show-error --request POST \
+              --header "Authorization: Bearer ${SCM_PROVIDER_TOKEN}" \
+              --header "Accept: application/vnd.github+json" \
+              --data "{\"body\": ${body}}" "${endpoint}" >/dev/null
+            ;;
+          gitlab)
+            api=${FACTORY_GITLAB_API_URL:-https://${host}/api/v4}
+            project=$(jq -rn --arg p "${path}" '$p|@uri')
+            if [[ -n ${FACTORY_CHANGE_ID} ]]; then
+              endpoint="${api}/projects/${project}/merge_requests/${FACTORY_CHANGE_ID}/notes"
+            else
+              endpoint="${api}/projects/${project}/repository/commits/${FACTORY_COMMIT_SHA}/comments"
+              body=$(jq -n --argjson b "${body}" '$b' | jq -c '{note: .}')
+              curl --fail --silent --show-error --request POST \
+                --header "PRIVATE-TOKEN: ${SCM_PROVIDER_TOKEN}" --header "Content-Type: application/json" \
+                --data "${body}" "${endpoint}" >/dev/null
+              exit 0
+            fi
+            curl --fail --silent --show-error --request POST \
+              --header "PRIVATE-TOKEN: ${SCM_PROVIDER_TOKEN}" --header "Content-Type: application/json" \
+              --data "{\"body\": ${body}}" "${endpoint}" >/dev/null
+            ;;
+          *) echo "unsupported git provider: ${FACTORY_GIT_PROVIDER}" >&2 ;;
+        esac
+        echo "posted ${FACTORY_AGENT} report"

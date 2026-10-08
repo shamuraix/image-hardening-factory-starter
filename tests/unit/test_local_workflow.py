@@ -79,14 +79,18 @@ class LocalWorkflowTests(unittest.TestCase):
         self.assertNotIn("cdn-ubi.redhat.com", cache_config)
 
     def test_ci_buildkit_is_rootless_and_podman_retains_vfs(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile").read_text(encoding="utf-8")
+        build_task = (ROOT / ".tekton/tasks/factory-rootless-build.yaml").read_text(
+            encoding="utf-8"
+        )
+        pipeline = (ROOT / ".tekton/pipelines/image-build.yaml").read_text(encoding="utf-8")
+        stage_env = (ROOT / "scripts/tekton/env.sh").read_text(encoding="utf-8")
         launcher = (ROOT / "scripts/run_buildkit.sh").read_text(encoding="utf-8")
         runner = (ROOT / "toolchain/Containerfile.factory-runner").read_text(encoding="utf-8")
         storage = (ROOT / "toolchain/storage.conf").read_text(encoding="utf-8")
 
-        self.assertIn("'FACTORY_K8S_BUILDKIT_POD_TEMPLATE'", jenkinsfile)
-        self.assertIn("'FACTORY_BUILDKIT_NO_PROCESS_SANDBOX=true'", jenkinsfile)
-        self.assertIn("'STORAGE_DRIVER=vfs'", jenkinsfile)
+        self.assertIn("taskRef: {name: factory-rootless-build}", pipeline)
+        self.assertIn('{name: FACTORY_BUILDKIT_NO_PROCESS_SANDBOX, value: "true"}', build_task)
+        self.assertIn("export STORAGE_DRIVER=vfs", stage_env)
         self.assertIn("--oci-worker-snapshotter=native", launcher)
         self.assertIn("--containerd-worker=false", launcher)
         self.assertIn("--oci-worker-no-process-sandbox", launcher)
@@ -228,13 +232,14 @@ class LocalWorkflowTests(unittest.TestCase):
             self.assertIn("sslverify=1", repo)
 
     def test_intake_no_longer_requires_rpm_snapshot_settings(self) -> None:
-        jenkinsfile = (ROOT / "Jenkinsfile.intake").read_text(encoding="utf-8")
+        intake = (ROOT / ".tekton/tasks/factory-intake.yaml").read_text(encoding="utf-8")
+        settings = (ROOT / "deploy/base/settings.yaml").read_text(encoding="utf-8")
 
-        self.assertIn("stage('mirror sources')", jenkinsfile)
-        self.assertNotIn("stage('snapshot and mirror')", jenkinsfile)
-        required_block = jenkinsfile.split(".each { requiredSetting(it) }")[0].rsplit("[", 1)[1]
-        self.assertNotIn("FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY", required_block)
-        self.assertNotIn("FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY", required_block)
+        self.assertIn("- name: mirror", intake)
+        self.assertIn("scripts/mirror_sources.sh", intake)
+        self.assertNotIn("snapshot", intake)
+        self.assertNotIn("FACTORY_RPM_SNAPSHOT_UBI9_REPOSITORY", settings)
+        self.assertNotIn("FACTORY_RPM_SNAPSHOT_UBI10_REPOSITORY", settings)
 
     def test_resource_lock_path_no_longer_uses_snapshot_segment(self) -> None:
         prepare = (ROOT / "scripts/prepare_context.sh").read_text(encoding="utf-8")

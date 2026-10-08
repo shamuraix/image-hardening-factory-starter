@@ -1,0 +1,157 @@
+# Trust-class network boundaries. Tekton labels every TaskRun pod with
+# tekton.dev/pipelineTask (the pipeline task name), which survives Pipelines-as-
+# Code embedding the Pipeline spec, so policies select on that label.
+#
+# Replace the documentation CIDRs below (198.51.100.0/24, 203.0.113.0/24) with
+# your endpoints, or switch to namespaceSelector/podSelector rules for in-cluster
+# services. Every pod also needs DNS (allow-dns).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# Source checkout and the agent publish/report steps reach the git host.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: git-host
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tekton.dev/pipelineTask
+        operator: In
+        values: [checkout, triage, remediation, release-request, agent]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 198.51.100.10/32}   # git host (and its API)
+      ports:
+        - {protocol: TCP, port: 443}
+---
+# Internal registry/repository access for every class that reads or writes it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: artifactory
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tekton.dev/pipelineTask
+        operator: In
+        values: [prepare, build, quarantine, resolve, attest, promote, intake, evidence-context]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 198.51.100.20/32}   # Artifactory
+      ports:
+        - {protocol: TCP, port: 443}
+---
+# Internal git mirrors read during prepare and written during intake.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: internal-mirrors
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tekton.dev/pipelineTask
+        operator: In
+        values: [prepare, intake]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 198.51.100.30/32}   # internal git mirrors
+      ports:
+        - {protocol: TCP, port: 443}
+---
+# Connected intake and upstream reconnaissance: approved upstreams only
+# (repo1.dso.mil, vendor download hosts listed in hardening manifests).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: approved-upstreams
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tekton.dev/pipelineTask
+        operator: In
+        values: [intake, upstream-context]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 203.0.113.0/24}     # egress proxy / allowlisted upstreams
+      ports:
+        - {protocol: TCP, port: 443}
+---
+# Claude Code agents reach only the LLM gateway (plus git host above for the
+# publish/report steps). No internet, no registry, no cluster API.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-gateway
+spec:
+  podSelector:
+    matchExpressions:
+      - key: tekton.dev/pipelineTask
+        operator: In
+        values: [triage, remediation, release-request, agent]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock: {cidr: 198.51.100.40/32}   # LLM gateway
+      ports:
+        - {protocol: TCP, port: 443}
+---
+# Release fan-out and schedulers call the Pipelines-as-Code controller.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pac-incoming
+spec:
+  podSelector:
+    matchExpressions:
+      - key: factory.dev/needs-pac
+        operator: In
+        values: ["true"]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: pipelines-as-code}
+      ports:
+        - {protocol: TCP, port: 8080}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pac-incoming-dependents
+spec:
+  podSelector:
+    matchLabels: {tekton.dev/pipelineTask: dependents}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: pipelines-as-code}
+      ports:
+        - {protocol: TCP, port: 8080}

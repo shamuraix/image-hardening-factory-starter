@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:image-hardening-factory:schema:agent:release-readiness:v1",
+  "title": "release-readiness",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary",
+    "recommendation",
+    "concerns",
+    "gateWarnings",
+    "exceptionsInScope",
+    "confidence"
+  ],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "maxLength": 4000
+    },
+    "recommendation": {
+      "enum": [
+        "ready",
+        "ready-with-warnings",
+        "not-ready"
+      ]
+    },
+    "concerns": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "detail",
+          "severity",
+          "evidence"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "maxItems": 50
+          }
+        }
+      }
+    },
+    "gateWarnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 2000
+      },
+      "maxItems": 50
+    },
+    "exceptionsInScope": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

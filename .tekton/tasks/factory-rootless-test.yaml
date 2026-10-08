@@ -1,0 +1,100 @@
+# Product integration tests with rootless Podman (VFS storage). Same relaxed
+# run-step security context as the BuildKit task; no credentials.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-rootless-test
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: test
+spec:
+  params:
+    - name: image
+    - name: inputs
+      type: array
+      default: []
+    - name: runner-image
+    - name: commit
+    - name: source-url
+      default: ""
+    - name: branch
+      default: ""
+    - name: change-id
+      default: ""
+  workspaces:
+    - name: shared
+  results:
+    - name: seal
+    - name: status
+  volumes:
+    - name: podman-tmp
+      emptyDir:
+        sizeLimit: 40Gi
+  stepTemplate:
+    image: $(params.runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_IMAGE, value: $(params.image)}
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: FACTORY_SOURCE_URL, value: $(params.source-url)}
+      - {name: FACTORY_BRANCH_NAME, value: $(params.branch)}
+      - {name: FACTORY_CHANGE_ID, value: $(params.change-id)}
+      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
+      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: verify
+      args: ["$(params.inputs[*])"]
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh verify-source "${FACTORY_COMMIT_SHA}"
+        scripts/tekton/artifacts.sh verify "$@"
+    - name: run
+      onError: continue
+      computeResources:
+        requests: {cpu: "1", memory: 4Gi, ephemeral-storage: 10Gi}
+        limits: {cpu: "4", memory: 12Gi, ephemeral-storage: 50Gi}
+      volumeMounts:
+        - {name: podman-tmp, mountPath: /tmp}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        privileged: false
+        allowPrivilegeEscalation: true
+        seccompProfile:
+          type: Unconfined
+        appArmorProfile:
+          type: Unconfined
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/run_tests.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}" 2>&1 \
+          | tee "${FACTORY_WORK_DIR}/logs/test.log"
+    - name: seal
+      env:
+        - {name: FACTORY_RUN_EXIT_CODE_PATH, value: $(steps.step-run.exitCode.path)}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        source scripts/tekton/env.sh
+        scripts/tekton/artifacts.sh seal test "$(results.seal.path)" \
+          "${FACTORY_WORK_DIR}/evidence/tests/**" "${FACTORY_WORK_DIR}/logs/test.log"
+        code=$(cat "${FACTORY_RUN_EXIT_CODE_PATH}")
+        [[ ${code} == 0 ]] && printf succeeded >"$(results.status.path)" || printf failed >"$(results.status.path)"
+        exit "${code}"
