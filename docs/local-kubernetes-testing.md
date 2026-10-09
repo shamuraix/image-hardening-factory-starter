@@ -182,7 +182,12 @@ on a local cluster:
   [Podman issue](https://github.com/containers/podman/issues/13194));
 - the `ProcMountType` or `UserNamespacesSupport` feature gate is off (both are
   on by default from Kubernetes 1.33;
-  [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/)).
+  [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/));
+- `newuidmap: open of uid_map failed: Permission denied` from RootlessKit —
+  the run step's capability bounding set lacks `SETUID`/`SETGID`, or the
+  runner has the UBI `shadow-utils` helpers instead of the libcap-aware build
+  (docs/configuration.md, "User-namespace helpers"). The preflight now names
+  which; rebuild the runner with `make harness-up` after pulling.
 
 ```bash
 kubectl --kubeconfig "$FACTORY_HARNESS_STATE/kubeconfig" -n factory-harness get events --sort-by=.lastTimestamp

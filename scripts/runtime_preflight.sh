@@ -35,6 +35,21 @@ PYTHON
   done
 } >"${output}/runtime.txt" 2>&1
 [[ $(id -u) != 0 ]] || { echo 'Factory runner must be non-root' >&2; exit 1; }
+# The setuid mapping helpers receive only the capabilities in this process's
+# bounding set (bit 6 CAP_SETGID, bit 7 CAP_SETUID). Explain that before
+# RootlessKit reports a bare "Permission denied" from the kernel.
+bounding=$(sed -n 's/^CapBnd:[[:space:]]*//p' /proc/self/status)
+if (( (0x${bounding} & 0xc0) != 0xc0 )); then
+  echo "capability bounding set ${bounding} lacks CAP_SETUID/CAP_SETGID; the setuid newuidmap/newgidmap helpers cannot map subordinate IDs. The build and test run steps must keep capabilities.add: [SETUID, SETGID] (docs/configuration.md)." >&2
+  exit 1
+fi
+for helper in /usr/bin/newuidmap /usr/bin/newgidmap; do
+  [[ -u ${helper} ]] || { echo "${helper} is not setuid; file capabilities are ignored inside a pod user namespace (toolchain/Containerfile.factory-runner)" >&2; exit 1; }
+  grep -aq 'Could not set caps' "${helper}" || {
+    echo "${helper} was built without libcap, so as a setuid program it would need CAP_SYS_ADMIN and CAP_DAC_OVERRIDE; the runner image must install the libcap-aware build (toolchain/Containerfile.factory-runner)" >&2
+    exit 1
+  }
+done
 # Exercise the same mapping helpers used by the real BuildKit launcher. A
 # successful unshare -Ur alone is insufficient to prove subordinate mappings.
 if ! timeout 20 rootlesskit --net=host --copy-up=/etc --copy-up=/run \
