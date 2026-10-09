@@ -263,7 +263,10 @@ class BuildImageBuildKitTests(unittest.TestCase):
             "bin/git",
             """\
             #!/usr/bin/env bash
-            printf '2024-01-02T03:04:05+00:00\\n'
+            case " $* " in
+              *" --format=%ct "*) printf '1704164645\\n' ;;
+              *) printf '2024-01-02T03:04:05+00:00\\n' ;;
+            esac
             """,
         )
         self._write_executable(

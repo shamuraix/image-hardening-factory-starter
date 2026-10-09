@@ -9,8 +9,11 @@ scripts/require_rootless.sh buildkit
 
 containerfile=$(yq -r '.source.containerfile' "${catalog}")
 platform=$(yq -r '.build.platforms[0]' "${catalog}")
+# Both from git, so no GNU-only date parsing is needed (the unit tests run this
+# script on macOS hosts too).
 created=$(git -C "${work_dir}/context" show -s --format=%cI "${SOURCE_REVISION}")
-source_epoch=$(date --date="${created}" +%s)
+source_epoch=$(git -C "${work_dir}/context" show -s --format=%ct "${SOURCE_REVISION}")
+[[ ${source_epoch} =~ ^[0-9]+$ ]] || { echo "could not read the commit time of ${SOURCE_REVISION}" >&2; exit 2; }
 build_id=${FACTORY_BUILD_ID:-local}
 [[ "${build_id}" =~ ^[A-Za-z0-9_.-]+$ ]] || {
   echo "FACTORY_BUILD_ID contains characters that are invalid in an OCI tag" >&2

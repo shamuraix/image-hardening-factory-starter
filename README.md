@@ -32,10 +32,11 @@ flowchart LR
 
 ## New here? Start in 10 minutes
 
-Day-one needs Python 3.11+ and git. The only other host software is for the
-optional local cluster: a container runtime (Podman or Docker), `kind`, and
-`kubectl`. There is no host-side build toolchain to install; builds run inside
-the same runner image and Tekton Task the pipeline uses.
+Day-one needs Python 3.11+, git, and the GNU `sha256sum` and `sort` the seal
+scripts use (`brew install coreutils` on macOS). The only other host software
+is for the optional local cluster: a container runtime (Podman or Docker),
+`kind`, and `kubectl`. There is no host-side build toolchain to install;
+builds run inside the same runner image and Tekton Task the pipeline uses.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
