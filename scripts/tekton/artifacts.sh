@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Seal and verify stage outputs on the shared PipelineRun workspace.
 #
-# Jenkins stash/unstash gave every stage a private copy of its inputs. Tekton
-# tasks share one volume instead, so a later (possibly compromised) task could
-# rewrite an earlier task's evidence. Each producing task therefore writes a
+# Tekton tasks in one PipelineRun share a workspace volume, so a later
+# (possibly compromised) task could rewrite an earlier task's evidence. Each producing task therefore writes a
 # manifest of SHA-256 digests and emits the manifest's own digest as a Tekton
 # result. Results live in TaskRun status, which pods cannot rewrite, so every
 # consumer re-derives the manifest digest from the volume and compares it to the

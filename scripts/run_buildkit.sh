@@ -63,9 +63,7 @@ if [[ ${1:-} == --inside-rootlesskit ]]; then
   exit "${status}"
 fi
 
-for tool in buildctl; do
-  command -v "${tool}" >/dev/null || { echo "required command is missing: ${tool}" >&2; exit 2; }
-done
+command -v buildctl >/dev/null || { echo "required command is missing: buildctl" >&2; exit 2; }
 [[ ${1:-} == build ]] || { echo "usage: scripts/run_buildkit.sh build [buildctl options]" >&2; exit 2; }
 if [[ -z ${FACTORY_BUILDKIT_ADDR:-} && -n ${FACTORY_BUILDKIT_LIMA_INSTANCE:-} ]]; then
   socket=${FACTORY_BUILDKIT_LIMA_SOCKET:-${HOME}/.lima/${FACTORY_BUILDKIT_LIMA_INSTANCE}/sock/buildkitd.sock}

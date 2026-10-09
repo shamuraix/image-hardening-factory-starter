@@ -11,15 +11,16 @@ vulnerability exception.
 
 ## Personas
 
-Each persona is a Claude Code subagent in `.claude/agents/<name>.md`. The same
-file serves interactive sessions and CI. An `x-factory` frontmatter block
-(ignored by Claude Code) declares the CI contract: output schema, budget, modes,
-and the exact paths it may write.
+Each persona is a Claude Code
+[subagent](https://code.claude.com/docs/en/sub-agents) in
+`.claude/agents/<name>.md`. The same file serves interactive sessions and CI. An
+`x-factory` frontmatter block (ignored by Claude Code) declares the CI contract:
+output schema, budget, modes, and the exact paths it may write.
 
 | Persona | When it runs | Reads | Produces | May write |
 |---|---|---|---|---|
 | `failure-triage` | `finally` of any failed build or release run | stage log tails, evidence summaries, task statuses | PR/commit comment: category, root cause, next steps | nothing |
-| `cve-remediation` | gate deny on `main`, nightly rescan, or base-release rebuild | blocking findings, SBOM components, catalog, exceptions, internal repository candidates | draft PR + plan | `overlays/`, `catalog/images/` (revision, version, build args only), `tests/profiles/` |
+| `cve-remediation` | gate deny on `main`, nightly rescan, or base-release rebuild | blocking findings, SBOM components, catalog, exceptions | draft PR + plan | `overlays/`, `catalog/images/` (revision, version, build args only), `tests/profiles/` |
 | `upstream-sync` | weekday schedule | per-image upstream reconnaissance: new Repo One head, key-file diffs, manifest tags/args, overlay trial-apply results | draft PR with rebased patches and moved pins | `overlays/` (incl. deletes), `catalog/images/`, `vendir/config.yml`, `tests/profiles/` |
 | `release-readiness` | after quarantine import on `main` | gate result and warnings, exceptions in scope, compliance/test results, previous release request | body of the release-request PR | nothing |
 | `exception-steward` | weekly schedule | approved exceptions, evidence of each image's current release | draft PR removing stale exceptions + review list | `policies/exceptions/approved.json` — **removals only** |
@@ -69,8 +70,9 @@ claude --bare -p "<task prompt>"
 
 Why `--bare`: without it, `claude -p` loads hooks, MCP servers, and settings from
 the working directory with no trust prompt. Bare mode loads only what the
-command line passes, so a malicious change cannot smuggle a hook or MCP server
-into an agent run.
+command line passes
+([headless docs](https://code.claude.com/docs/en/headless#start-faster-with-bare-mode)),
+so a malicious change cannot smuggle a hook or MCP server into an agent run.
 
 ## Guardrails, outermost first
 

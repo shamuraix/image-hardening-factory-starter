@@ -31,6 +31,12 @@ make local-test IMAGE=ubi9-minimal
 make local-assessment IMAGE=ubi9-minimal
 ```
 
+`make local-assessment` runs the same scanners as the scan stage. They need an
+unpacked security-data bundle (scanner databases, CISA KEV catalog, ClamAV
+signatures) at `FACTORY_SECURITY_DATA`, default `/opt/security-data`. See
+[security-data/README.md](../security-data/README.md#local-runs) for how to get
+one. Without it the Grype step fails with a database error.
+
 ### Choose an RPM source mode
 
 | Mode | Example |

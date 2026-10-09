@@ -1,7 +1,7 @@
 # Rootless BuildKit build. The run step needs user namespaces (newuidmap and
 # newgidmap are setuid), so only that step relaxes allowPrivilegeEscalation and
-# the seccomp/AppArmor profiles - exactly the settings the former Jenkins
-# BuildKit pod template used. The verify and seal steps stay fully restricted.
+# the seccomp/AppArmor profiles. The verify and seal steps stay fully
+# restricted.
 # No privileged mode, host paths, host networking, or engine sockets.
 apiVersion: tekton.dev/v1
 kind: Task

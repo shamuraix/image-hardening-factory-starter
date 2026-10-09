@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+data=${FACTORY_SECURITY_DATA:-/opt/security-data}
 
 catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
@@ -9,11 +10,11 @@ mkdir -p "${output}"
 profile=$(yq -r '.policy.profile' "${catalog}")
 case "${profile}" in
   rhel9-container-stig|atlassian-rhel9-container)
-    datastream=/opt/security-data/scap/ssg-rhel9-ds.xml
+    datastream=${data}/scap/ssg-rhel9-ds.xml
     xccdf_profile=xccdf_org.ssgproject.content_profile_stig
     ;;
   rhel10-container-stig-canary)
-    datastream=/opt/security-data/scap/ssg-rhel10-ds.xml
+    datastream=${data}/scap/ssg-rhel10-ds.xml
     xccdf_profile=xccdf_org.ssgproject.content_profile_stig
     ;;
   *) echo "unknown compliance profile: ${profile}" >&2; exit 2 ;;

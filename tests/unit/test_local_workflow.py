@@ -125,13 +125,6 @@ class LocalWorkflowTests(unittest.TestCase):
             )
             self.assertIn("--cgroups=disabled", test_script)
 
-    def test_rpm_snapshot_uses_workspace_local_dnf_state(self) -> None:
-        snapshot = (ROOT / "scripts/snapshot_rpm_repo.sh").read_text(encoding="utf-8")
-
-        self.assertIn("cachedir=${output}/dnf-cache", snapshot)
-        self.assertIn("persistdir=${output}/dnf-persist", snapshot)
-        self.assertIn("logdir=${output}/dnf-log", snapshot)
-
     def test_archive_and_test_runner_use_exact_image_reference(self) -> None:
         build = (ROOT / "scripts/build_image.sh").read_text(encoding="utf-8")
         test_runner = (ROOT / "scripts/run_tests.sh").read_text(encoding="utf-8")
@@ -218,18 +211,6 @@ class LocalWorkflowTests(unittest.TestCase):
         # GPG and TLS remain enabled by default (gpgcheck=1)
         self.assertIn("LOCAL_RPM_GPGCHECK:-1", local_build)
         self.assertIn("LOCAL_RPM_SSLVERIFY:-1", local_build)
-
-    def test_bundled_ubi_repo_files_use_public_cdn_without_credentials(self) -> None:
-        for major, baseid in [
-            ("9", "ubi-9-baseos-rpms"),
-            ("10", "ubi-10-for-x86_64-baseos-rpms"),
-        ]:
-            repo = (ROOT / f"config/rpm/ubi{major}.repo").read_text(encoding="utf-8")
-            self.assertIn("cdn-ubi.redhat.com", repo)
-            self.assertIn(baseid, repo)
-            self.assertNotIn("username=", repo)
-            self.assertIn("gpgcheck=1", repo)
-            self.assertIn("sslverify=1", repo)
 
     def test_intake_no_longer_requires_rpm_snapshot_settings(self) -> None:
         intake = (ROOT / ".tekton/tasks/factory-intake.yaml").read_text(encoding="utf-8")

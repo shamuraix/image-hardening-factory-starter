@@ -23,7 +23,6 @@ FACTORY_HARNESS_STATE="$FACTORY_HARNESS_STATE" tests/integration/kind/down.sh
 | `tekton.py` | create the smoke PipelineRun and assert per-task outcomes |
 | `services.yaml` | namespace and TLS fixture registry |
 | `Containerfile.runner`, `download-tools.*`, `configure-uidmap.py` | harness runner image |
-| `probe-crun.py`, `runtime_config.py`, `node-diagnostics.sh`, `apparmor/` | rootless runtime probes and diagnostics |
-| `*-smoke.sh`, `rootful-preflight.sh` | script-level smoke checks reused from earlier harness work |
+| `probe-crun.py`, `node-diagnostics.sh` | rootless runtime probes and diagnostics |
 
 Registry credentials (`oidc/harness`) are public test-only values.

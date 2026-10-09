@@ -3,7 +3,9 @@
 #
 # Chains watches TaskRuns and signs what they declare through the IMAGE_URL /
 # IMAGE_DIGEST type-hint results (factory-quarantine and factory-promote), and
-# records SLSA v1 provenance for TaskRuns and PipelineRuns. The Chains signing
+# records SLSA v1.0 provenance for TaskRuns and PipelineRuns (format
+# slsa/v2alpha3; "slsa/v1" is Chains' alias for the older v0.2 format, see
+# https://github.com/tektoncd/chains/blob/v0.28.0/docs/config.md). The Chains signing
 # key lives only in the Chains controller (secret `signing-secrets` in
 # tekton-chains, or a KMS key) - task pods never see it. This complements the
 # factory's own environment-key attestations produced by factory-attest.
@@ -13,9 +15,9 @@ metadata:
   name: chains-config
   namespace: tekton-chains
 data:
-  artifacts.taskrun.format: slsa/v1
+  artifacts.taskrun.format: slsa/v2alpha3
   artifacts.taskrun.storage: oci
-  artifacts.pipelinerun.format: slsa/v1
+  artifacts.pipelinerun.format: slsa/v2alpha3
   artifacts.pipelinerun.storage: oci
   artifacts.pipelinerun.enable-deep-inspection: "true"
   artifacts.oci.storage: oci

@@ -48,6 +48,7 @@ upkeep is assisted by **Claude Code agents** that can only propose changes.
 | `agents/` | CI agent settings and structured-output schemas |
 | `releases/<env>/<image>.yaml` | Release requests; merging one signs and promotes |
 | `policies/` | OPA release policy and approved exceptions |
+| `security-data/` | How the signed offline scanner-data bundle is built, published, and verified |
 
 ## Everyday commands
 
@@ -72,6 +73,15 @@ make agents         # list agent personas, their modes and purpose
 - `source.revision` in the catalog and the matching `vendir/config.yml` ref must
   always move together.
 - Atlassian-bundled JAR findings are fixed only by upgrading the whole product.
+
+## Scanner data (summary — see `security-data/README.md`)
+
+- Scan and compliance read only the signed bundle the prepare stage fetched and
+  verified. Grype runs first and validates the data, SBOM identity, and CISA KEV
+  freshness; any failure stops the scan and the gate denies.
+- Unsigned baselines are ignored, so every finding counts as new unless a signed
+  baseline exists. A stale bundle or KEV feed (older than
+  `policy.maximumDatabaseAgeHours`) is a deny, never a reason to add an ignore.
 
 ## Working style for agents and humans
 

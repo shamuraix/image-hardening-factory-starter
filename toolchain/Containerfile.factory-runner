@@ -4,7 +4,6 @@ FROM ${BASE_REF}
 ARG FACTORY_UID=10001
 ARG FACTORY_GID=10001
 COPY dist/tools/ /usr/local/bin/
-COPY dist/security-data/ /opt/security-data/
 COPY dist/factory-wheel/ /tmp/wheels/
 
 RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman skopeo openscap-scanner \
@@ -15,7 +14,6 @@ RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman skopeo
     && test -x /usr/local/bin/buildkitd \
     && test -x /usr/local/bin/buildkit-runc \
     && test -x /usr/local/bin/rootlesskit \
-    && test -s /opt/security-data/generated-at \
     && printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
       "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \

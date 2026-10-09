@@ -58,7 +58,7 @@ spec:
     matchExpressions:
       - key: tekton.dev/pipelineTask
         operator: In
-        values: [prepare, build, quarantine, resolve, attest, promote, intake, evidence-context]
+        values: [prepare, build, quarantine, resolve, attest, promote, intake, security-data, evidence-context]
   policyTypes: [Egress]
   egress:
     - to:
@@ -84,8 +84,9 @@ spec:
       ports:
         - {protocol: TCP, port: 443}
 ---
-# Connected intake and upstream reconnaissance: approved upstreams only
-# (repo1.dso.mil, vendor download hosts listed in hardening manifests).
+# Connected intake, security-data refresh, and upstream reconnaissance: approved
+# upstreams only (repo1.dso.mil, vendor download hosts listed in hardening
+# manifests, scanner database and ClamAV mirrors, the CISA KEV feed).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -95,7 +96,7 @@ spec:
     matchExpressions:
       - key: tekton.dev/pipelineTask
         operator: In
-        values: [intake, upstream-context]
+        values: [intake, security-data, upstream-context]
   policyTypes: [Egress]
   egress:
     - to:

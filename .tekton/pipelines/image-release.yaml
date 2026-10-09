@@ -4,7 +4,7 @@
 # The merge is the approval. CODEOWNERS on releases/gov*/ enforce who may
 # approve Gov releases, and the merging user ({{ sender }}) becomes the recorded
 # approver, re-checked against FACTORY_GOV_APPROVER_PATTERN by the signing and
-# promotion scripts. This replaces the Jenkins `input` step.
+# promotion scripts.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:

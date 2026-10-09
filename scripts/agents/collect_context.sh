@@ -85,7 +85,6 @@ case "${FACTORY_AGENT}" in
     evidence_summary "work/${image}"
     image_exceptions "${image}"
     cp "catalog/images/${image}.yaml" "${context}/catalog.yaml"
-    copy_if /opt/security-data/repository-candidates.json
     ;;
   release-readiness)
     evidence_summary "work/${image}"

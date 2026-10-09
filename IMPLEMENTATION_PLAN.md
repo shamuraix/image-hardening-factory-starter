@@ -6,8 +6,10 @@
 2. Rootless OCI builds with internal RPM source control
 3. SBOM + delegated scanner evidence + compliance/test evidence
 4. Policy-gated import, signing, and digest-preserving promotion
-5. Optional remediation/reproducibility extensions
+5. Signed offline security data for scanners and compliance
 6. Tekton + Pipelines-as-Code orchestration with a Claude Code operations layer
+
+Current status per capability is in [docs/implementation-status.md](docs/implementation-status.md).
 
 ---
 
@@ -81,15 +83,21 @@ Done when:
 - Build jobs cannot publish to quarantine/release directly
 - Promotion never mutates the promoted digest
 
-### Milestone 6 — Optional extension stages
+### Milestone 6 — Signed offline security data
 
 Deliver:
 
-- Helmper/Copacetic/Hummingbird optional evidence hooks
+- Daily connected job that downloads scanner databases, the CISA KEV catalog,
+  ClamAV signatures, and SCAP content, signs the bundle, and publishes it
+- Fetch-and-verify step in every build, with the bundle sealed for scan and
+  compliance
+- Grype validation that fails closed on invalid data, mismatched SBOMs, or stale
+  KEV data
 
 Done when:
 
-- Optional stages add evidence without weakening trust boundaries
+- Scan and compliance stages read only data whose signature and manifest verified
+- A stale or tampered bundle makes the gate deny rather than pass silently
 
 ### Milestone 7 — UBI canary evolution
 
@@ -107,10 +115,11 @@ Done when:
 
 Deliver:
 
-- Tekton Tasks/Pipelines replacing both Jenkinsfiles, with per-step credentials,
-  per-task ServiceAccounts, NetworkPolicies, and seal-verified evidence handoff
+- Tekton Tasks/Pipelines with per-step credentials, per-task ServiceAccounts,
+  NetworkPolicies, and seal-verified evidence handoff
 - PaC triggers generated from the catalog (PR, push, nightly, base-release,
-  release, intake, agents) with `pipelinerun_provenance: default_branch`
+  release, intake, security-data, agents) with
+  `pipelinerun_provenance: default_branch`
 - Release requests in git as the approval mechanism; separate release pipeline
 - Tekton Chains SLSA provenance alongside environment-key attestations
 - Six Claude Code personas (triage, CVE remediation, upstream sync, release

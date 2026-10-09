@@ -121,7 +121,7 @@ class RemediationRegressionTests(unittest.TestCase):
                 subprocess.run(command, cwd=root, capture_output=True, check=False).returncode, 0
             )
             subprocess.run(["git", "reset", "--hard", "-q"], cwd=root, check=True)
-            (root / "Jenkinsfile").write_text("malicious new pipeline")
+            (root / "new-pipeline.yaml").write_text("malicious new pipeline")
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             self.assertNotEqual(
                 subprocess.run(command, cwd=root, capture_output=True, check=False).returncode, 0

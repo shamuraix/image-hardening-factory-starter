@@ -12,7 +12,6 @@ REPO_CONFIG_MOUNT = (
     "--mount=type=secret,id=factory-repo,target=/etc/yum.repos.d/factory.repo,required=true"
 )
 BASE_CONTEXT_NAME = "factory-base"
-RESERVED_BUILD_ARGS = frozenset({"BASE_REF", "BASE_MAJOR", "SOURCE_DATE_EPOCH", "BUILDKIT_SYNTAX"})
 
 
 class DockerfileAdaptationError(ValueError):

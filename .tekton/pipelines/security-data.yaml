@@ -1,9 +1,10 @@
-# Connected intake: mirror pinned sources and
-# publish signed resource locks for the selected images.
+# Daily refresh of the signed offline security-data bundle that the scan and
+# compliance stages use. Triggered by the daily-security-data CronJob through
+# the security-data-on-schedule PipelineRun.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: factory-intake
+  name: factory-security-data
   labels:
     app.kubernetes.io/part-of: image-hardening-factory
 spec:
@@ -12,8 +13,6 @@ spec:
     - name: revision
     - name: runner-image
     - name: intake-runner-image
-    - name: images
-      default: ""
   workspaces:
     - name: shared
     - name: git-auth
@@ -28,10 +27,9 @@ spec:
       workspaces:
         - {name: shared, workspace: shared}
         - {name: basic-auth, workspace: git-auth}
-    - name: intake
-      taskRef: {name: factory-intake}
+    - name: security-data
+      taskRef: {name: factory-security-data}
       params:
-        - {name: images, value: $(params.images)}
         - {name: intake-runner-image, value: $(params.intake-runner-image)}
         - {name: commit, value: $(tasks.checkout.results.commit)}
       workspaces:

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+data=${FACTORY_SECURITY_DATA:-/opt/security-data}
 
 case $# in
   1)
@@ -16,15 +17,27 @@ case $# in
     exit 2
     ;;
 esac
+# Tekton sets FACTORY_IMAGE through scripts/tekton/env.sh; local runs
+# (make local-assessment) derive it from the catalog entry.
+if [[ -z ${FACTORY_IMAGE:-} ]]; then
+  [[ -n ${catalog} ]] || { echo "FACTORY_IMAGE or a catalog file is required" >&2; exit 2; }
+  FACTORY_IMAGE=$(yq -er '.metadata.name' "${catalog}")
+fi
+export FACTORY_IMAGE
 evidence="${work_dir}/evidence"
 scans="${evidence}/scans"
 mkdir -p "${scans}"
 
-export GRYPE_DB_CACHE_DIR=${GRYPE_DB_CACHE_DIR:-/opt/security-data/grype}
-export TRIVY_CACHE_DIR=${TRIVY_CACHE_DIR:-/opt/security-data/trivy}
-export OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=${OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY:-/opt/security-data/osv}
+export TRIVY_CACHE_DIR=${TRIVY_CACHE_DIR:-${data}/trivy}
+export OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=${OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY:-${data}/osv}
 
-GRYPE_DB_AUTO_UPDATE=false grype "sbom:${evidence}/sbom.cdx.json" -o json >"${scans}/grype.json"
+kev=${FACTORY_KEV_PATH:-${data}/advisories/cisa-kev.json}
+export FACTORY_KEV_PATH="${kev}"
+# Grype runs first and is validated before anything else is trusted: an invalid
+# database, a tampered or mismatched SBOM, or a stale KEV feed stops the scan
+# here, so the assessment never sees partial evidence.
+FACTORY_CATALOG_FILE="${catalog}" scripts/grype_scan_image.sh "${work_dir}"
+cp "${scans}/grype/report.json" "${scans}/grype.json"
 trivy image --skip-db-update --skip-java-db-update --input "${work_dir}/image.oci.tar" \
   --format json --output "${scans}/trivy.json"
 
@@ -41,11 +54,14 @@ normalize_args=(
   --grype "${scans}/grype.json"
   --trivy "${scans}/trivy.json"
   --osv "${scans}/osv.json"
-  --kev /opt/security-data/advisories/cisa-kev.json
+  --kev "${kev}"
   --output "${evidence}/findings.json"
 )
-baseline="/opt/security-data/baselines/${FACTORY_IMAGE}.json"
-[[ -s "${baseline}" ]] && normalize_args+=(--baseline "${baseline}")
+# Use the baseline for Trivy and OSV findings too, but only when the Grype step
+# verified its signature (it records the baseline digest when it did).
+if jq -e '.baselineDigest != null' "${scans}/grype/status.json" >/dev/null; then
+  normalize_args+=(--baseline "${FACTORY_BASELINE_DIR:-${data}/baselines}/${FACTORY_IMAGE}.json")
+fi
 python3 -m factory.cli normalize-findings "${normalize_args[@]}"
 digest=$(skopeo inspect --format '{{.Digest}}' "oci-archive:${work_dir}/image.oci.tar")
 
@@ -56,11 +72,22 @@ cleanup_malware() {
 }
 trap cleanup_malware EXIT
 podman unshare clamscan \
-  --database=/opt/security-data/clamav --recursive --infected "${malware_rootfs}" \
+  --database="${data}/clamav" --recursive --infected "${malware_rootfs}" \
   >"${scans}/clamav.txt"
 
+# Vulnerability data is as old as its oldest part: the gate's freshness check
+# uses the earlier of the security-data bundle time and the Grype database
+# build time.
+generated_at=$(python3 - "$(cat "${data}/generated-at")" \
+  "$(jq -er '.databaseBuilt' "${scans}/grype/status.json")" <<'PYTHON'
+import sys
+from datetime import datetime
+times = [datetime.fromisoformat(value.replace("Z", "+00:00")) for value in sys.argv[1:]]
+print(min(times).strftime("%Y-%m-%dT%H:%M:%SZ"))
+PYTHON
+)
 jq -n \
-  --arg generatedAt "$(cat /opt/security-data/generated-at)" \
+  --arg generatedAt "${generated_at}" \
   --arg grype "$(grype version -o json | jq -r '.version')" \
   --arg trivy "$(trivy --version --format json | jq -r '.Version')" \
   --arg syft "$(syft version -o json | jq -r '.version')" \
@@ -107,6 +134,10 @@ blocked_count=$(jq -r \
     | map(select(.))
     | length' "${evidence}/findings.json")
 assessment_passed=true
+if ! jq -e --arg digest "${digest}" '.assessmentPassed == true and .digest == $digest' \
+  "${scans}/grype/status.json" >/dev/null; then
+  assessment_passed=false
+fi
 if [[ "${blocked_count}" -gt 0 ]]; then
   assessment_passed=false
 fi
@@ -116,5 +147,7 @@ jq -n \
   --arg digest "${digest}" \
   --argjson warningCount "${warning_count}" \
   --argjson assessmentPassed "${assessment_passed}" \
-  '{schemaVersion:"1.0",backend:"delegated-scanners",scanner:"trivy-grype-syft-osv-scanner",digest:$digest,assessmentPassed:$assessmentPassed,warningCount:$warningCount,assessedAt:$assessedAt}' \
+  --slurpfile grype "${scans}/grype/status.json" \
+  '{schemaVersion:"1.0",backend:"delegated-scanners",scanner:"trivy-grype-syft-osv-scanner",digest:$digest,assessmentPassed:$assessmentPassed,warningCount:$warningCount,assessedAt:$assessedAt,
+    grypeValidation:($grype[0] | {validated:(.assessmentPassed == true and .digest == $digest),databaseBuilt,kevReleasedAt,kevDigest,baselineDigest,scannerVersion})}' \
   >"${scans}/delegated/status.json"
