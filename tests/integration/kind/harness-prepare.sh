@@ -41,7 +41,11 @@ scripts/validate_context.py "${catalog}" "${context}"
 
 echo "harness prepare: pulling ${base_ref} for ${platform}"
 # Single-platform copy of the public base; build_image.sh verifies the digest.
-skopeo copy --retry-times 5 --override-os "${platform%%/*}" --override-arch "${platform##*/}" \
+# Red Hat signs these images and an OCI archive cannot carry signatures, so
+# they are dropped (--remove-signatures); the digest check still binds the
+# archive to the manifest that was pulled.
+skopeo copy --retry-times 5 --remove-signatures \
+  --override-os "${platform%%/*}" --override-arch "${platform##*/}" \
   "docker://${base_ref}" "oci-archive:${work}/base.oci.tar"
 base_digest=$(skopeo inspect --format '{{.Digest}}' "oci-archive:${work}/base.oci.tar")
 
