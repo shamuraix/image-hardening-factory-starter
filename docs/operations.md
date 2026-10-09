@@ -54,7 +54,7 @@ then:
    keys, the GitLab token and webhook secret, the SCM bot token, and the
    incoming-webhook secret. Agents are off in this overlay, so
    `factory-ai-gateway` is optional.
-4. Apply the local overlay: `kubectl apply -k deploy/overlays/local`. It is
+4. Apply the local overlay: `kubectl apply -k deploy/overlays/local` (or `deploy/overlays/dev`, which adds the dev Artifactory layout; see docs/configuration.md, "Artifactory layout"). It is
    `deploy/base` without the NetworkPolicies (their CIDRs are placeholders a
    laptop cannot satisfy) and with agents switched off; ServiceAccounts, the
    admission policy, schedules, and the Repository CR are identical to

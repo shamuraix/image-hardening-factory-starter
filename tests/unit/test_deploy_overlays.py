@@ -59,3 +59,67 @@ class DeployOverlayTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DevOverlayTests(unittest.TestCase):
+    def test_dev_overlay_only_repoints_artifactory_and_runner_images(self) -> None:
+        local = _build("deploy/overlays/local")
+        dev = _build("deploy/overlays/dev")
+        self.assertEqual(set(local), set(dev))
+        settings = dev[("ConfigMap", "factory-settings")]["data"]
+        base_settings = local[("ConfigMap", "factory-settings")]["data"]
+        changed = {k for k in settings if settings[k] != base_settings.get(k)}
+        self.assertEqual(
+            changed,
+            {
+                "ARTIFACTORY_URL",
+                "ARTIFACTORY_REGISTRY",
+                "FACTORY_SOURCE_REPOSITORY",
+                "UPSTREAM_OCI_REPOSITORY",
+                "FACTORY_BASE_QUARANTINE_REPOSITORY",
+                "FACTORY_APPLICATION_QUARANTINE_REPOSITORY",
+                "FACTORY_RELEASE_REPOSITORY",
+                "FACTORY_CANARY_REPOSITORY",
+                "FACTORY_RPM_SOURCE_MODE",
+                "FACTORY_UBI_MIRROR_URL",
+            },
+        )
+        # Repository-path addressing: every OCI repository is <key>/<prefix>
+        # inside the one docker repository, so scripts build
+        # ${ARTIFACTORY_REGISTRY}/${repository}/${path} unchanged.
+        docker = "techops-cicd-esd-hip-docker-dev-local/"
+        for key in (
+            "UPSTREAM_OCI_REPOSITORY",
+            "FACTORY_BASE_QUARANTINE_REPOSITORY",
+            "FACTORY_APPLICATION_QUARANTINE_REPOSITORY",
+            "FACTORY_RELEASE_REPOSITORY",
+            "FACTORY_CANARY_REPOSITORY",
+        ):
+            self.assertTrue(settings[key].startswith(docker), key)
+        prefixes = [
+            settings[k][len(docker) :]
+            for k in (
+                "FACTORY_BASE_QUARANTINE_REPOSITORY",
+                "FACTORY_RELEASE_REPOSITORY",
+                "UPSTREAM_OCI_REPOSITORY",
+            )
+        ]
+        self.assertEqual(len(set(prefixes)), 3, "trust boundaries must not share a prefix")
+        self.assertTrue(
+            settings["FACTORY_SOURCE_REPOSITORY"].startswith(
+                "techops-cicd-esd-hip-generic-dev-local/"
+            )
+        )
+        params = {
+            p["name"]: p["value"]
+            for p in dev[("Repository", "image-hardening-factory")]["spec"]["params"]
+        }
+        for name in ("runner_image", "intake_runner_image", "agent_image"):
+            self.assertRegex(
+                params[name],
+                r"^artifactory\.cicd\.dc/techops-cicd-esd-hip-docker-dev-local/factory/[a-z-]+@sha256:",
+            )
+        self.assertEqual(params["enable_agents"], "false")
+        for key, document in dev.items():
+            if key[0] not in ("ConfigMap", "Repository"):
+                self.assertEqual(document, local[key], key)
