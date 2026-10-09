@@ -127,12 +127,35 @@ make harness-up        # builds the runner, loads it with nerdctl, installs Tekt
 make harness-run IMAGE=ubi9-minimal
 ```
 
-`up.sh` loads the runner image with `nerdctl --namespace k8s.io load -i`;
-set `FACTORY_HARNESS_LOAD_COMMAND` if your image load command differs.
+`up.sh` builds the runner image straight into the cluster's containerd with
+`nerdctl --namespace k8s.io build` (Rancher Desktop ships `nerdctl`), so no
+second container engine is needed; set `FACTORY_HARNESS_BUILD_COMMAND` if yours
+differs.
 `make harness-down` refuses to touch a cluster it did not create; remove the
 `factory-harness` and `tekton-pipelines` namespaces yourself. The same cluster
 can then run the full pipeline (see
 [operations.md](operations.md#running-the-full-pipeline-on-a-local-cluster)).
+
+## Behind a TLS-inspecting proxy (Zscaler and similar)
+
+The runner image is built on the public UBI base, which does not trust your
+proxy's root certificate, so `microdnf` fails with *unable to get local issuer
+certificate*. Export the root once and hand it to the harness:
+
+```bash
+# macOS: the proxy root is in the system keychain
+security find-certificate -a -c "Zscaler Root CA" -p /Library/Keychains/System.keychain >~/zscaler-root.pem
+openssl x509 -in ~/zscaler-root.pem -noout -subject      # sanity check
+export FACTORY_CA_BUNDLE=~/zscaler-root.pem
+make harness-up
+```
+
+What that does: `toolchain/build-dist.sh` copies the PEM into `dist/ca-trust/`,
+the runner Containerfile adds it to the system trust store before its first
+network access, and `deploy.sh` sets `FACTORY_CA_BUNDLE` in the harness
+settings so `build_image.sh` mounts the runner's merged bundle (public roots
+plus yours) into the RUN steps of the image being built — as a BuildKit
+secret, never as a layer. Nothing is written into the built image.
 
 ## If the build stage fails
 

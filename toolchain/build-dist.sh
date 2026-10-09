@@ -15,6 +15,18 @@ esac
 
 python3 toolchain/download-tools.py "${dist}" --arch "${arch}" ${FACTORY_TOOLCHAIN_WITH_CLAUDE:+--with-claude}
 
+# Extra CA certificates for the runner image. Set FACTORY_CA_BUNDLE to a PEM file
+# (for example the root of a TLS-inspecting proxy such as Zscaler) when image
+# builds must trust it; the Containerfile adds it to the system trust store.
+rm -rf "${dist}/ca-trust"
+mkdir -p "${dist}/ca-trust"
+if [[ -n ${FACTORY_CA_BUNDLE:-} ]]; then
+  [[ -s ${FACTORY_CA_BUNDLE} ]] || { echo "FACTORY_CA_BUNDLE ${FACTORY_CA_BUNDLE} is not readable" >&2; exit 2; }
+  grep -q 'BEGIN CERTIFICATE' "${FACTORY_CA_BUNDLE}" || { echo "FACTORY_CA_BUNDLE must be a PEM certificate bundle" >&2; exit 2; }
+  cp "${FACTORY_CA_BUNDLE}" "${dist}/ca-trust/extra-ca.crt"
+  echo "runner image will trust the extra CA bundle from ${FACTORY_CA_BUNDLE}"
+fi
+
 rm -rf "${dist}/factory-wheel"
 mkdir -p "${dist}/factory-wheel"
 python3 -m pip wheel --quiet --no-deps --wheel-dir "${dist}/factory-wheel" .

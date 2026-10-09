@@ -38,6 +38,14 @@ class DockerfileAdaptationTests(unittest.TestCase):
         self.assertIn("RUN --mount=type=tmpfs,target=/etc/yum.repos.d ", adapted)
         self.assertIn("RUN --mount=type=tmpfs,target=/etc/yum.repos.d ", adapted)
         self.assertIn("<<EOF\necho heredoc\nEOF\n", adapted)
+        self.assertNotIn("factory-ca", adapted)
+        with_ca = adapt_dockerfile_text("FROM ${BASE_REF}\nRUN microdnf -y update\n", True)
+        self.assertEqual(
+            with_ca.count("id=factory-ca,target=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"),
+            1,
+        )
+        with self.assertRaises(DockerfileAdaptationError):
+            adapt_dockerfile_text("FROM ${BASE_REF}\nRUN --mount=type=secret,id=factory-ca true\n")
 
     def test_rejects_external_sources(self) -> None:
         cases = [
@@ -385,6 +393,27 @@ class BuildImageBuildKitTests(unittest.TestCase):
         build_env = (self.work / "build.env").read_text(encoding="utf-8")
         self.assertIn("IMAGE_DIGEST=sha256:final", build_env)
         self.assertIn("LOCAL_IMAGE_REF=localhost/factory/test:local", build_env)
+
+    def test_build_image_mounts_a_ca_bundle_only_when_asked(self) -> None:
+        result = self._run_build()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run_args = "\n".join((self.project / "run-buildkit.log").read_text().splitlines())
+        self.assertNotIn("id=factory-ca", run_args)
+
+        bundle = self.project / "ca-bundle.pem"
+        bundle.write_text("-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n")
+        result = self._run_build({"FACTORY_CA_BUNDLE": str(bundle)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        run_args = "\n".join((self.project / "run-buildkit.log").read_text().splitlines())
+        self.assertIn(f"id=factory-ca,src={bundle}", run_args)
+        adapted = (self.project / "adapted.Dockerfile").read_text()
+        self.assertIn(
+            "id=factory-ca,target=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", adapted
+        )
+
+        result = self._run_build({"FACTORY_CA_BUNDLE": str(self.project / "missing.pem")})
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("FACTORY_CA_BUNDLE", result.stderr)
 
     def test_build_image_requests_no_network_when_explicit(self) -> None:
         result = self._run_build({"FACTORY_BUILD_NETWORK": "none"})

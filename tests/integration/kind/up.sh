@@ -8,9 +8,14 @@
 # Existing cluster mode: set FACTORY_HARNESS_KUBECONFIG to a kubeconfig for a
 # cluster you already run (for example Rancher Desktop's k3s, Kubernetes 1.33+
 # with the containerd engine and kubelet userNamespaces.idsPerPod >= 262144).
-# kind is not used; the runner image is loaded with FACTORY_HARNESS_LOAD_COMMAND
-# (default: nerdctl --namespace k8s.io load -i). down.sh refuses to remove such
-# a cluster.
+# kind is not used and no second container engine is needed: the runner image
+# is built straight into the cluster's containerd with
+# FACTORY_HARNESS_BUILD_COMMAND (default: nerdctl --namespace k8s.io build).
+# down.sh refuses to remove such a cluster.
+#
+# FACTORY_CA_BUNDLE (optional, both modes): PEM file with extra CA certificates
+# the runner and the images it builds must trust, e.g. a TLS-inspecting proxy's
+# root certificate. Passed to toolchain/build-dist.sh and to the build stage.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 state=${FACTORY_HARNESS_STATE:-.local-factory/kind-review}
@@ -32,8 +37,14 @@ if [[ ${rootful} == true ]]; then
   runtime=(sudo -n podman)
 fi
 [[ ${provider} == podman || ${provider} == docker ]] || { echo "Provider must be podman or docker" >&2; exit 2; }
-required=(kubectl git python3 "${provider}")
-[[ -n ${existing} ]] || required+=(kind)
+required=(kubectl git python3)
+if [[ -n ${existing} ]]; then
+  # shellcheck disable=SC2206  # the build command is deliberately word-split
+  build_command=(${FACTORY_HARNESS_BUILD_COMMAND:-nerdctl --namespace k8s.io build})
+  required+=("${build_command[0]}")
+else
+  required+=(kind "${provider}")
+fi
 for tool in "${required[@]}"; do
   command -v "${tool}" >/dev/null || { echo "Missing ${tool}" >&2; exit 2; }
 done
@@ -132,23 +143,30 @@ fi
 architecture=$("${k[@]}" get nodes -o jsonpath='{.items[0].status.nodeInfo.architecture}')
 FACTORY_TOOLCHAIN_ARCH="${architecture}" toolchain/build-dist.sh dist
 ubi_version=$(python3 -c 'import yaml; print(yaml.safe_load(open("catalog/images/ubi9-minimal.yaml"))["product"]["version"])')
-"${runtime[@]}" build --platform "linux/${architecture}" \
-  --build-arg "BASE_REF=registry.access.redhat.com/ubi9/ubi-minimal:${ubi_version}" \
-  -t localhost/factory-review-runner:review -f toolchain/Containerfile.factory-runner .
-rm -f "${state}/runner.tar"
-if [[ ${provider} == podman ]]; then
-  "${runtime[@]}" save --format docker-archive -o "${state}/runner.tar" localhost/factory-review-runner:review
-else
-  docker save -o "${state}/runner.tar" localhost/factory-review-runner:review
-fi
-if [[ ${rootful} == true ]]; then
-  sudo -n chown "$(id -u):$(id -g)" "${state}/runner.tar"
-fi
+build_args=(--platform "linux/${architecture}"
+  --build-arg "BASE_REF=registry.access.redhat.com/ubi9/ubi-minimal:${ubi_version}"
+  -t localhost/factory-review-runner:review -f toolchain/Containerfile.factory-runner .)
 if [[ -n ${existing} ]]; then
-  # shellcheck disable=SC2086  # the load command is deliberately word-split
-  ${FACTORY_HARNESS_LOAD_COMMAND:-nerdctl --namespace k8s.io load -i} "${state}/runner.tar"
+  # Built directly into the cluster's containerd image store; nothing to load.
+  "${build_command[@]}" "${build_args[@]}"
 else
+  "${runtime[@]}" build "${build_args[@]}"
+  rm -f "${state}/runner.tar"
+  if [[ ${provider} == podman ]]; then
+    "${runtime[@]}" save --format docker-archive -o "${state}/runner.tar" localhost/factory-review-runner:review
+  else
+    docker save -o "${state}/runner.tar" localhost/factory-review-runner:review
+  fi
+  if [[ ${rootful} == true ]]; then
+    sudo -n chown "$(id -u):$(id -g)" "${state}/runner.tar"
+  fi
   "${kind_command[@]}" load image-archive --name "${cluster}" "${state}/runner.tar"
+fi
+# Tell deploy.sh whether the build stage should mount the runner's CA bundle.
+if [[ -n ${FACTORY_CA_BUNDLE:-} ]]; then
+  : >"${state}/ca-bundle"
+else
+  rm -f "${state}/ca-bundle"
 fi
 FACTORY_HARNESS_STATE="${state}" "${harness}/deploy.sh"
 if [[ ${rootful} == true ]]; then

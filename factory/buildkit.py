@@ -11,6 +11,14 @@ REPO_TMPFS_MOUNT = "--mount=type=tmpfs,target=/etc/yum.repos.d"
 REPO_CONFIG_MOUNT = (
     "--mount=type=secret,id=factory-repo,target=/etc/yum.repos.d/factory.repo,required=true"
 )
+# Optional: the runner's merged CA bundle (system roots plus any extra CA such
+# as a TLS-inspecting proxy's root), mounted where UBI's libcurl, microdnf, and
+# git read trust. Used when the build must reach the network through such a
+# proxy; see FACTORY_CA_BUNDLE in scripts/build_image.sh.
+CA_BUNDLE_MOUNT = (
+    "--mount=type=secret,id=factory-ca,"
+    "target=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem,required=true"
+)
 BASE_CONTEXT_NAME = "factory-base"
 
 
@@ -253,10 +261,10 @@ def _leading_run_mounts(lines: list[str]) -> list[dict[str, str]]:
     return mounts
 
 
-def _inject_run_mounts(lines: list[str]) -> list[str]:
+def _inject_run_mounts(lines: list[str], ca_bundle: bool = False) -> list[str]:
     for mount in _leading_run_mounts(lines):
-        if any(mount.get(key) == "factory-repo" for key in ("id", "src", "source")):
-            raise DockerfileAdaptationError("Dockerfile RUN already uses the reserved repo secret")
+        if any(mount.get(key) in {"factory-repo", "factory-ca"} for key in ("id", "src", "source")):
+            raise DockerfileAdaptationError("Dockerfile RUN already uses a reserved factory secret")
         for key in ("target", "dst", "destination"):
             target = mount.get(key, "")
             if target == "/etc/yum.repos.d" or target.startswith("/etc/yum.repos.d/"):
@@ -273,13 +281,15 @@ def _inject_run_mounts(lines: list[str]) -> list[str]:
         newline = "\n"
     rest = match.group(3).rstrip("\r\n")
     adapted_first = f"{match.group(1)} {REPO_TMPFS_MOUNT} {REPO_CONFIG_MOUNT}"
+    if ca_bundle:
+        adapted_first = f"{adapted_first} {CA_BUNDLE_MOUNT}"
     if rest:
         adapted_first = f"{adapted_first} {rest}"
     adapted_first = f"{adapted_first}{newline}"
     return [adapted_first, *lines[1:]]
 
 
-def adapt_dockerfile_text(text: str) -> str:
+def adapt_dockerfile_text(text: str, ca_bundle: bool = False) -> str:
     lines = text.splitlines(keepends=True)
     output: list[str] = []
     index = 0
@@ -309,7 +319,7 @@ def adapt_dockerfile_text(text: str) -> str:
         elif keyword == "ADD":
             _validate_add(logical)
         elif keyword == "RUN":
-            instruction_lines = _inject_run_mounts(instruction_lines)
+            instruction_lines = _inject_run_mounts(instruction_lines, ca_bundle)
         output.extend(instruction_lines)
 
     if not saw_base_from:
@@ -319,11 +329,18 @@ def adapt_dockerfile_text(text: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
+    ca_bundle = "--ca-bundle" in args
+    args = [arg for arg in args if arg != "--ca-bundle"]
     if len(args) != 2 or args[0] != "adapt-dockerfile":
-        print("usage: python3 -m factory.buildkit adapt-dockerfile INPUT", file=sys.stderr)
+        print(
+            "usage: python3 -m factory.buildkit adapt-dockerfile [--ca-bundle] INPUT",
+            file=sys.stderr,
+        )
         return 2
     try:
-        sys.stdout.write(adapt_dockerfile_text(Path(args[1]).read_text(encoding="utf-8")))
+        sys.stdout.write(
+            adapt_dockerfile_text(Path(args[1]).read_text(encoding="utf-8"), ca_bundle)
+        )
     except DockerfileAdaptationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
