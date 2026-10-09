@@ -29,6 +29,7 @@ spec:
     - name: checks
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: factory}
         - {name: stage, value: checks}
         - name: command

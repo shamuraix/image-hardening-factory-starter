@@ -70,6 +70,7 @@ spec:
     - name: validate
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(params.image)}
         - {name: stage, value: validate}
         - name: command
@@ -87,6 +88,7 @@ spec:
     - name: prepare
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(params.image)}
         - {name: stage, value: prepare}
         - name: command
@@ -108,6 +110,7 @@ spec:
     - name: build
       taskRef: {name: factory-rootless-build}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - name: inputs
           value: ["prepare=$(tasks.prepare.results.seal)"]
         - {name: image, value: $(params.image)}
@@ -120,6 +123,7 @@ spec:
     - name: sbom
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(params.image)}
         - {name: stage, value: sbom}
         - name: command
@@ -137,6 +141,7 @@ spec:
     - name: test
       taskRef: {name: factory-rootless-test}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - name: inputs
           value: ["build=$(tasks.build.results.seal)"]
         - {name: image, value: $(params.image)}
@@ -149,6 +154,7 @@ spec:
     - name: consume
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(params.image)}
         - {name: stage, value: consume}
         - name: command
@@ -172,6 +178,7 @@ spec:
     - name: tamper-detected
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(params.image)}
         - {name: stage, value: tamper}
         - name: command

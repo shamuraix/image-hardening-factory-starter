@@ -49,4 +49,9 @@ PipelineRuns) and is selected by NetworkPolicy through the
 6. **Results for identity.** `IMAGE_URL`/`IMAGE_DIGEST` results let Tekton Chains
    sign and attest; never pass digests through files alone.
 7. Pin images by digest; keep `securityContext` restricted except the single
-   rootless BuildKit/Podman run step.
+   rootless BuildKit/Podman run step (which keeps `SETUID`/`SETGID` in its
+   bounding set for the setuid mapping helpers and nothing else).
+8. **Tasks never use `$(context.pipelineRun.*)`.** Tekton substitutes those
+   only inside a Pipeline; in a Task they stay literal. Every Task takes a
+   `pipelinerun` param and every Pipeline passes `$(context.pipelineRun.name)`;
+   namespace comes from `$(context.taskRun.namespace)`. A unit test enforces it.
