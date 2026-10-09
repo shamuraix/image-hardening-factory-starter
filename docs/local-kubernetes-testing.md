@@ -21,7 +21,7 @@ image (`ubi9-minimal` by default, `IMAGE=ubi10-minimal` also works):
 | `sbom` (`factory-stage`) | yes | Syft CycloneDX and SPDX SBOMs plus `sbom.identity.json` |
 | `test` (`factory-rootless-test`) | yes | the base test profile and RPM integrity checks in rootless Podman |
 | `consume` (`factory-stage`) | yes | a downstream task verifies an upstream seal before reading |
-| `tamper-detected` (`factory-stage`) | yes | a wrong seal digest is rejected in-cluster (this task must **fail**) |
+| `tamper-detected` (`factory-stage`, in `finally`) | yes | a wrong seal digest is rejected in-cluster: this task must **fail**, and `tekton.py` checks that its `verify` step is what failed |
 
 Applying every Task and Pipeline also proves the Tekton webhook accepts them.
 
@@ -51,9 +51,16 @@ rest live only in the runner image.
 ```bash
 make harness-up                   # cluster, runner image, Tekton, factory objects
 make harness-run IMAGE=ubi9-minimal
-python3 tests/integration/kind/tekton.py --state .local-factory/kind-review log
+python3 tests/integration/kind/tekton.py --state .local-factory/kind-review status  # re-check the last run
+python3 tests/integration/kind/tekton.py --state .local-factory/kind-review log     # all step logs
 make harness-down
 ```
+
+`tekton.py` prints the PipelineRun's own reason and message, each task's
+status, and the last lines of the first failed task's `run` step. A task
+shown as `None` never got a TaskRun: the PipelineRun stopped scheduling before
+it was reached, and the reason line says why. Pass the same `--state` directory
+you gave `FACTORY_HARNESS_STATE`, if you set one.
 
 `make harness-up` does, in order:
 
