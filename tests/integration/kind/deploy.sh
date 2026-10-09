@@ -39,6 +39,17 @@ if (pathlib.Path(sys.argv[1]) / "ca-bundle").exists():
     settings["data"]["FACTORY_CA_BUNDLE"] = "/etc/pki/tls/certs/ca-bundle.crt"
 print(yaml.safe_dump(settings))
 PYTHON
+# The build Task binds two Secrets by secretKeyRef, so the pod cannot start
+# without them even though neither value is read on the harness path: the base
+# comes from prepare's base.oci.tar (no registry login) and RPMs come from the
+# public CDN (no mirror credential). Placeholders let the pod start; the Task
+# itself stays strict so a missing credential in production fails at pod
+# creation with a clear reason. Never put real values here.
+"${k[@]}" -n factory-harness create secret generic factory-artifactory-read \
+  --from-literal=token=harness-placeholder --dry-run=client -o yaml | "${k[@]}" apply -f -
+"${k[@]}" -n factory-harness create secret generic factory-rpm-mirror \
+  --from-literal=username=harness-placeholder --from-literal=password=harness-placeholder \
+  --dry-run=client -o yaml | "${k[@]}" apply -f -
 "${k[@]}" -n factory-harness apply -f .tekton/tasks/ -f .tekton/pipelines/
 "${k[@]}" -n factory-harness apply -f "${harness}/harness-pipeline.yaml"
 printf 'Run: python3 tests/integration/kind/tekton.py --state %s run\n' "${state}"
