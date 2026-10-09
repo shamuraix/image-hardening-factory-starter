@@ -125,6 +125,28 @@ class ReferenceTests(unittest.TestCase):
         for name, run in pipeline_runs().items():
             self.assertIn(run["spec"]["pipelineRef"]["name"], pipelines, name)
 
+    def test_pipelinerun_context_reaches_tasks_only_through_a_param(self) -> None:
+        # Tekton substitutes $(context.pipelineRun.*) inside a Pipeline only; a
+        # Task using it directly gets the literal text (seen as an image tag
+        # "--context.pipelineRun.name--" in the harness).
+        tasks = documents("Task")
+        for name, definition in tasks.items():
+            self.assertNotIn("$(context.pipelineRun", yaml.safe_dump(definition), name)
+        needing = {
+            name
+            for name, definition in tasks.items()
+            if any(p["name"] == "pipelinerun" for p in definition["spec"].get("params", []))
+        }
+        self.assertIn("factory-stage", needing)
+        for pipeline_name in documents("Pipeline"):
+            for entry in _pipeline_tasks(pipeline_name):
+                if entry["taskRef"]["name"] in needing:
+                    self.assertEqual(
+                        param(entry, "pipelinerun"),
+                        "$(context.pipelineRun.name)",
+                        f"{pipeline_name}/{entry['name']}",
+                    )
+
     def test_every_pipeline_task_has_an_explicit_service_account(self) -> None:
         accounts = {
             document["metadata"]["name"]

@@ -38,6 +38,12 @@ spec:
       default: []
       description: <pipelineTask>=<status> pairs for triage context.
     - name: runner-image
+    - name: pipelinerun
+      description: >-
+        Name of the owning PipelineRun. Tekton substitutes the pipelineRun
+        context variables only inside a Pipeline, never inside a Task, so every
+        Pipeline passes its own context.pipelineRun.name here; env.sh derives
+        FACTORY_BUILD_ID from it.
     - name: agent-image
       description: Digest-pinned image with the pinned Claude Code CLI.
     - name: commit
@@ -94,9 +100,9 @@ spec:
       - {name: FACTORY_GIT_PROVIDER, value: $(params.git-provider)}
       - {name: FACTORY_QUARANTINE_SEAL, value: $(params.quarantine-seal)}
       - {name: FACTORY_SHARED_SOURCE, value: $(workspaces.shared.path)/source}
-      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_PIPELINERUN, value: $(params.pipelinerun)}
       - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
-      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+      - {name: FACTORY_NAMESPACE, value: $(context.taskRun.namespace)}
       - {name: HOME, value: /tmp/home}
     securityContext:
       runAsNonRoot: true

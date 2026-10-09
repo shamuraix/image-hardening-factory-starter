@@ -16,6 +16,12 @@ spec:
     - name: inputs
       type: array
     - name: runner-image
+    - name: pipelinerun
+      description: >-
+        Name of the owning PipelineRun. Tekton substitutes the pipelineRun
+        context variables only inside a Pipeline, never inside a Task, so every
+        Pipeline passes its own context.pipelineRun.name here; env.sh derives
+        FACTORY_BUILD_ID from it.
     - name: commit
   workspaces:
     - name: shared
@@ -40,9 +46,9 @@ spec:
       - {name: FACTORY_RELEASE_ENV, value: $(params.environment)}
       - {name: FACTORY_APPROVER_ID, value: $(params.approver)}
       - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
-      - {name: FACTORY_PIPELINERUN, value: $(context.pipelineRun.name)}
+      - {name: FACTORY_PIPELINERUN, value: $(params.pipelinerun)}
       - {name: FACTORY_TASKRUN, value: $(context.taskRun.name)}
-      - {name: FACTORY_NAMESPACE, value: $(context.pipelineRun.namespace)}
+      - {name: FACTORY_NAMESPACE, value: $(context.taskRun.namespace)}
       - {name: COSIGN_PUBLIC_KEY, value: /credentials/verify/cosign.pub}
     securityContext:
       runAsNonRoot: true

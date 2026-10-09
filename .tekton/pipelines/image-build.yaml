@@ -62,6 +62,7 @@ spec:
     - name: validate
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: stage, value: validate}
         - name: command
           value: >-
@@ -80,6 +81,7 @@ spec:
     - name: prepare
       taskRef: {name: factory-prepare}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - name: inputs
           value: ["validate=$(tasks.validate.results.seal)"]
         - *image
@@ -93,6 +95,7 @@ spec:
     - name: build
       taskRef: {name: factory-rootless-build}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - name: inputs
           value: ["prepare=$(tasks.prepare.results.seal)"]
         - *image
@@ -106,6 +109,7 @@ spec:
     - name: sbom
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: stage, value: sbom}
         - name: command
           value: scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
@@ -124,6 +128,7 @@ spec:
     - name: scan
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: stage, value: scan}
         - {name: allow-failure, value: "true"}
         - name: command
@@ -150,6 +155,7 @@ spec:
     - name: assessment
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: stage, value: assessment}
         - name: command
           value: test -f "${FACTORY_WORK_DIR}/evidence/scans/delegated/status.json"
@@ -173,6 +179,7 @@ spec:
     - name: compliance
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: stage, value: compliance}
         - name: command
           value: scripts/compliance_scan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
@@ -195,6 +202,7 @@ spec:
     - name: test
       taskRef: {name: factory-rootless-test}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - name: inputs
           value: ["build=$(tasks.build.results.seal)"]
         - *image
@@ -208,6 +216,7 @@ spec:
     - name: gate
       taskRef: {name: factory-stage}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: stage, value: gate}
         - name: command
           value: scripts/evaluate_gate.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
@@ -237,6 +246,7 @@ spec:
         - {input: $(params.publish), operator: in, values: ["true"]}
       taskRef: {name: factory-quarantine}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - name: inputs
           value:
             - "prepare=$(tasks.prepare.results.seal)"
@@ -260,6 +270,7 @@ spec:
         - {input: $(params.enable-release-request), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: release-readiness}
         - {name: mode, value: release-request}
@@ -284,6 +295,7 @@ spec:
         - {input: $(params.enable-agents), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: failure-triage}
         - {name: mode, value: report}
@@ -317,6 +329,7 @@ spec:
         - {input: $(params.enable-remediation), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: cve-remediation}
         - {name: mode, value: propose-change}

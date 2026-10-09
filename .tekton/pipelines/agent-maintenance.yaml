@@ -76,6 +76,7 @@ spec:
       runAfter: [checkout]
       taskRef: {name: factory-evidence-context}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: runner-image, value: $(params.runner-image)}
         - {name: commit, value: $(tasks.checkout.results.commit)}
       workspaces:
@@ -85,6 +86,7 @@ spec:
       runAfter: [upstream-context, evidence-context]
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: $(params.agent)}
         - {name: mode, value: $(params.mode)}

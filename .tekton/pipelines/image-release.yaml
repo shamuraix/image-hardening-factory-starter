@@ -43,6 +43,7 @@ spec:
     - name: resolve
       taskRef: {name: factory-release-resolve}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: runner-image, value: $(params.runner-image)}
         - {name: commit, value: $(tasks.checkout.results.commit)}
         - {name: sender, value: $(params.sender)}
@@ -52,6 +53,7 @@ spec:
     - name: attest
       taskRef: {name: factory-attest}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(tasks.resolve.results.image)}
         - {name: environment, value: $(tasks.resolve.results.environment)}
         - {name: approver, value: $(tasks.resolve.results.approver)}
@@ -65,6 +67,7 @@ spec:
     - name: promote
       taskRef: {name: factory-promote}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: image, value: $(tasks.resolve.results.image)}
         - {name: environment, value: $(tasks.resolve.results.environment)}
         - {name: approver, value: $(tasks.resolve.results.approver)}
@@ -94,6 +97,7 @@ spec:
         - {input: $(tasks.status), operator: in, values: ["Failed"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
         - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: failure-triage}
         - {name: mode, value: report}
