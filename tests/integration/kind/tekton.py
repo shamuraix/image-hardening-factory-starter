@@ -125,6 +125,9 @@ def run(state: Path, timeout: int, image: str) -> int:
 
 
 def check(state: Path, name: str) -> int:
+    pipelinerun = json.loads(kubectl(state, "get", "pipelinerun", name, "-o", "json"))
+    condition = next(iter(pipelinerun.get("status", {}).get("conditions", [])), {})
+    print(f"pipelinerun {name}: {condition.get('reason')}: {condition.get('message')}")
     runs = json.loads(
         kubectl(state, "get", "taskrun", "-l", f"tekton.dev/pipelineRun={name}", "-o", "json")
     )["items"]
@@ -138,6 +141,27 @@ def check(state: Path, name: str) -> int:
         print(f"{task}: {got} (want {want})")
         if got != want:
             failures.append(task)
+    # tamper-detected must fail in its verify step (the seal check rejecting the
+    # wrong digest), not for some other reason such as a missing workspace.
+    tamper_steps = next(
+        (
+            item["status"].get("steps", [])
+            for item in runs
+            if item["metadata"]["labels"]["tekton.dev/pipelineTask"] == "tamper-detected"
+        ),
+        [],
+    )
+    verify_exit = next(
+        (
+            s.get("terminated", {}).get("exitCode")
+            for s in tamper_steps
+            if s.get("name") == "verify"
+        ),
+        None,
+    )
+    if "tamper-detected" not in failures and verify_exit in (None, 0):
+        print(f"tamper-detected: verify step exit code {verify_exit} (want non-zero)")
+        failures.append("tamper-detected-verify")
     seal = next(
         (
             r["value"]
