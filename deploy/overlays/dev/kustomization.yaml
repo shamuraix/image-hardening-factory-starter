@@ -25,6 +25,7 @@ patches:
       data:
         ARTIFACTORY_URL: https://artifactory.cicd.dc
         ARTIFACTORY_REGISTRY: artifactory.cicd.dc
+        ARTIFACTORY_USERNAME: techops-cicd-esd-hip-dev-bot
         # Generic repository: locks/, intake resources, releases/, security-data/
         FACTORY_SOURCE_REPOSITORY: techops-cicd-esd-hip-generic-dev-local/factory
         # Docker repository, one prefix per trust boundary

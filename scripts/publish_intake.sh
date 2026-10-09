@@ -40,7 +40,7 @@ trap 'rm -rf "${authdir}"' EXIT
 source scripts/lib/registry_auth.sh
 factory_registry_auth "${authdir}"
 authfile="${authdir}/config.json"
-printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | skopeo login --authfile "${authfile}" --username oidc \
+printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | skopeo login --authfile "${authfile}" --username "${ARTIFACTORY_USERNAME:-oidc}" \
   --password-stdin "${ARTIFACTORY_REGISTRY}"
 while IFS=$'\t' read -r source digest; do
   [[ -n "${source}" ]] || continue

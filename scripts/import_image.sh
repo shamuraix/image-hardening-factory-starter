@@ -36,7 +36,7 @@ trap 'rm -rf "${authdir}"' EXIT
 source scripts/lib/registry_auth.sh
 factory_registry_auth "${authdir}"
 authfile="${authdir}/config.json"
-printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | skopeo login --authfile "${authfile}" --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
+printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | skopeo login --authfile "${authfile}" --username "${ARTIFACTORY_USERNAME:-oidc}" --password-stdin "${ARTIFACTORY_REGISTRY}"
 skopeo copy --preserve-digests --authfile "${authfile}" \
   "oci-archive:${work_dir}/image.oci.tar" "docker://${destination}"
 digest=$(skopeo inspect --authfile "${authfile}" "docker://${destination}" | jq -er '.Digest')

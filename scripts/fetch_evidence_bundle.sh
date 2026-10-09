@@ -25,7 +25,7 @@ trap 'rm -rf "${staging}" "${authdir}"' EXIT
 source scripts/lib/registry_auth.sh
 factory_registry_auth "${authdir}"
 printf '%s' "${ARTIFACTORY_READ_TOKEN}" | oras login --registry-config "${authdir}/config.json" \
-  --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}" >/dev/null
+  --username "${ARTIFACTORY_USERNAME:-oidc}" --password-stdin "${ARTIFACTORY_REGISTRY}" >/dev/null
 
 # The evidence manifest must be a referrer of the requested candidate digest.
 oras manifest fetch --registry-config "${authdir}/config.json" \

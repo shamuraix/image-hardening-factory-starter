@@ -74,6 +74,7 @@ class DevOverlayTests(unittest.TestCase):
             {
                 "ARTIFACTORY_URL",
                 "ARTIFACTORY_REGISTRY",
+                "ARTIFACTORY_USERNAME",
                 "FACTORY_SOURCE_REPOSITORY",
                 "UPSTREAM_OCI_REPOSITORY",
                 "FACTORY_BASE_QUARANTINE_REPOSITORY",

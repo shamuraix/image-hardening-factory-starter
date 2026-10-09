@@ -75,6 +75,7 @@ Every factory step receives these as environment variables (`envFrom`).
 |---|---|
 | `INTERNAL_GIT_BASE_URL` | internal SCM namespace that holds the source mirrors |
 | `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Artifactory API base URL and OCI registry host |
+| `ARTIFACTORY_USERNAME` | registry login name paired with the `factory-artifactory-*` tokens (the user the tokens were issued to, for example the bot account); REST calls send the token as a bearer and need no name |
 | `FACTORY_SOURCE_REPOSITORY` | generic repository for locks, intake files, release pointers, and the security-data bundle |
 | `UPSTREAM_OCI_REPOSITORY` | digest-pinned upstream base images |
 | `FACTORY_{BASE,APPLICATION}_QUARANTINE_REPOSITORY` | protected candidate repositories; the catalog `publication.quarantineRepository` field expands these names |

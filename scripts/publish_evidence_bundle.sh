@@ -47,7 +47,7 @@ bundle_sha256=$(sha256sum "${staging}/evidence.tar.gz" | awk '{print $1}')
 source scripts/lib/registry_auth.sh
 factory_registry_auth "${authdir}"
 printf '%s' "${ARTIFACTORY_WRITE_TOKEN}" | oras login --registry-config "${authdir}/config.json" \
-  --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}" >/dev/null
+  --username "${ARTIFACTORY_USERNAME:-oidc}" --password-stdin "${ARTIFACTORY_REGISTRY}" >/dev/null
 (
   cd "${staging}"
   oras attach --registry-config "${authdir}/config.json" \

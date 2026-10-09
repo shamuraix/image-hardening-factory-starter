@@ -30,7 +30,7 @@ authdir=$(mktemp -d)
 trap 'rm -rf "${authdir}"' EXIT
 export DOCKER_CONFIG="${authdir}"
 authfile="${authdir}/config.json"
-printf '%s' "${ARTIFACTORY_SIGN_TOKEN}" | skopeo login --authfile "${authfile}" --username oidc --password-stdin \
+printf '%s' "${ARTIFACTORY_SIGN_TOKEN}" | skopeo login --authfile "${authfile}" --username "${ARTIFACTORY_USERNAME:-oidc}" --password-stdin \
   "${ARTIFACTORY_REGISTRY}"
 export REGISTRY_AUTH_FILE="${authfile}"
 
