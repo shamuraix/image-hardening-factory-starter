@@ -77,11 +77,12 @@ make harness-down
    RuntimeClass and records its name in the state directory; `tekton.py` then
    sets `runtimeClassName` on the build and test pods.
 
-`make harness-run` creates a PipelineRun with the same `taskRunSpecs` the
-generated PipelineRuns use (`hostUsers: false` for build and test) and asserts
-each task's outcome. Rerun `deploy.sh` alone after editing Tasks, Pipelines,
-or scripts (`FACTORY_HARNESS_STATE=... KUBECONFIG=$FACTORY_HARNESS_STATE/kubeconfig tests/integration/kind/deploy.sh`);
-the source snapshot must fit the 1 MiB ConfigMap limit.
+`make harness-run` first redeploys the source snapshot, Tasks, and Pipelines
+(so the scripts you just edited or pulled are what runs), then creates a
+PipelineRun with the same `taskRunSpecs` the generated PipelineRuns use
+(`hostUsers: false` for build and test) and asserts each task's outcome,
+printing the failed step's log when one fails. The source snapshot must fit
+the 1 MiB ConfigMap limit.
 
 ## Using a cluster you already run (Rancher Desktop)
 
