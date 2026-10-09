@@ -166,8 +166,16 @@ and the harness builds the identical runner image for local use.
 
 `FACTORY_CA_BUNDLE` (optional, for `make toolchain` and as a setting): a PEM
 bundle of extra CA certificates. The runner image trusts it, and
-`scripts/build_image.sh` mounts the runner's merged trust store into the RUN
-steps of the image being built (a BuildKit secret, not a layer). Needed when
+`scripts/build_image.sh` mounts the runner's merged trust store into every RUN
+step of the image being built at `/run/factory-ca-bundle.crt` (a BuildKit
+secret, not a layer) and points the mounted repository configuration at it
+(`sslcacert`, `scripts/write_repo_config.sh`), so `dnf`/`microdnf` verify the
+proxy or mirror against it. The image's own trust store is left alone: Iron
+Bank Dockerfiles run `update-ca-trust`, which must be able to rewrite
+`/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem`, and the extra root never
+ends up in the built image. Other TLS clients inside RUN steps are not covered,
+which matches Iron Bank's rule that Dockerfiles fetch nothing at build time;
+declared resources arrive through the hardening manifest instead. Needed when
 builds reach the network through a TLS-inspecting proxy or a mirror with an
 internal CA; unnecessary when the internal hardened base already trusts them.
 

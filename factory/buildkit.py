@@ -12,13 +12,16 @@ REPO_CONFIG_MOUNT = (
     "--mount=type=secret,id=factory-repo,target=/etc/yum.repos.d/factory.repo,required=true"
 )
 # Optional: the runner's merged CA bundle (system roots plus any extra CA such
-# as a TLS-inspecting proxy's root), mounted where UBI's libcurl, microdnf, and
-# git read trust. Used when the build must reach the network through such a
-# proxy; see FACTORY_CA_BUNDLE in scripts/build_image.sh.
-CA_BUNDLE_MOUNT = (
-    "--mount=type=secret,id=factory-ca,"
-    "target=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem,required=true"
-)
+# as a TLS-inspecting proxy's root), for builds that reach the network through
+# such a proxy; see FACTORY_CA_BUNDLE in scripts/build_image.sh. It is mounted
+# at a path of its own, and the mounted repository configuration points dnf and
+# microdnf at it (sslcacert, scripts/write_repo_config.sh). It must not replace
+# the image's own /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem: Iron Bank
+# Dockerfiles run update-ca-trust, which renames a new bundle over that file
+# and fails with EBUSY when the file is a mount point. The image's trust store
+# is therefore never touched and the proxy root never lands in a layer.
+CA_BUNDLE_TARGET = "/run/factory-ca-bundle.crt"
+CA_BUNDLE_MOUNT = f"--mount=type=secret,id=factory-ca,target={CA_BUNDLE_TARGET},required=true"
 BASE_CONTEXT_NAME = "factory-base"
 
 

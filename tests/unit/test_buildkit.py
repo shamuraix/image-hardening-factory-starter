@@ -41,9 +41,11 @@ class DockerfileAdaptationTests(unittest.TestCase):
         self.assertNotIn("factory-ca", adapted)
         with_ca = adapt_dockerfile_text("FROM ${BASE_REF}\nRUN microdnf -y update\n", True)
         self.assertEqual(
-            with_ca.count("id=factory-ca,target=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"),
-            1,
+            with_ca.count("id=factory-ca,target=/run/factory-ca-bundle.crt,required=true"), 1
         )
+        # Never the image's own trust store: update-ca-trust in Iron Bank
+        # Dockerfiles renames over that file and fails on a mount point.
+        self.assertNotIn("/etc/pki/ca-trust", with_ca)
         with self.assertRaises(DockerfileAdaptationError):
             adapt_dockerfile_text("FROM ${BASE_REF}\nRUN --mount=type=secret,id=factory-ca true\n")
 
@@ -125,6 +127,38 @@ class DockerfileAdaptationTests(unittest.TestCase):
 
         self.assertIn('echo "unterminated source=factory-repo\n', adapted)
         self.assertIn("RUN --mount=type=tmpfs,target=/etc/yum.repos.d", adapted)
+
+
+@unittest.skipUnless(shutil.which("yq"), "yq is required for write_repo_config.sh")
+class RepoConfigTests(unittest.TestCase):
+    def _write(self, env: dict[str, str]) -> str:
+        with tempfile.TemporaryDirectory() as directory:
+            catalog = Path(directory) / "image.yaml"
+            catalog.write_text(
+                "product: {version: '9.6'}\n"
+                "build:\n  base: {kind: upstream}\n  rpm: {source: public-upstream}\n"
+                "  platforms: [linux/amd64]\n"
+            )
+            output = Path(directory) / "factory.repo"
+            result = subprocess.run(
+                [str(ROOT / "scripts/write_repo_config.sh"), str(catalog), str(output)],
+                env={**os.environ, **env},
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            return output.read_text()
+
+    def test_repo_config_points_dnf_at_the_mounted_ca_bundle_only_when_asked(self) -> None:
+        from factory.buildkit import CA_BUNDLE_TARGET
+
+        plain = self._write({"FACTORY_CA_BUNDLE": ""})
+        self.assertNotIn("sslcacert", plain)
+        with_ca = self._write({"FACTORY_CA_BUNDLE": "/anywhere/bundle.pem"})
+        # One line per repository section, naming the path build_image.sh mounts.
+        self.assertEqual(with_ca.count(f"sslcacert={CA_BUNDLE_TARGET}\n"), 2)
+        self.assertEqual(with_ca.count("sslverify=1\n"), 2)
 
 
 class BuildImageBuildKitTests(unittest.TestCase):
@@ -407,9 +441,7 @@ class BuildImageBuildKitTests(unittest.TestCase):
         run_args = "\n".join((self.project / "run-buildkit.log").read_text().splitlines())
         self.assertIn(f"id=factory-ca,src={bundle}", run_args)
         adapted = (self.project / "adapted.Dockerfile").read_text()
-        self.assertIn(
-            "id=factory-ca,target=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", adapted
-        )
+        self.assertIn("id=factory-ca,target=/run/factory-ca-bundle.crt", adapted)
 
         result = self._run_build({"FACTORY_CA_BUNDLE": str(self.project / "missing.pem")})
         self.assertNotEqual(result.returncode, 0)

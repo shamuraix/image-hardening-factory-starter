@@ -165,8 +165,11 @@ What that does: `toolchain/build-dist.sh` copies the PEM into `dist/ca-trust/`,
 the runner Containerfile adds it to the system trust store before its first
 network access, and `deploy.sh` sets `FACTORY_CA_BUNDLE` in the harness
 settings so `build_image.sh` mounts the runner's merged bundle (public roots
-plus yours) into the RUN steps of the image being built — as a BuildKit
-secret, never as a layer. Nothing is written into the built image.
+plus yours) into the RUN steps of the image being built at
+`/run/factory-ca-bundle.crt` — as a BuildKit secret, never as a layer — and
+the mounted repository configuration tells `microdnf` to verify against it
+(`sslcacert`). Nothing is written into the built image, and the image's own
+`update-ca-trust` keeps working because its trust store is not a mount point.
 
 ## If the build stage fails
 

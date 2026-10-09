@@ -24,6 +24,13 @@ esac
 
 source_mode=${FACTORY_RPM_SOURCE_MODE:-$(yq -r '.build.rpm.source // ""' "${catalog}")}
 [[ -n "${source_mode}" ]] || { echo "build.rpm.source must be set in ${catalog}" >&2; exit 2; }
+# Behind a TLS-inspecting proxy build_image.sh mounts the runner's CA bundle
+# into every RUN step at this path (factory.buildkit.CA_BUNDLE_TARGET); point
+# dnf/microdnf at it instead of touching the image's trust store.
+ca_option=""
+if [[ -n ${FACTORY_CA_BUNDLE:-} ]]; then
+  ca_option="sslcacert=/run/factory-ca-bundle.crt"
+fi
 
 case "${source_mode}" in
   private-mirror)
@@ -41,6 +48,7 @@ enabled=1
 gpgcheck=1
 repo_gpgcheck=0
 sslverify=1
+${ca_option}
 username=${FACTORY_RPM_MIRROR_USERNAME}
 password=${FACTORY_RPM_MIRROR_PASSWORD}
 
@@ -51,6 +59,7 @@ enabled=1
 gpgcheck=1
 repo_gpgcheck=0
 sslverify=1
+${ca_option}
 username=${FACTORY_RPM_MIRROR_USERNAME}
 password=${FACTORY_RPM_MIRROR_PASSWORD}
 CFG
@@ -69,6 +78,7 @@ enabled=1
 gpgcheck=1
 repo_gpgcheck=0
 sslverify=1
+${ca_option}
 
 [factory-ubi-upstream-appstream]
 name=Factory public UBI AppStream upstream
@@ -77,6 +87,7 @@ enabled=1
 gpgcheck=1
 repo_gpgcheck=0
 sslverify=1
+${ca_option}
 CFG
     chmod 0600 "${output}"
     printf 'public-upstream:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"
