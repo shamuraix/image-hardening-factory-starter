@@ -70,14 +70,21 @@ RUN chmod 0555 /usr/local/bin/* \
        done
 
 # The unprivileged factory user with the subordinate ID range rootless BuildKit
-# and Podman map into, and the setuid helpers that make that mapping possible.
+# and Podman map into, and the helpers that make that mapping possible.
+# RHEL 9 ships newuidmap/newgidmap with file capabilities (cap_setuid /
+# cap_setgid) instead of the setuid bit. Inside a pod user namespace
+# (hostUsers: false) the kernel ignores capability xattrs written outside that
+# namespace, so the helpers would not work there; the setuid bit does, because
+# the image's root maps to the pod's root. Set it explicitly.
 RUN printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
       "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \
     && printf 'factory:100000:65536\n' >>/etc/subuid \
     && printf 'factory:100000:65536\n' >>/etc/subgid \
     && for helper in /usr/bin/newuidmap /usr/bin/newgidmap; do \
-         test -u "${helper}" || { echo "${helper} is missing or not setuid (shadow-utils)" >&2; ls -l "${helper}" >&2 || true; exit 1; }; \
+         test -x "${helper}" || { echo "${helper} is missing (shadow-utils)" >&2; exit 1; }; \
+         chown root:root "${helper}" && chmod 4755 "${helper}"; \
+         test -u "${helper}" || { echo "could not make ${helper} setuid" >&2; ls -l "${helper}" >&2; exit 1; }; \
        done \
     && { test -x /usr/bin/slirp4netns || { echo "slirp4netns is missing" >&2; exit 1; }; } \
     && install -d -m 0700 -o "${FACTORY_UID}" -g "${FACTORY_GID}" \
