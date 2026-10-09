@@ -13,9 +13,10 @@ All evidence for an image is under `work/<image>/` on the PipelineRun workspace.
 | `resource-lock.json` | intake (signed) | locked upstream resources with digests |
 | `evidence/sbom.cdx.json`, `sbom.spdx.json` | Syft | components (`name`, `version`, `purl`) |
 | `evidence/scans/{grype,trivy,osv}.json` | scanners | raw scanner output |
+| `evidence/scans/grype/status.json` | `factory.grype` | Grype validation: `assessmentPassed`, `databaseBuilt`, `kevReleasedAt`, `baselineDigest` |
 | `evidence/findings.json` | `factory.findings` | normalized, de-duplicated findings |
 | `evidence/scans/delegated/status.json` | scan stage | `assessmentPassed`, `digest`, `scanner` |
-| `evidence/database-status.json` | scan stage | scanner DB `generatedAt`, versions |
+| `evidence/database-status.json` | scan stage | `generatedAt` (earlier of bundle time and Grype DB build time), scanner versions |
 | `evidence/compliance/result.json` | OpenSCAP | `passed`, rule counts |
 | `evidence/tests/result.json` | product tests | `passed`, `exitCode` |
 | `evidence/gate-input.json` / `gate-result.json` | OPA | `allow`, `deny[]`, `warn[]` |
@@ -26,7 +27,8 @@ All evidence for an image is under `work/<image>/` on the PipelineRun workspace.
 `id`, `scanner`, `component` (purl when known), `installedVersion`, `severity`
 (`UNKNOWN`…`CRITICAL`), `fixedVersion`, `fixAvailable`, `knownExploited` (CISA
 KEV), `inApplicationArchive` (all locations under `/opt/`, `/app/`, `/srv/app/`,
-`/workspace/` and none under system paths), `new` (not in baseline).
+`/workspace/` and none under system paths), `new` (not in a signed baseline;
+with no signed baseline every finding is new).
 
 ## Gate decision (`policies/rego/factory/release/release.rego`)
 
@@ -43,6 +45,14 @@ instead of a deny. An approved exception (`policies/exceptions/approved.json`)
 suppresses a blocking finding only when `id`, `component`, and
 `installedVersion` all match **and** a fix exists. Exceptions never bypass
 evidence identity, freshness, compliance, tests, or signatures.
+
+## Scan-stage order
+
+Grype runs first (`scripts/grype_scan_image.sh`) and `factory/grype.py` validates
+its database, report shape, SBOM identity (`evidence/sbom.identity.json`), KEV
+freshness, and any baseline signature. A validation failure exits the scan
+before Trivy, OSV-Scanner, and ClamAV run, so no assessment is written and the
+gate denies.
 
 ## Integrity
 

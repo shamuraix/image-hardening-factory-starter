@@ -1,4 +1,4 @@
-# Connected intake (replaces Jenkinsfile.intake): mirror pinned sources and
+# Connected intake: mirror pinned sources and
 # publish signed resource locks for the selected images.
 apiVersion: tekton.dev/v1
 kind: Pipeline

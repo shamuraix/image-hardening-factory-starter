@@ -78,10 +78,6 @@ class AgentDefinition:
     modes: tuple[str, ...] = ("report",)
     extra: dict[str, Any] = field(default_factory=dict)
 
-    @property
-    def proposes_changes(self) -> bool:
-        return bool(self.writable_paths)
-
 
 def _split_frontmatter(text: str, source: str) -> tuple[dict[str, Any], str]:
     if not text.startswith("---\n"):

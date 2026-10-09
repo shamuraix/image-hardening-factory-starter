@@ -1,0 +1,36 @@
+# Daily refresh of the signed offline security-data bundle that the scan and
+# compliance stages use. Triggered by the daily-security-data CronJob through
+# the security-data-on-schedule PipelineRun.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: factory-security-data
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+spec:
+  params:
+    - name: repo-url
+    - name: revision
+    - name: runner-image
+    - name: intake-runner-image
+  workspaces:
+    - name: shared
+    - name: git-auth
+      optional: true
+  tasks:
+    - name: checkout
+      taskRef: {name: factory-checkout}
+      params:
+        - {name: url, value: $(params.repo-url)}
+        - {name: revision, value: $(params.revision)}
+        - {name: runner-image, value: $(params.runner-image)}
+      workspaces:
+        - {name: shared, workspace: shared}
+        - {name: basic-auth, workspace: git-auth}
+    - name: security-data
+      taskRef: {name: factory-security-data}
+      params:
+        - {name: intake-runner-image, value: $(params.intake-runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+      workspaces:
+        - {name: shared, workspace: shared}

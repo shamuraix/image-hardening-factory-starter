@@ -1,0 +1,67 @@
+# Connected refresh of the offline security-data bundle (scanner databases, CISA
+# KEV, ClamAV signatures, SCAP content). Builds and signs the bundle with the
+# intake key, uploads it, then moves security-data/current.json to it. Every
+# image build's prepare stage downloads and verifies the bundle that pointer names
+# (scripts/fetch_security_bundle.sh).
+# Trust class: intake (approved upstream egress plus intake-only writes). Runs
+# only from the default branch on a schedule; never on pull requests.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: factory-security-data
+  labels:
+    app.kubernetes.io/part-of: image-hardening-factory
+    factory.dev/trust-class: intake
+spec:
+  params:
+    - name: intake-runner-image
+    - name: commit
+  workspaces:
+    - name: shared
+  volumes:
+    - name: intake-keys
+      secret:
+        secretName: factory-intake-cosign
+        items:
+          - {key: cosign.key, path: cosign.key}
+  stepTemplate:
+    image: $(params.intake-runner-image)
+    workingDir: $(workspaces.shared.path)/source
+    envFrom:
+      - configMapRef:
+          name: factory-settings
+    env:
+      - {name: FACTORY_COMMIT_SHA, value: $(params.commit)}
+      - {name: HOME, value: /tmp/home}
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 10001
+      runAsGroup: 10001
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: [ALL]
+      seccompProfile:
+        type: RuntimeDefault
+  steps:
+    - name: build
+      env:
+        - name: COSIGN_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: factory-intake-cosign, key: password}
+        - {name: COSIGN_INTAKE_KEY_REF, value: /credentials/intake/cosign.key}
+      volumeMounts:
+        - {name: intake-keys, mountPath: /credentials/intake, readOnly: true}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        mkdir -p "${HOME}" work
+        scripts/build_security_bundle.sh work/security-data
+    - name: publish
+      env:
+        - name: ARTIFACTORY_WRITE_TOKEN
+          valueFrom:
+            secretKeyRef: {name: factory-artifactory-intake, key: token}
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        scripts/publish_security_bundle.sh work/security-data

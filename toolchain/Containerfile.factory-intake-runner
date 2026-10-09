@@ -1,0 +1,26 @@
+# Intake runner: the factory runner plus what the connected tasks need —
+# intake (mirror sources, ClamAV-scan them, publish signed locks),
+# security-data (download scanner databases, the CISA KEV catalog, ClamAV
+# signatures; bundle SCAP content), and the upstream-sync reconnaissance.
+#
+# Scanner binaries, cosign, and ClamAV are already in the runner. This layer
+# adds the ComplianceAsCode datastreams (dist/scap/, from `make toolchain`) and
+# a freshclam configuration. Pipelines reference it by digest through the
+# Repository CR param `intake_runner_image`; it runs only with the intake
+# ServiceAccount and never on pull requests.
+ARG FACTORY_RUNNER_REF
+FROM ${FACTORY_RUNNER_REF}
+
+USER 0
+# COMPLIANCE_AS_CODE_DATASTREAM_DIR in deploy/base/settings.yaml points here.
+COPY dist/scap/ /usr/share/xml/scap/ssg/content/
+RUN test -s /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml \
+    && test -s /usr/share/xml/scap/ssg/content/ssg-rhel10-ds.xml \
+    && printf 'DatabaseMirror database.clamav.net\nLogSyslog no\nLogVerbose no\n' \
+         >/usr/local/etc/freshclam.conf \
+    && for tool in freshclam trivy osv-scanner grype cosign; do \
+         test -x "/usr/local/bin/${tool}" || { echo "missing tool: ${tool}" >&2; exit 1; }; \
+       done
+USER 10001
+ENTRYPOINT []
+CMD ["/bin/bash"]

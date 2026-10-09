@@ -20,6 +20,50 @@ data:
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  name: daily-security-data
+spec:
+  # Refresh the signed security-data bundle before the nightly rescans so they
+  # gate against data well inside the 72h freshness window
+  # (policy.maximumDatabaseAgeHours in the catalog).
+  schedule: "37 0 * * *"
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {factory.dev/needs-pac: "true"}
+        spec:
+          serviceAccountName: factory-scheduler
+          automountServiceAccountToken: false
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: trigger
+              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              command: ["/bin/sh", "/scripts/trigger.sh"]
+              args: [security-data-on-schedule]
+              envFrom:
+                - configMapRef: {name: factory-settings}
+              env:
+                - name: FACTORY_PAC_INCOMING_SECRET
+                  valueFrom:
+                    secretKeyRef: {name: factory-pac-incoming, key: secret}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: scripts, mountPath: /scripts, readOnly: true}
+          volumes:
+            - name: scripts
+              configMap: {name: factory-schedules}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
   name: nightly-rescan
 spec:
   # Re-gate every pinned image against fresh vulnerability data well inside the

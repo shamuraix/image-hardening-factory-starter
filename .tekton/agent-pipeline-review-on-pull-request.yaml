@@ -27,6 +27,8 @@ spec:
   params:
   - name: agent
     value: pipeline-reviewer
+  - name: enable-agents
+    value: '{{ enable_agents }}'
   - name: mode
     value: report
   - name: repo-url

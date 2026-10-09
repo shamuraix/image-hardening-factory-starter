@@ -1,5 +1,5 @@
 # Non-secret environment settings, injected into every factory step with
-# envFrom. Replaces the Jenkins global settings. Values below are placeholders.
+# envFrom. Values below are placeholders.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -16,18 +16,30 @@ data:
   FACTORY_RELEASE_REPOSITORY: factory-release
   FACTORY_CANARY_REPOSITORY: factory-canary
   FACTORY_CATALOG_DIR: catalog/images
+  # Internal mirror of https://cdn-ubi.redhat.com/content/public/ubi/dist (same
+  # layout below this root: ubi9/9/x86_64/baseos/os, ...). Builds with
+  # build.rpm.source: private-mirror install RPMs from here, authenticated with
+  # Secret factory-rpm-mirror.
+  FACTORY_UBI_MIRROR_URL: https://artifactory.internal.example/artifactory/ubi-cdn/content/public/ubi/dist
   FACTORY_DEFAULT_BRANCH: main
   # Release governance
   FACTORY_GOV_APPROVER_PATTERN: "^(alice|bob)$"
   FACTORY_POINTER_ENVIRONMENT: commercial
+  # Security-data bundle (scripts/build_security_bundle.sh). The KEV URL is the
+  # JSON feed CISA links from https://www.cisa.gov/known-exploited-vulnerabilities-catalog.
+  # The datastream directory is where toolchain/Containerfile.factory-intake-runner
+  # places the ComplianceAsCode SCAP content (ssg-rhel9-ds.xml, ssg-rhel10-ds.xml).
+  CISA_KEV_URL: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+  COMPLIANCE_AS_CODE_DATASTREAM_DIR: /usr/share/xml/scap/ssg/content
   # Upstream tracking (Repo One branch followed by intake and upstream-sync)
   FACTORY_UPSTREAM_BRANCH: development
   # Pipelines-as-Code incoming webhook (schedules and base-release fan-out)
   FACTORY_PAC_CONTROLLER_URL: https://pac-controller.internal.example
   FACTORY_PAC_REPOSITORY: image-hardening-factory
-  # Git provider APIs used by agents for comments and change requests
-  FACTORY_GITHUB_API_URL: https://api.github.com
-  # FACTORY_GITLAB_API_URL defaults to https://<git host>/api/v4 when unset.
+  # Git provider API used by agents for comments and merge requests. Defaults
+  # to https://<git host>/api/v4 for GitLab; set it when the API lives
+  # elsewhere. FACTORY_GITHUB_API_URL applies only when git_provider is github.
+  FACTORY_GITLAB_API_URL: https://gitlab.internal.example/api/v4
   SCM_BOT_AUTHOR_NAME: image-factory-bot
   SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
   # Claude Code agents: an Anthropic-format LLM gateway (for example your

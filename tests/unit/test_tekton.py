@@ -39,6 +39,7 @@ PAC_TRIGGER_KEYS = {
 }
 READ_ONLY_SECRETS = {
     "factory-artifactory-read",
+    "factory-rpm-mirror",
     "factory-intake-cosign-public-key",
     "factory-ai-gateway",
 }
@@ -180,6 +181,15 @@ class PullRequestIsolationTests(unittest.TestCase):
             pipeline_params = {item["name"]: item for item in pipeline(name)["spec"]["params"]}
             self.assertEqual(pipeline_params["scm-secret"]["default"], "factory-scm-disabled")
 
+    def test_admission_policy_fails_closed_for_every_non_push_event(self) -> None:
+        # GitLab reports merge requests as "Merge Request", not "pull_request",
+        # so the policy must allowlist trusted events rather than deny one name.
+        text = (ROOT / "deploy/base/admission-policy.yaml").read_text(encoding="utf-8")
+        self.assertIn("variables.eventType in ['push', 'incoming']", text)
+        self.assertNotIn("!= 'pull_request'", text)
+        self.assertEqual(text.count("variables.trusted ||"), 3)
+        self.assertIn("validationActions: [Deny, Audit]", text)
+
     def test_admission_policy_covers_every_protected_secret(self) -> None:
         text = (ROOT / "deploy/base/admission-policy.yaml").read_text(encoding="utf-8")
         listed = set(re.findall(r"'(factory-[a-z0-9-]+)'", text))
@@ -256,10 +266,26 @@ class TaskHygieneTests(unittest.TestCase):
         for name, document in documents("Task").items():
             for item in document["spec"]["steps"]:
                 context = item.get("securityContext", {})
-                if context.get("allowPrivilegeEscalation"):
+                relaxed = context.get("allowPrivilegeEscalation") or "procMount" in context
+                if relaxed:
                     self.assertIn(name, {"factory-rootless-build", "factory-rootless-test"})
                     self.assertEqual(item["name"], "run")
+                    self.assertEqual(context.get("procMount"), "Unmasked")
                 self.assertFalse(context.get("privileged", False), f"{name}/{item['name']}")
+
+    def test_rootless_stages_run_in_a_pod_user_namespace(self) -> None:
+        for run_name, run in pipeline_runs().items():
+            if run["spec"]["pipelineRef"]["name"] != "factory-image-build":
+                continue
+            templates = {
+                spec["pipelineTaskName"]: spec.get("podTemplate", {})
+                for spec in run["spec"]["taskRunSpecs"]
+            }
+            for stage in ("build", "test"):
+                self.assertIs(templates[stage].get("hostUsers"), False, f"{run_name}/{stage}")
+            for stage, template in templates.items():
+                if stage not in ("build", "test"):
+                    self.assertNotIn("hostUsers", template, f"{run_name}/{stage}")
 
     def test_quarantine_emits_chains_type_hints(self) -> None:
         results = {item["name"] for item in task("factory-quarantine")["spec"]["results"]}

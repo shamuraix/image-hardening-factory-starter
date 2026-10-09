@@ -1,10 +1,8 @@
 # Generic internal-only factory stage (validate, sbom, scan, assessment,
-# compliance, gate, and optional Konflux-style evidence stages).
-#
-# Equivalent of the Jenkins runFactoryStage helper:
-#   verify step  -> unstash + input integrity check
-#   run step     -> the stage command (onError: continue so evidence is kept)
-#   seal step    -> archive/stash, then fail unless the stage is non-blocking
+# compliance, gate). Three steps:
+#   verify -> check the source commit and the seals of every input stage
+#   run    -> the stage command (onError: continue so evidence is kept)
+#   seal   -> seal this stage's outputs, then fail unless the stage may fail
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -105,8 +103,8 @@ spec:
         set -euo pipefail
         source scripts/tekton/env.sh
         code=$(cat "${FACTORY_RUN_EXIT_CODE_PATH}")
-        # Evidence is sealed even when the stage failed, matching the Jenkins
-        # "archive in finally" behaviour, so remediation and triage can read it.
+        # Evidence is sealed even when the stage failed, so the triage and
+        # remediation agents can read it.
         scripts/tekton/artifacts.sh seal "${FACTORY_STAGE}" "$(results.seal.path)" \
           "$@" "${FACTORY_WORK_DIR}/logs/${FACTORY_STAGE}.log"
         if [[ ${code} == 0 ]]; then

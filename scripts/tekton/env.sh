@@ -1,9 +1,9 @@
 # shellcheck shell=bash
 # Source from a Tekton step after changing into the checked-out repository.
 #
-# Replaces the environment the Jenkins `inFactoryPod` helper used to export.
-# Tekton passes identity through step env (see .tekton/tasks/*); everything
-# derived here is deterministic from those inputs.
+# Derives the shared factory environment (work directory, build identity,
+# security-data location) from the identity values each Task passes in step env
+# (see .tekton/tasks/*). Everything here is deterministic from those inputs.
 
 : "${FACTORY_IMAGE:?FACTORY_IMAGE is required}"
 [[ "${FACTORY_IMAGE}" =~ ^[a-z0-9][a-z0-9-]+$ ]] || {
@@ -33,6 +33,14 @@ export FACTORY_BUILD_URL="${FACTORY_BUILD_URL:-tekton://${FACTORY_NAMESPACE:-unk
 export FACTORY_RUNNER_ID="${FACTORY_TASKRUN:-unknown}"
 FACTORY_JOB_ID=$(factory_safe_name "${FACTORY_BUILD_ID}-${FACTORY_IMAGE}")
 export FACTORY_JOB_ID
+
+# Verified security-data bundle fetched by the prepare stage; local runs fall
+# back to a bundle unpacked at /opt/security-data.
+if [[ -s ${PWD}/${FACTORY_WORK_DIR}/security-data/generated-at ]]; then
+  export FACTORY_SECURITY_DATA="${PWD}/${FACTORY_WORK_DIR}/security-data"
+else
+  export FACTORY_SECURITY_DATA="${FACTORY_SECURITY_DATA:-/opt/security-data}"
+fi
 
 export HOME=/home/factory
 export XDG_RUNTIME_DIR=/tmp/factory-runtime

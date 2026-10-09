@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Minimal GitHub / GitLab change-request helpers for the change broker.
+# Minimal GitLab / GitHub change-request helpers for the change broker.
 # Requires FACTORY_SOURCE_URL, FACTORY_GIT_PROVIDER, SCM_BOT_TOKEN.
 
 scm_repo_path() {
@@ -16,7 +16,7 @@ scm_open_change_request() {
   local head=${1} base=${2} title=${3} body_file=${4} draft=${5}
   local path payload response
   path=$(scm_repo_path)
-  case "${FACTORY_GIT_PROVIDER:-github}" in
+  case "${FACTORY_GIT_PROVIDER:-gitlab}" in
     github)
       local api=${FACTORY_GITHUB_API_URL:-https://api.github.com}
       payload=$(jq -n --arg title "${title}" --arg head "${head}" --arg base "${base}" \

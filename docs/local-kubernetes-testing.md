@@ -1,68 +1,154 @@
-# Local Kubernetes testing (Tekton harness)
+# Local cluster harness (kind)
 
-[Local development](local-development.md) · [Harness README](../tests/integration/kind/README.md)
+[Project overview](../README.md) · [Harness README](../tests/integration/kind/README.md) · [Configuration](configuration.md)
 
-## What the harness proves
+The harness is the only local build loop. It runs the factory's own Tekton
+Tasks on a disposable [kind](https://kind.sigs.k8s.io/) cluster (Kubernetes in
+containers, run by Podman or Docker on your machine) with the real runner image,
+so what you test locally is what the pipeline runs.
 
-A disposable Lima k3s (or kind) cluster with Tekton Pipelines, the factory
-ServiceAccounts/settings, all factory Tasks and Pipelines, and a TLS-authenticated
-fixture registry. `tests/integration/kind/tekton.py run` executes the
-`harness-smoke` Pipeline:
+## What it proves
 
-| Task | Expectation | Proves |
+`make harness-run` executes the `harness-build` Pipeline for one catalog base
+image (`ubi9-minimal` by default, `IMAGE=ubi10-minimal` also works):
+
+| Task | Real factory Task? | Proves |
 |---|---|---|
-| `checkout` (`harness-source`) | succeeds | source snapshot committed into the run workspace |
-| `validate` (`factory-stage`) | succeeds, emits a 64-hex `seal` result | real verify → run → seal on a factory pod as UID 10001 |
-| `consume` (`factory-stage`) | succeeds | a downstream task verifies the upstream seal before reading |
-| `tamper-detected` (`factory-stage`) | **fails** | a wrong seal digest is rejected in-cluster |
+| `checkout` (`harness-source`) | harness stand-in | the reviewed source snapshot is committed into the run workspace |
+| `validate` (`factory-stage`) | yes | catalog validation and the verify → run → seal steps on a factory pod as UID 10001 |
+| `prepare` (`factory-stage` running `harness-prepare.sh`) | Task yes, script harness-only | clone the pinned Iron Bank revision from Repo One, apply overlays, validate the context, pull the public UBI base |
+| `build` (`factory-rootless-build`) | yes | `runtime_preflight.sh`, then a rootless BuildKit build in a pod user namespace with the production security context |
+| `sbom` (`factory-stage`) | yes | Syft CycloneDX and SPDX SBOMs plus `sbom.identity.json` |
+| `test` (`factory-rootless-test`) | yes | the base test profile and RPM integrity checks in rootless Podman |
+| `consume` (`factory-stage`) | yes | a downstream task verifies an upstream seal before reading |
+| `tamper-detected` (`factory-stage`) | yes | a wrong seal digest is rejected in-cluster (this task must **fail**) |
 
-It does **not** run the rootless BuildKit/Podman stages, PaC, Chains, or agents;
-those need the production-like node configuration below and real credentials.
-Passing the harness does not establish production FIPS compliance, network
-isolation, or application qualification.
+Applying every Task and Pipeline also proves the Tekton webhook accepts them.
+
+What it does not do: scan (no security-data bundle), gate, quarantine, sign,
+promote, Pipelines-as-Code, Tekton Chains, or the agents. Those need
+Artifactory, the intake key, credentials, and an LLM gateway. The lock written
+by `harness-prepare.sh` is unsigned and marked `localDevelopment`, which the
+import and signing scripts refuse, so a harness build can never leave the
+cluster. Passing the harness does not establish production FIPS compliance,
+network isolation, or application qualification.
+
+## Host requirements
+
+- Linux or macOS with Podman (default) or Docker, given at least 6 CPUs,
+  12 GiB RAM, and 40 GiB disk
+- `kind` at the version pinned in `tools/versions.lock.yaml` (`up.sh` checks),
+  `kubectl`, `git`
+- Python 3.11+ with the repository installed: `pip install -e '.[dev]'`
+- Network access to GitHub releases (Tekton manifest, pinned tools), PyPI,
+  `registry.access.redhat.com`, `cdn-ubi.redhat.com`, and `repo1.dso.mil`
+
+Nothing else is installed on the host. `skopeo`, `buildctl`, `syft`, and the
+rest live only in the runner image.
 
 ## Run it
 
-Requirements: Linux or macOS, Lima (`limactl`), kubectl, Skopeo, Git, Python 3.11+,
-jq, yq, curl, OpenSSL. Allow access to GitHub releases (Tekton release manifest,
-pinned tools), Debian mirrors, and Docker Hub. Start with 6 CPUs, 12 GiB RAM, 30 GiB disk.
-
 ```bash
-limactl start --name factory-k3s template://k3s
-export FACTORY_HARNESS_CLUSTER=factory-k3s
-export FACTORY_HARNESS_STATE=.local-factory/tekton-k3s
-export FACTORY_HARNESS_REGISTRY_PORT=15446
-tests/integration/kind/up.sh
-python3 tests/integration/kind/tekton.py --state "$FACTORY_HARNESS_STATE" run
-python3 tests/integration/kind/tekton.py --state "$FACTORY_HARNESS_STATE" log
+make harness-up                   # cluster, runner image, Tekton, factory objects
+make harness-run IMAGE=ubi9-minimal
+python3 tests/integration/kind/tekton.py --state .local-factory/kind-review log
+make harness-down
 ```
 
-The Tekton version comes from `tools/versions.lock.yaml`; override the manifest
-with `TEKTON_PIPELINE_RELEASE_URL` for a mirrored copy.
+`make harness-up` does, in order:
 
-To refresh the source snapshot or Tekton definitions without rebuilding images,
-rerun `FACTORY_HARNESS_STATE=... KUBECONFIG=.../kubeconfig tests/integration/kind/deploy.sh`.
-The snapshot must fit the 1 MiB ConfigMap limit.
+1. Checks the kind version and (rootless Podman) that your user has enough
+   subordinate IDs for user-namespaced pods (111 × 262144); otherwise it tells
+   you to use `FACTORY_HARNESS_ROOTFUL=true` or Docker
+   (`KIND_EXPERIMENTAL_PROVIDER=docker`).
+2. Creates the cluster with kubelet `userNamespaces.idsPerPod: 262144`, so the
+   runner's `factory:100000:65536` subordinate range fits
+   ([Kubernetes user namespaces](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/)).
+3. Runs `toolchain/build-dist.sh` (pinned tools from GitHub releases, verified
+   against the digests GitHub records, and a wheel of this repository), then
+   builds `toolchain/Containerfile.factory-runner` on
+   `registry.access.redhat.com/ubi9/ubi-minimal:<catalog version>` and loads it
+   into the cluster.
+4. Runs `deploy.sh`: installs the pinned Tekton Pipelines release, applies the
+   factory ServiceAccounts, settings (with `FACTORY_RPM_SOURCE_MODE:
+   public-upstream`, so builds install RPMs from Red Hat's public UBI CDN),
+   Tasks, Pipelines, and the harness objects.
+5. In rootful mode only, `probe-crun.py` installs and probes a crun
+   RuntimeClass and records its name in the state directory; `tekton.py` then
+   sets `runtimeClassName` on the build and test pods.
 
-## Running the rootless build stages locally
+`make harness-run` creates a PipelineRun with the same `taskRunSpecs` the
+generated PipelineRuns use (`hostUsers: false` for build and test) and asserts
+each task's outcome. Rerun `deploy.sh` alone after editing Tasks, Pipelines,
+or scripts (`FACTORY_HARNESS_STATE=... KUBECONFIG=$FACTORY_HARNESS_STATE/kubeconfig tests/integration/kind/deploy.sh`);
+the source snapshot must fit the 1 MiB ConfigMap limit.
 
-The production Tasks need what the earlier harness established for nested
-rootless containers:
+## Using a cluster you already run (Rancher Desktop)
 
-- kubelet `userNamespaces.idsPerPod: 262144` so the runner's
-  `factory:100000:65536` subordinate range fits (`up.sh` configures kind this way);
-- `hostUsers: false` pods, `procMount: Unmasked` on the run step, and a crun
-  RuntimeClass on local clusters where runc fails sandbox sysfs mounting with user
-  namespaces (`probe-crun.py` provisions and probes it in rootful mode);
-- Debian mapping helpers with explicit SETUID/SETGID file capabilities and no
-  default Podman ping-group sysctl (the harness runner image handles both).
+The harness can target an existing cluster instead of creating one with kind.
+Rancher Desktop works when:
 
-Apply these through `taskRunSpecs[].podTemplate` (`runtimeClassName`) and a
-harness-only copy of the build Task before attempting the full image pipeline
-in the harness. Production clusters with native user-namespace support need none
-of the RuntimeClass workarounds.
+- Kubernetes **1.33 or later** is selected (the user-namespace and `procMount`
+  feature gates are on by default from 1.33). k3s 1.33 ships containerd 2.x
+  and runc 1.2+, which support pod user namespaces
+  ([k3s release notes](https://docs.k3s.io/release-notes/v1.33.X)).
+- The container engine is **containerd**, not dockerd. With dockerd, k3s uses
+  cri-dockerd, which cannot run `hostUsers: false` pods.
+- The kubelet allows 262144 IDs per pod. k3s reads kubelet drop-ins from
+  `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/`
+  ([k3s configuration](https://docs.k3s.io/installation/configuration)); write
+  one from a Rancher Desktop provisioning script, which runs before k3s starts
+  ([provisioning scripts](https://docs.rancherdesktop.io/how-to-guides/provisioning-scripts)):
 
-## Runtime troubleshooting
+  ```yaml
+  # macOS/Linux: ~/Library/Application Support/rancher-desktop/lima/_config/override.yaml
+  provision:
+    - mode: system
+      script: |
+        mkdir -p /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+        cat >/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-factory-userns.conf <<'EOF'
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        userNamespaces:
+          idsPerPod: 262144
+        EOF
+  ```
+
+  On Windows, put the same shell in `%LOCALAPPDATA%\rancher-desktop\provisioning\factory-userns.start`
+  (Unix line endings). Restart Kubernetes afterwards; `up.sh` checks the value.
+- The VM has at least 6 CPUs, 12 GiB RAM, and 40 GiB disk.
+
+Then:
+
+```bash
+export FACTORY_HARNESS_KUBECONFIG=~/.kube/config          # Rancher Desktop's context
+export FACTORY_HARNESS_STATE=.local-factory/rancher-desktop
+make harness-up        # builds the runner, loads it with nerdctl, installs Tekton
+make harness-run IMAGE=ubi9-minimal
+```
+
+`up.sh` loads the runner image with `nerdctl --namespace k8s.io load -i`;
+set `FACTORY_HARNESS_LOAD_COMMAND` if your image load command differs.
+`make harness-down` refuses to touch a cluster it did not create; remove the
+`factory-harness` and `tekton-pipelines` namespaces yourself. The same cluster
+can then run the full pipeline (see
+[operations.md](operations.md#running-the-full-pipeline-on-a-local-cluster)).
+
+## If the build stage fails
+
+`runtime_preflight.sh` runs first and names what is missing. The usual causes
+on a local cluster:
+
+- the node runtime cannot create user namespaces for pods (needs containerd
+  2.0+ or CRI-O; kind's node images ship containerd 2.x) — `node-diagnostics.sh`
+  collects the runtime and kernel facts;
+- runc cannot mount sysfs in a user-namespaced sandbox — use
+  `FACTORY_HARNESS_ROOTFUL=true` so `probe-crun.py` provisions crun
+  ([Podman discussion](https://github.com/containers/podman/discussions/19931),
+  [Podman issue](https://github.com/containers/podman/issues/13194));
+- the `ProcMountType` or `UserNamespacesSupport` feature gate is off (both are
+  on by default from Kubernetes 1.33;
+  [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/)).
 
 ```bash
 kubectl --kubeconfig "$FACTORY_HARNESS_STATE/kubeconfig" -n factory-harness get events --sort-by=.lastTimestamp
@@ -70,21 +156,11 @@ kubectl --kubeconfig "$FACTORY_HARNESS_STATE/kubeconfig" -n factory-harness get 
 sudo -v && tests/integration/kind/node-diagnostics.sh
 ```
 
-Background from the earlier investigation, still relevant to the build stages:
-
-- Debian mapping helpers needed explicit SETUID/SETGID file capabilities
-  ([Podman discussion](https://github.com/containers/podman/discussions/19931)).
-- Nested Podman required unmasked proc and no default ping-group sysctl
-  ([Kubernetes security context](https://kubernetes.io/docs/tasks/configure-pod-container/security-context/),
-  [Podman issue](https://github.com/containers/podman/issues/13194)).
-- runc failed sandbox sysfs mounting with user namespaces in local clusters; crun
-  worked once its system D-Bus prerequisite was supplied.
-
 ## Teardown
 
 ```bash
-FACTORY_HARNESS_STATE=.local-factory/tekton-k3s tests/integration/kind/down.sh
-limactl stop factory-k3s
+make harness-down
 ```
 
-Only the recorded harness cluster is deleted; state stays on disk and is ignored by git.
+Only the recorded harness cluster is deleted; state stays on disk and is ignored
+by git. State directories may hold the cluster kubeconfig; never commit them.

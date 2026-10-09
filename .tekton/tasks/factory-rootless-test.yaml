@@ -76,6 +76,9 @@ spec:
         runAsGroup: 10001
         privileged: false
         allowPrivilegeEscalation: true
+        # Nested containers mount their own /proc; needs the pod user namespace
+        # (hostUsers: false, set by the rendered taskRunSpecs podTemplate).
+        procMount: Unmasked
         seccompProfile:
           type: Unconfined
         appArmorProfile:

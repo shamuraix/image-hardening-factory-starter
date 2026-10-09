@@ -4,7 +4,7 @@
 # The merge is the approval. CODEOWNERS on releases/gov*/ enforce who may
 # approve Gov releases, and the merging user ({{ sender }}) becomes the recorded
 # approver, re-checked against FACTORY_GOV_APPROVER_PATTERN by the signing and
-# promotion scripts. This replaces the Jenkins `input` step.
+# promotion scripts.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
@@ -13,6 +13,9 @@ metadata:
     app.kubernetes.io/part-of: image-hardening-factory
 spec:
   params:
+    - name: enable-agents
+      default: "true"
+      description: Repository CR param enable_agents; "false" skips every model call.
     - name: repo-url
     - name: revision
     - name: sender
@@ -91,6 +94,7 @@ spec:
         - {input: $(tasks.status), operator: in, values: ["Failed"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: failure-triage}
         - {name: mode, value: report}
         - {name: image, value: factory}

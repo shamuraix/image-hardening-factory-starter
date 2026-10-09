@@ -1,4 +1,4 @@
-# Review notes (current baseline)
+# Review checklist for pipeline, policy, and trust-boundary changes
 
 ## Quick summary
 

@@ -139,9 +139,7 @@ class BuildImageBuildKitTests(unittest.TestCase):
             "FROM ${BASE_REF}\nRUN microdnf -y update\n", encoding="utf-8"
         )
         (self.work / "base.oci.tar").write_text("base", encoding="utf-8")
-        (self.work / "resource-lock.json").write_text(
-            json.dumps({"localDevelopment": True}), encoding="utf-8"
-        )
+        (self.work / "resource-lock.json").write_text(json.dumps({}), encoding="utf-8")
         (self.work / "build.env").write_text(
             (
                 "FACTORY_IMAGE=test\n"
@@ -244,9 +242,6 @@ class BuildImageBuildKitTests(unittest.TestCase):
             from __future__ import annotations
             import json, sys
             args = sys.argv[1:]
-            if args[:2] == ["-e", ".localDevelopment == true"]:
-                data = json.load(open(args[2], encoding="utf-8"))
-                raise SystemExit(0 if data.get("localDevelopment") is True else 1)
             if args[:2] == ["-er", ".Digest"]:
                 print(json.load(sys.stdin)["Digest"])
                 raise SystemExit(0)

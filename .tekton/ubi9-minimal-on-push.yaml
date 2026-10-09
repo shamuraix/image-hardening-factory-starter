@@ -14,7 +14,6 @@ metadata:
           "scripts/**".pathChanged() ||
           "factory/**".pathChanged() ||
           "policies/**".pathChanged() ||
-          "config/rpm/**".pathChanged() ||
           ".tekton/pipelines/image-build.yaml".pathChanged() ||
           ".tekton/tasks/**".pathChanged())
   labels:
@@ -48,7 +47,7 @@ spec:
   - name: publish
     value: 'true'
   - name: enable-agents
-    value: 'true'
+    value: '{{ enable_agents }}'
   - name: enable-remediation
     value: 'true'
   - name: enable-release-request
@@ -72,6 +71,8 @@ spec:
     serviceAccountName: factory-reader
   - pipelineTaskName: build
     serviceAccountName: factory-buildkit
+    podTemplate:
+      hostUsers: false
   - pipelineTaskName: sbom
     serviceAccountName: factory-offline
   - pipelineTaskName: scan
@@ -90,13 +91,9 @@ spec:
         effect: NoSchedule
   - pipelineTaskName: test
     serviceAccountName: factory-test
-  - pipelineTaskName: copacetic
-    serviceAccountName: factory-offline
-  - pipelineTaskName: helmper
-    serviceAccountName: factory-offline
+    podTemplate:
+      hostUsers: false
   - pipelineTaskName: gate
-    serviceAccountName: factory-offline
-  - pipelineTaskName: hummingbird
     serviceAccountName: factory-offline
   - pipelineTaskName: quarantine
     serviceAccountName: factory-importer

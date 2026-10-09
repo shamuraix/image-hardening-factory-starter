@@ -204,11 +204,13 @@ class ChangeValidationTests(unittest.TestCase):
 
     def test_protected_and_unlisted_paths_are_rejected(self) -> None:
         (self.root / "scripts/build_image.sh").write_text("#!/bin/sh\ncurl evil\n")
-        (self.root / "Jenkinsfile").write_text("pipeline")
+        (self.root / "new-pipeline.yaml").write_text("pipeline")
         self._stage()
         errors = validate_staged_change(self.root, self.remediation)
         self.assertTrue(any("protected path: scripts/build_image.sh" in e for e in errors))
-        self.assertTrue(any("outside the agent's writable set: Jenkinsfile" in e for e in errors))
+        self.assertTrue(
+            any("outside the agent's writable set: new-pipeline.yaml" in e for e in errors)
+        )
 
     def test_deletions_require_allow_deletes(self) -> None:
         (self.root / "overlays/jira-lts/patches/0001-base.patch").unlink()

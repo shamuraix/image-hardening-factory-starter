@@ -85,7 +85,6 @@ case "${FACTORY_AGENT}" in
     evidence_summary "work/${image}"
     image_exceptions "${image}"
     cp "catalog/images/${image}.yaml" "${context}/catalog.yaml"
-    copy_if /opt/security-data/repository-candidates.json
     ;;
   release-readiness)
     evidence_summary "work/${image}"
@@ -117,7 +116,7 @@ case "${FACTORY_AGENT}" in
       git show --stat HEAD >"${context}/diffstat.txt"
       git show HEAD | head -c "${max_bytes}" >"${context}/diff.patch"
     fi
-    copy_if docs/reviews/2026-09-15-code-review.md review-checklist.md
+    copy_if docs/review-checklist.md review-checklist.md
     ;;
   upstream-sync)
     [[ -d ${context}/upstream ]] || {

@@ -22,13 +22,13 @@ PipelineRuns) and is selected by NetworkPolicy through the
 
 | Class | Tasks | Secrets | Egress |
 |---|---|---|---|
-| offline | checkout, validate, sbom, scan, assessment, compliance, gate, optional evidence | none | git host (checkout only) |
+| offline | checkout, validate, sbom, scan, assessment, compliance, gate | none | git host (checkout only) |
 | internal-read | prepare, release resolve, evidence context | Artifactory read, intake public key | Artifactory |
 | buildkit / test | build / test | Artifactory read (build only) | Artifactory |
 | import | quarantine | quarantine write | Artifactory |
 | signing | attest | env Cosign key + referrer write | Artifactory |
 | promotion | promote | release write, pointer write | Artifactory |
-| intake | intake, upstream context | mirror/intake write (intake only) | approved upstreams |
+| intake | intake, security-data, upstream context | intake write and intake signing key (intake, security-data); mirror push (intake only) | approved upstreams |
 | agent | triage, remediation, release-request, maintenance agents | LLM gateway; SCM bot (publish step, default branch only); PaC token (report step) | gateway, git host |
 
 ## Rules every change must keep
@@ -44,7 +44,8 @@ PipelineRuns) and is selected by NetworkPolicy through the
    task's publish and report steps are inline or run from a fresh clone.
 5. **Verify, run, seal.** Stage tasks verify input seals and the source tree,
    run with `onError: continue` so evidence is kept, then seal and fail unless
-   `allow-failure` is set.
+   `allow-failure` is set. Prepare emits a second seal, `security-data`, that
+   scan and compliance list as an input.
 6. **Results for identity.** `IMAGE_URL`/`IMAGE_DIGEST` results let Tekton Chains
    sign and attest; never pass digests through files alone.
 7. Pin images by digest; keep `securityContext` restricted except the single

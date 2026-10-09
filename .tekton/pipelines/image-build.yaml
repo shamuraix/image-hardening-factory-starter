@@ -44,12 +44,6 @@ spec:
     - name: enable-release-request
       default: "false"
       description: Open a release request after a successful quarantine import.
-    - name: enable-copa
-      default: "false"
-    - name: enable-helmper
-      default: "false"
-    - name: enable-hummingbird
-      default: "false"
   workspaces:
     - name: shared
     - name: git-auth
@@ -142,6 +136,7 @@ spec:
         - name: inputs
           value:
             - "prepare=$(tasks.prepare.results.seal)"
+            - "security-data=$(tasks.prepare.results.security-data-seal)"
             - "build=$(tasks.build.results.seal)"
             - "sbom=$(tasks.sbom.results.seal)"
         - *image
@@ -185,6 +180,8 @@ spec:
           value: ["work/$(params.image)/evidence/compliance/**"]
         - name: inputs
           value:
+            - "prepare=$(tasks.prepare.results.seal)"
+            - "security-data=$(tasks.prepare.results.security-data-seal)"
             - "build=$(tasks.build.results.seal)"
             - "sbom=$(tasks.sbom.results.seal)"
         - *image
@@ -200,51 +197,6 @@ spec:
       params:
         - name: inputs
           value: ["build=$(tasks.build.results.seal)"]
-        - *image
-        - *runner
-        - *commit
-        - *source
-        - *branch
-        - *change
-      workspaces: [*ws]
-
-    - name: copacetic
-      when:
-        - {input: $(params.enable-copa), operator: in, values: ["true"]}
-      taskRef: {name: factory-stage}
-      params:
-        - {name: stage, value: copacetic}
-        - {name: allow-failure, value: "true"}
-        - name: command
-          value: scripts/copacetic_patch_plan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
-        - name: outputs
-          value: ["work/$(params.image)/evidence/copacetic/**"]
-        - name: inputs
-          value:
-            - "build=$(tasks.build.results.seal)"
-            - "sbom=$(tasks.sbom.results.seal)"
-            - "scan=$(tasks.scan.results.seal)"
-        - *image
-        - *runner
-        - *commit
-        - *source
-        - *branch
-        - *change
-      workspaces: [*ws]
-
-    - name: helmper
-      when:
-        - {input: $(params.enable-helmper), operator: in, values: ["true"]}
-      taskRef: {name: factory-stage}
-      params:
-        - {name: stage, value: helmper}
-        - {name: allow-failure, value: "true"}
-        - name: command
-          value: scripts/helmper_inventory.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
-        - name: outputs
-          value: ["work/$(params.image)/evidence/helmper/**"]
-        - name: inputs
-          value: ["prepare=$(tasks.prepare.results.seal)"]
         - *image
         - *runner
         - *commit
@@ -272,31 +224,6 @@ spec:
             - "assessment=$(tasks.assessment.results.seal)"
             - "compliance=$(tasks.compliance.results.seal)"
             - "test=$(tasks.test.results.seal)"
-        - *image
-        - *runner
-        - *commit
-        - *source
-        - *branch
-        - *change
-      workspaces: [*ws]
-
-    - name: hummingbird
-      when:
-        - {input: $(params.enable-hummingbird), operator: in, values: ["true"]}
-      taskRef: {name: factory-stage}
-      params:
-        - {name: stage, value: hummingbird}
-        - {name: allow-failure, value: "true"}
-        - name: command
-          value: scripts/hummingbird_verify.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
-        - name: outputs
-          value: ["work/$(params.image)/evidence/hummingbird/**"]
-        - name: inputs
-          value:
-            - "build=$(tasks.build.results.seal)"
-            - "sbom=$(tasks.sbom.results.seal)"
-            - "assessment=$(tasks.assessment.results.seal)"
-            - "gate=$(tasks.gate.results.seal)"
         - *image
         - *runner
         - *commit
@@ -333,6 +260,7 @@ spec:
         - {input: $(params.enable-release-request), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: release-readiness}
         - {name: mode, value: release-request}
         - {name: quarantine-seal, value: $(tasks.quarantine.results.seal)}
@@ -356,6 +284,7 @@ spec:
         - {input: $(params.enable-agents), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: failure-triage}
         - {name: mode, value: report}
         - name: task-statuses
@@ -388,6 +317,7 @@ spec:
         - {input: $(params.enable-remediation), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: cve-remediation}
         - {name: mode, value: propose-change}
         - {name: scm-secret, value: $(params.scm-secret)}

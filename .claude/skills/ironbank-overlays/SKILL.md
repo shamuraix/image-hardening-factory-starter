@@ -70,3 +70,30 @@ patch cannot sneak in network fetches.
 - Removing `rpm -e` or cleanup lines to silence `rpm-verify` — adjust the
   profile's `rpm-verify.allow` only with a reason.
 - Pointing `FROM` at anything other than `${BASE_REF}`.
+
+## What the current overlays do (so you keep their intent when rebasing)
+
+- `ubi9-minimal`: pin `FROM ${BASE_REF}`; run `update-ca-trust extract` before
+  the first RPM access (`check` is not a supported `update-ca-trust` command on
+  these UBI releases); reinstall `tzdata`, `gnupg2`, `libpeas`, and `rpm` to
+  restore package payloads the upstream minimal image prunes, so `rpm -V`
+  passes.
+- `ubi10-minimal`: pin `FROM ${BASE_REF}` only.
+- Atlassian images: `ARG BASE_MAJOR` selects behaviour per UBI major. The
+  upstream forced removals (`rpm -e --nodeps avahi-libs cups-libs`) stay on UBI
+  9 and are skipped on UBI 10, whose Java 21 package needs `cups-libs`. Runtime
+  dependencies such as `cups-libs` (Java) and `freetype` (fonts) are retained.
+  Bitbucket restores `/usr/bin` to its RPM mode after installing Git from
+  source; Confluence restores the RPM-owned `/opt` to `root:root` after
+  setting application file ownership.
+
+## RPM integrity (`scripts/assert_rpm_integrity.sh`)
+
+`rpm -V` runs in the test stage. It ignores timestamp-only changes (reproducible
+layer timestamps) and RPM ghost entries (no payload; includes host-mounted
+`/proc` and `/sys`). Everything else — contents, permissions, dependencies —
+is an error unless the path is in the profile's `rpm-verify.allow`
+(`rpm-verify.ubi10.allow` adds the reviewed UBI 10 deviations). Application
+profiles combine their own allow list with the base one. Allow-list entries
+cover the login banner, shell umasks, crypto-policy changes, and omitted
+systemd presets; add an entry only with a stated reason.

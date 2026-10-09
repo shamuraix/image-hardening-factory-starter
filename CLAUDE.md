@@ -43,11 +43,14 @@ upkeep is assisted by **Claude Code agents** that can only propose changes.
 | `.tekton/tasks/`, `.tekton/pipelines/` | Hand-written Tekton Tasks and Pipelines |
 | `.tekton/*-on-*.yaml` | **Generated** PaC PipelineRuns — edit `factory/tekton.py`, run `make tekton-render` |
 | `deploy/` | Kustomize: namespace, ServiceAccounts, NetworkPolicies, Repository CR, Chains config, schedules, admission policy |
+| `toolchain/` | Runner, intake-runner, and agent Containerfiles; `download-tools.py` reads `tools/versions.lock.yaml` |
+| `tests/integration/kind/` | Disposable kind cluster that runs the real build, SBOM, and test Tasks (`make harness-up`, `make harness-run`) |
 | `.claude/agents/` | Agent personas (usable interactively and in CI) |
 | `.claude/skills/` | Reusable procedures the personas load |
 | `agents/` | CI agent settings and structured-output schemas |
 | `releases/<env>/<image>.yaml` | Release requests; merging one signs and promotes |
 | `policies/` | OPA release policy and approved exceptions |
+| `security-data/` | How the signed offline scanner-data bundle is built, published, and verified |
 
 ## Everyday commands
 
@@ -60,7 +63,13 @@ make tekton-render  # regenerate .tekton PipelineRuns from the catalog
 make tekton-check   # fail if generated PipelineRuns drifted
 make policy-test    # OPA tests (needs opa)
 make agents         # list agent personas, their modes and purpose
+make toolchain      # download pinned tools + build the wheel into dist/ (needs network)
+make harness-up     # kind cluster with the real runner image and Tekton
+make harness-run    # build, SBOM, and test a base image on that cluster
 ```
+
+There is no host-side build: images are built only by the Tekton Task, in the
+pipeline or in the harness.
 
 ## Iron Bank overlay rules (summary — see `.claude/skills/ironbank-overlays`)
 
@@ -72,6 +81,15 @@ make agents         # list agent personas, their modes and purpose
 - `source.revision` in the catalog and the matching `vendir/config.yml` ref must
   always move together.
 - Atlassian-bundled JAR findings are fixed only by upgrading the whole product.
+
+## Scanner data (summary — see `security-data/README.md`)
+
+- Scan and compliance read only the signed bundle the prepare stage fetched and
+  verified. Grype runs first and validates the data, SBOM identity, and CISA KEV
+  freshness; any failure stops the scan and the gate denies.
+- Unsigned baselines are ignored, so every finding counts as new unless a signed
+  baseline exists. A stale bundle or KEV feed (older than
+  `policy.maximumDatabaseAgeHours`) is a deny, never a reason to add an ignore.
 
 ## Working style for agents and humans
 

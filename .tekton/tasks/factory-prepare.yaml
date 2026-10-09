@@ -1,5 +1,7 @@
 # Resolves the signed resource lock, applies overlays, and assembles the build
-# context. Trust class: internal read (Artifactory read token, intake public key).
+# context, then downloads and verifies the signed security-data bundle used by
+# scan and compliance. Trust class: internal read (Artifactory read token,
+# intake public key).
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -25,6 +27,8 @@ spec:
     - name: shared
   results:
     - name: seal
+    - name: security-data-seal
+      description: Seal of the verified security-data bundle (scan and compliance only).
     - name: status
   volumes:
     - name: intake-public-key
@@ -78,8 +82,10 @@ spec:
         #!/usr/bin/env bash
         set -euo pipefail
         source scripts/tekton/env.sh
-        scripts/prepare_context.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}" 2>&1 \
-          | tee "${FACTORY_WORK_DIR}/logs/prepare.log"
+        {
+          scripts/prepare_context.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
+          scripts/fetch_security_bundle.sh "${FACTORY_WORK_DIR}"
+        } 2>&1 | tee "${FACTORY_WORK_DIR}/logs/prepare.log"
     - name: seal
       env:
         - {name: FACTORY_RUN_EXIT_CODE_PATH, value: $(steps.step-run.exitCode.path)}
@@ -91,6 +97,9 @@ spec:
         scripts/tekton/artifacts.sh seal prepare "$(results.seal.path)" \
           "${w}/context/**" "${w}/resource-lock.json" "${w}/resource-lock.sig" \
           "${w}/build.env" "${w}/base.oci.tar" "${w}/logs/prepare.log"
+        # Separate seal: only the stages that read scanner data pay to re-hash it.
+        scripts/tekton/artifacts.sh seal security-data "$(results.security-data-seal.path)" \
+          "${w}/security-data/**"
         code=$(cat "${FACTORY_RUN_EXIT_CODE_PATH}")
         [[ ${code} == 0 ]] && printf succeeded >"$(results.status.path)" || printf failed >"$(results.status.path)"
         exit "${code}"

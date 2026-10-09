@@ -1,8 +1,10 @@
 # Harness-only Tekton objects. The disposable cluster has no access to the git
-# host, so harness-source unpacks the reviewed source snapshot from a ConfigMap
-# and commits it, standing in for factory-checkout. Everything after it uses the
-# real factory Tasks, so verify/run/seal, results, and security contexts are
-# exercised on real pods.
+# host or Artifactory, so harness-source unpacks the reviewed source snapshot
+# from a ConfigMap and commits it (standing in for factory-checkout), and a
+# factory-stage run of harness-prepare.sh stands in for the prepare stage.
+# Every other task is the real factory Task: validate, rootless build, SBOM,
+# and rootless tests run on real pods with the production security contexts,
+# and sealing is verified between them.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -48,10 +50,13 @@ spec:
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: harness-smoke
+  name: harness-build
 spec:
   params:
     - name: runner-image
+    - name: image
+      default: ubi9-minimal
+      description: A catalog base image (build.base.kind upstream).
   workspaces:
     - name: shared
   tasks:
@@ -61,26 +66,90 @@ spec:
         - {name: runner-image, value: $(params.runner-image)}
       workspaces:
         - {name: shared, workspace: shared}
+
     - name: validate
       taskRef: {name: factory-stage}
       params:
-        - {name: image, value: jira-lts}
+        - {name: image, value: $(params.image)}
         - {name: stage, value: validate}
         - name: command
           value: >-
             python3 -m factory.cli validate --catalog "${FACTORY_CATALOG_DIR}" &&
             scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
         - name: outputs
-          value: ["work/jira-lts/validation.json"]
+          value: ["work/$(params.image)/validation.json"]
         - {name: runner-image, value: $(params.runner-image)}
         - {name: commit, value: $(tasks.checkout.results.commit)}
         - {name: source-url, value: $(tasks.checkout.results.url)}
       workspaces:
         - {name: shared, workspace: shared}
+
+    - name: prepare
+      taskRef: {name: factory-stage}
+      params:
+        - {name: image, value: $(params.image)}
+        - {name: stage, value: prepare}
+        - name: command
+          value: tests/integration/kind/harness-prepare.sh
+        - name: outputs
+          value:
+            - "work/$(params.image)/context/**"
+            - "work/$(params.image)/resource-lock.json"
+            - "work/$(params.image)/build.env"
+            - "work/$(params.image)/base.oci.tar"
+        - name: inputs
+          value: ["validate=$(tasks.validate.results.seal)"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: source-url, value: $(tasks.checkout.results.url)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: build
+      taskRef: {name: factory-rootless-build}
+      params:
+        - name: inputs
+          value: ["prepare=$(tasks.prepare.results.seal)"]
+        - {name: image, value: $(params.image)}
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: source-url, value: $(tasks.checkout.results.url)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: sbom
+      taskRef: {name: factory-stage}
+      params:
+        - {name: image, value: $(params.image)}
+        - {name: stage, value: sbom}
+        - name: command
+          value: scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/sbom.*"]
+        - name: inputs
+          value: ["build=$(tasks.build.results.seal)"]
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: source-url, value: $(tasks.checkout.results.url)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
+    - name: test
+      taskRef: {name: factory-rootless-test}
+      params:
+        - name: inputs
+          value: ["build=$(tasks.build.results.seal)"]
+        - {name: image, value: $(params.image)}
+        - {name: runner-image, value: $(params.runner-image)}
+        - {name: commit, value: $(tasks.checkout.results.commit)}
+        - {name: source-url, value: $(tasks.checkout.results.url)}
+      workspaces:
+        - {name: shared, workspace: shared}
+
     - name: consume
       taskRef: {name: factory-stage}
       params:
-        - {name: image, value: jira-lts}
+        - {name: image, value: $(params.image)}
         - {name: stage, value: consume}
         - name: command
           value: jq -e '.valid == true' "${FACTORY_WORK_DIR}/validation.json"
@@ -92,11 +161,12 @@ spec:
         - {name: commit, value: $(tasks.checkout.results.commit)}
       workspaces:
         - {name: shared, workspace: shared}
+
     - name: tamper-detected
       runAfter: [consume]
       taskRef: {name: factory-stage}
       params:
-        - {name: image, value: jira-lts}
+        - {name: image, value: $(params.image)}
         - {name: stage, value: tamper}
         # Proves sealing works in-cluster: the verify step must reject a
         # deliberately wrong digest, so this stage is expected to fail. The

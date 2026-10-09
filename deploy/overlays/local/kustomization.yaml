@@ -1,0 +1,39 @@
+# Local cluster overlay (Rancher Desktop, kind, or any single-node cluster) for
+# running the full pipeline against the real external GitLab and Artifactory.
+#
+# Differences from deploy/base, and nothing else:
+#   - The NetworkPolicies are removed. They pin egress to placeholder CIDRs that
+#     a laptop cannot satisfy; the trust boundaries that matter locally
+#     (per-task ServiceAccounts, per-step secrets, the admission policy, sealed
+#     evidence) are unchanged.
+#   - Agents are switched off (Repository param enable_agents "false") because a
+#     laptop usually has no LLM gateway. Set it back to "true" to use one.
+#
+# Still required by hand: label and taint the node for the compliance stage,
+#   kubectl label node <node> factory.dev/fips-node=true
+#   kubectl taint node <node> factory.dev/fips-node=true:NoSchedule
+# and create the Secrets from deploy/secrets.example.yaml. Apply with
+#   kubectl apply -k deploy/overlays/local
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: image-factory
+resources:
+  - ../../base
+patches:
+  # Index 4 is enable_agents in deploy/base/repository.yaml; a unit test
+  # (tests/unit/test_deploy_overlays.py) checks the built output.
+  - patch: |
+      - op: replace
+        path: /spec/params/4/value
+        value: "false"
+    target:
+      kind: Repository
+      name: image-hardening-factory
+  - patch: |
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: placeholder
+    target:
+      kind: NetworkPolicy

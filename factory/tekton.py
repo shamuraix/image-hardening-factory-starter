@@ -38,7 +38,6 @@ SHARED_BUILD_PATHS = (
     "scripts/**",
     "factory/**",
     "policies/**",
-    "config/rpm/**",
     ".tekton/pipelines/image-build.yaml",
     ".tekton/tasks/**",
 )
@@ -66,10 +65,7 @@ BUILD_SERVICE_ACCOUNTS = {
     "assessment": "factory-offline",
     "compliance": "factory-offline",
     "test": "factory-test",
-    "copacetic": "factory-offline",
-    "helmper": "factory-offline",
     "gate": "factory-offline",
-    "hummingbird": "factory-offline",
     "quarantine": "factory-importer",
     "release-request": "factory-agent",
     "triage": "factory-agent",
@@ -176,6 +172,10 @@ def _task_run_specs(accounts: dict[str, str]) -> list[dict[str, Any]]:
     specs = []
     for task, account in accounts.items():
         spec: dict[str, Any] = {"pipelineTaskName": task, "serviceAccountName": account}
+        if task in ("build", "test"):
+            # Rootless BuildKit/Podman need a pod user namespace (hostUsers: false)
+            # so the run step can create nested namespaces and an unmasked /proc.
+            spec["podTemplate"] = {"hostUsers": False}
         if task == "compliance":
             spec["podTemplate"] = {
                 "nodeSelector": dict(FIPS_NODE_SELECTOR),
@@ -261,7 +261,7 @@ def image_runs(
             _param("branch", "{{ source_branch }}"),
             _param("change-id", "{{ pull_request_number }}"),
             _param("publish", "false"),
-            _param("enable-agents", "true"),
+            _param("enable-agents", "{{ enable_agents }}"),
             _param("enable-remediation", "false"),
             _param("enable-release-request", "false"),
         ],
@@ -284,7 +284,7 @@ def image_runs(
             _param("branch", branch),
             _param("scm-secret", "factory-scm-bot"),
             _param("publish", "true"),
-            _param("enable-agents", "true"),
+            _param("enable-agents", "{{ enable_agents }}"),
             _param("enable-remediation", "true"),
             _param("enable-release-request", "true"),
         ],
@@ -308,7 +308,7 @@ def image_runs(
             # Nightly runs re-gate the current pins against fresh vulnerability
             # data. They never publish; a deny hands off to the remediation agent.
             _param("publish", "false"),
-            _param("enable-agents", "true"),
+            _param("enable-agents", "{{ enable_agents }}"),
             _param("enable-remediation", "true"),
             _param("enable-release-request", "false"),
         ],
@@ -333,7 +333,7 @@ def image_runs(
                 # Triggered by the release pipeline after the base was promoted:
                 # rebuild on the new base, publish, and request release.
                 _param("publish", "true"),
-                _param("enable-agents", "true"),
+                _param("enable-agents", "{{ enable_agents }}"),
                 _param("enable-remediation", "true"),
                 _param("enable-release-request", "true"),
             ],
@@ -376,6 +376,7 @@ def repository_runs(options: RenderOptions) -> dict[str, dict[str, Any]]:
             _param("repo-url", "{{ repo_url }}"),
             _param("revision", "{{ revision }}"),
             _param("sender", "{{ sender }}"),
+            _param("enable-agents", "{{ enable_agents }}"),
             _param("runner-image", "{{ runner_image }}"),
             _param("agent-image", "{{ agent_image }}"),
             _param("git-provider", "{{ git_provider }}"),
@@ -398,6 +399,20 @@ def repository_runs(options: RenderOptions) -> dict[str, dict[str, Any]]:
         {"checkout": "factory-offline", "intake": "factory-intake"},
         options,
     )
+    runs["security-data-on-schedule.yaml"] = _pipeline_run(
+        "security-data-on-schedule",
+        {f"{PAC}/on-event": "[incoming]", f"{PAC}/on-target-branch": f"[{branch}]"},
+        {"factory.dev/trigger": "schedule"},
+        "factory-security-data",
+        [
+            _param("repo-url", "{{ repo_url }}"),
+            _param("revision", "{{ revision }}"),
+            _param("runner-image", "{{ runner_image }}"),
+            _param("intake-runner-image", "{{ intake_runner_image }}"),
+        ],
+        {"checkout": "factory-offline", "security-data": "factory-intake"},
+        options,
+    )
     for agent in ("upstream-sync", "exception-steward"):
         runs[f"agent-{agent}-on-schedule.yaml"] = _pipeline_run(
             f"agent-{agent}-on-schedule",
@@ -406,6 +421,7 @@ def repository_runs(options: RenderOptions) -> dict[str, dict[str, Any]]:
             "factory-agent-maintenance",
             [
                 _param("agent", agent),
+                _param("enable-agents", "{{ enable_agents }}"),
                 _param("mode", "propose-change"),
                 *_common_params(),
                 _param("intake-runner-image", "{{ intake_runner_image }}"),
@@ -418,6 +434,7 @@ def repository_runs(options: RenderOptions) -> dict[str, dict[str, Any]]:
         )
     review_params = [
         _param("agent", "pipeline-reviewer"),
+        _param("enable-agents", "{{ enable_agents }}"),
         _param("mode", "report"),
         *_common_params(),
         _param("event-type", "pull_request"),

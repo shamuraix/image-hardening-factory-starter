@@ -12,6 +12,7 @@ LABEL org.opencontainers.image.title="Image Hardening Factory agent runner" \
 # The native Claude Code binary is downloaded and checksum-verified by the
 # toolchain bootstrap (tools/versions.lock.yaml), never fetched at run time.
 COPY --chmod=0555 dist/claude/claude /usr/local/bin/claude
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN claude --version | grep -F "${CLAUDE_CODE_VERSION}"
 
 # Runtime posture: no auto-update, no non-essential traffic, no telemetry.

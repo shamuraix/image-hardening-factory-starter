@@ -22,8 +22,12 @@
 /scripts/fetch_evidence_bundle.sh       @shamuraix
 /scripts/publish_release_pointer.sh     @shamuraix
 /scripts/verify_release_evidence.sh     @shamuraix
-/scripts/validate_remediation.py        @shamuraix
 /scripts/parse_oscap.py                 @shamuraix
+/scripts/grype_scan_image.sh            @shamuraix
+/scripts/build_security_bundle.sh       @shamuraix
+/scripts/publish_security_bundle.sh     @shamuraix
+/scripts/fetch_security_bundle.sh       @shamuraix
+/factory/grype.py                       @shamuraix
 
 # Release requests: merging one signs and promotes. Gov environments need Gov
 # approvers (replace with your Gov release team); the merger's identity is

@@ -2,8 +2,12 @@
 
 [Architecture](architecture.md) · [Configuration](configuration.md)
 
-The stage scripts, catalog, policy, and evidence model are unchanged. What
-changed is orchestration, trust boundaries, approvals, and the AI layer.
+This page is for teams moving from an earlier Jenkins-based version of this
+factory. No Jenkins files remain in this repository; the table maps each old
+concept to its Tekton (pipeline engine) and Pipelines-as-Code (PaC, Git-event
+trigger) replacement. The catalog, policy, and evidence model carried over;
+orchestration, trust boundaries, approvals, scanner data handling, and the AI
+layer changed.
 
 | Jenkins | Tekton / Pipelines-as-Code | Notes |
 |---|---|---|
@@ -11,7 +15,7 @@ changed is orchestration, trust boundaries, approvals, and the AI layer.
 | `Jenkinsfile.intake` | `.tekton/pipelines/intake.yaml`, `.tekton/tasks/factory-intake.yaml` | triggered by schedule via incoming webhook |
 | `FACTORY_CHANGED_IMAGES` + plan waves | PaC `on-cel-expression` path filters per image; base releases fan out via `on-base-release` | apps build against the released base pointer |
 | `FACTORY_ENABLE_*` boolean params | PipelineRun params (`publish`, `enable-*`) rendered by `factory/tekton.py` | per trigger, not per manual run |
-| `runFactoryStage` (unstash → run → archive/stash) | `factory-stage` Task: `verify` → `run` (`onError: continue`) → `seal` | same "keep evidence on failure" semantics |
+| `runFactoryStage` (unstash → run → archive/stash) | `factory-stage` Task: `verify` → `run` (`onError: continue`) → `seal` | evidence is kept when a stage fails |
 | `stash` / `unstash` | shared PVC + SHA-256 seal manifests whose digests travel as Task results | tamper-evident across tasks |
 | `catchError` for non-blocking stages | `allow-failure: "true"` + `status` result | gate remains blocking |
 | Pod templates `FACTORY_K8S_*_POD_TEMPLATE` | Task `securityContext` + per-task ServiceAccounts (`taskRunSpecs`) + NetworkPolicies on `tekton.dev/pipelineTask` | trust classes preserved |
@@ -27,13 +31,18 @@ changed is orchestration, trust boundaries, approvals, and the AI layer.
 | `scripts/render_jenkins_plan.sh` | `scripts/render_plan.sh` | used by intake |
 | — | Tekton Chains SLSA provenance and image signatures | additional, controller-held key |
 | — | `releases/<base>/current.json` written by promotion | previously never written |
+| Scanner data baked into the runner image | daily signed security-data bundle, fetched and verified by the prepare stage | see [security-data/README.md](../security-data/README.md) |
 
 ## Cut-over checklist
 
-1. Run Tekton in parallel on a fork or a second Repository until PR results match
-   Jenkins for all five catalog images.
-2. Create Secrets from the existing Jenkins credentials (same scopes).
-3. Point Artifactory permissions at the new ServiceAccount/workload identities.
-4. Disable the Jenkins jobs, then merge this branch so PaC becomes authoritative.
-5. Produce the first release requests for current production digests so
-   `releases/` reflects reality.
+1. Run the Tekton factory in parallel (a fork, or a second PaC Repository) until
+   pull-request results match the old system for all five catalog images.
+2. Create the Secrets in `deploy/secrets.example.yaml` from the existing
+   credentials, keeping the same scopes.
+3. Point Artifactory permissions at the new ServiceAccounts or workload
+   identities.
+4. Run `security-data-on-schedule` and `intake-on-schedule` once, so the bundle
+   pointer and signed locks exist before the first build.
+5. Disable the old jobs, then make PaC authoritative on the default branch.
+6. Produce release requests for the current production digests so `releases/`
+   reflects reality.

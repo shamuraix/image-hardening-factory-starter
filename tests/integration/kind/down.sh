@@ -5,9 +5,14 @@ state=${FACTORY_HARNESS_STATE:-.local-factory/kind-review}
 [[ -s ${state}/kubeconfig && -s ${state}/settings.json ]] || {
   echo 'No harness kubeconfig/settings; refusing to delete a cluster.' >&2; exit 2;
 }
+if python3 -c 'import json,sys; raise SystemExit(0 if json.load(open(sys.argv[1])).get("existing") else 1)' "${state}/settings.json"; then
+  echo 'This state points at a cluster the harness did not create; remove the factory-harness and tekton-pipelines namespaces yourself.' >&2
+  exit 2
+fi
 cluster=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["cluster"])' "${state}/settings.json")
 provider=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["provider"])' "${state}/settings.json")
-export KUBECONFIG="$(cd "${state}" && pwd)/kubeconfig"
+KUBECONFIG="$(cd "${state}" && pwd)/kubeconfig"
+export KUBECONFIG
 context=$(kubectl config current-context)
 [[ ${context} == "kind-${cluster}" ]] || { echo 'Harness context mismatch; refusing deletion' >&2; exit 2; }
 rootful=$(python3 -c 'import json,sys; print(str(json.load(open(sys.argv[1])).get("rootful", False)).lower())' "${state}/settings.json")
