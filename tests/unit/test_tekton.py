@@ -39,6 +39,7 @@ PAC_TRIGGER_KEYS = {
 }
 READ_ONLY_SECRETS = {
     "factory-artifactory-read",
+    "factory-rpm-mirror",
     "factory-intake-cosign-public-key",
     "factory-ai-gateway",
 }

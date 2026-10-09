@@ -17,8 +17,8 @@ case $# in
     exit 2
     ;;
 esac
-# Tekton sets FACTORY_IMAGE through scripts/tekton/env.sh; local runs
-# (make local-assessment) derive it from the catalog entry.
+# Tekton sets FACTORY_IMAGE through scripts/tekton/env.sh; a direct invocation
+# derives it from the catalog entry.
 if [[ -z ${FACTORY_IMAGE:-} ]]; then
   [[ -n ${catalog} ]] || { echo "FACTORY_IMAGE or a catalog file is required" >&2; exit 2; }
   FACTORY_IMAGE=$(yq -er '.metadata.name' "${catalog}")

@@ -42,3 +42,11 @@ product (`inApplicationArchive: true`). They are remediated **only** by upgradin
 the whole product to an LTS release that bundles the fixed library. Replacing
 individual JARs breaks vendor support and is not acceptable. If no such release
 exists, the finding is blocked pending the vendor; humans decide on exceptions.
+
+## Reading scan results for these images
+
+The SBOM covers every layer, including packages replaced in later layers. For
+runtime triage, a Syft SBOM with `--scope squashed` scanned separately shows
+only what is in the final filesystem; keep both and record the digest and
+database date. A passing test stage or `assessmentPassed: true` says nothing
+about vulnerability thresholds — only the gate result does.

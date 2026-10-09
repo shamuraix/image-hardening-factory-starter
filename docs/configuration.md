@@ -25,11 +25,10 @@ object that connects a Git repository to PaC.
    - A default StorageClass for the per-run `volumeClaimTemplate` workspaces
    - Nodes for the compliance stage labelled `factory.dev/fips-node=true` and
      tainted `factory.dev/fips-node=true:NoSchedule`
-2. **Publish the three runner images** and record their digests in the
-   Repository CR params:
+2. **Build, sign, and publish the three runner images** and record their
+   digests in the Repository CR params (see [Runner images](#runner-images)):
    - `runner_image` — `toolchain/Containerfile.factory-runner`
-   - `intake_runner_image` — no Containerfile in this repository; it must
-     provide the tools listed in [Intake runner image](#intake-runner-image)
+   - `intake_runner_image` — `toolchain/Containerfile.factory-intake-runner`
    - `agent_image` — `toolchain/Containerfile.factory-agent`
 3. **Apply the factory objects**: edit `deploy/base/settings.yaml`,
    `deploy/base/repository.yaml`, and the CIDRs in `deploy/base/network-policies.yaml`,
@@ -70,6 +69,7 @@ Every factory step receives these as environment variables (`envFrom`).
 | `FACTORY_{BASE,APPLICATION}_QUARANTINE_REPOSITORY` | protected candidate repositories; the catalog `publication.quarantineRepository` field expands these names |
 | `FACTORY_RELEASE_REPOSITORY` / `FACTORY_CANARY_REPOSITORY` | release and canary repositories; expanded from the catalog `publication.releaseRepository` field |
 | `FACTORY_CATALOG_DIR` | catalog directory (`catalog/images`) |
+| `FACTORY_UBI_MIRROR_URL` | internal mirror of the public UBI RPM content (`https://cdn-ubi.redhat.com/content/public/ubi/dist`, same layout). Builds read `ubi<major>/<major>/<arch>/{baseos,appstream}/os` under it with Secret `factory-rpm-mirror` |
 | `FACTORY_DEFAULT_BRANCH` | branch that scheduled runs and agent change requests target |
 | `FACTORY_GOV_APPROVER_PATTERN` | regular expression the merging approver must match for gov1/gov2 |
 | `FACTORY_POINTER_ENVIRONMENT` | environment whose base releases update the release pointer (`commercial`) |
@@ -91,6 +91,7 @@ Each is mounted only into the step that needs it.
 | Secret | Keys | Pipeline task |
 |---|---|---|
 | `factory-artifactory-read` | `token` | prepare, build, resolve, evidence-context |
+| `factory-rpm-mirror` | `username`, `password` | build (read-only RPM mirror credential) |
 | `factory-intake-cosign-public-key` | `cosign.pub` | prepare (resource lock and security-data bundle) |
 | `factory-artifactory-quarantine` | `token` | quarantine |
 | `factory-artifactory-sign` | `token` | attest |
@@ -124,21 +125,31 @@ rather than editing the generated files.
 | `enable-remediation` | false | true | true | true |
 | `enable-release-request` | false | true | false | true |
 
-## Intake runner image
+## Runner images
 
-The `intake_runner_image` runs the intake, security-data, and upstream-context
-tasks. It must provide:
+All three images are built from `toolchain/`, offline, from a `dist/`
+directory that `make toolchain` assembles on a connected host:
 
-- `grype`, `trivy`, `osv-scanner`, and `freshclam` (to download scanner
-  databases and ClamAV signatures)
-- `clamscan` (intake scans every mirrored resource; the intake task refreshes
-  its own signatures with `freshclam` first)
-- `cosign`, `skopeo`, `curl`, `jq`, `yq`, `git`, and Python 3
-- ComplianceAsCode SCAP content in `COMPLIANCE_AS_CODE_DATASTREAM_DIR`
+1. `toolchain/download-tools.py` fetches every pinned binary from GitHub
+   releases (cosign, oras, BuildKit, RootlessKit, yq, OPA, Syft, Grype, Trivy,
+   OSV-Scanner, umoci), the ClamAV package, and the ComplianceAsCode SCAP
+   datastreams, checking each against the SHA-256 digest GitHub records for the
+   asset, and refusing any asset without one. With `--with-claude` it also
+   fetches the Claude Code binary and checks it against the release manifest.
+   Versions come only from `tools/versions.lock.yaml`.
+2. `pip wheel` packages this repository and its dependencies for Python 3.12 on
+   the runner.
 
-The main `runner_image` no longer contains scanner data. Scan and compliance
-stages use the bundle that the prepare stage downloads; see
-[security-data/README.md](../security-data/README.md).
+Then:
+
+| Image | Containerfile | Base | Adds |
+|---|---|---|---|
+| `runner_image` | `Containerfile.factory-runner` | `BASE_REF`: the internal hardened UBI 9 minimal (the harness uses `registry.access.redhat.com/ubi9/ubi-minimal`) | UBI packages (Python 3.12, rootless Podman, Skopeo, OpenSCAP, git, jq, curl), the pinned tools, ClamAV, the factory package, the `factory` user with subordinate IDs |
+| `intake_runner_image` | `Containerfile.factory-intake-runner` | the runner image | SCAP datastreams at `COMPLIANCE_AS_CODE_DATASTREAM_DIR`, `freshclam.conf` |
+| `agent_image` | `Containerfile.factory-agent` | the runner image | the pinned Claude Code binary |
+
+Because every tool is in the runner, no stage downloads anything at run time,
+and the harness builds the identical runner image for local use.
 
 ## BuildKit and Podman
 

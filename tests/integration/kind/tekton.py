@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Run and inspect the harness smoke PipelineRun for the Tekton harness."""
+"""Run and inspect the harness-build PipelineRun: a real rootless build, SBOM, and
+test of a catalog base image on the disposable kind cluster."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -20,27 +22,69 @@ def kubectl(state: Path, *args: str, capture: bool = True) -> str:
     return result.stdout if capture else ""
 
 
-def run(state: Path, timeout: int) -> int:
+EXPECTED = {
+    "checkout": "True",
+    "validate": "True",
+    "prepare": "True",
+    "build": "True",
+    "sbom": "True",
+    "test": "True",
+    "consume": "True",
+    "tamper-detected": "False",
+}
+
+
+def pod_template(state: Path, stage: str) -> dict:
+    """Same shape factory/tekton.py renders for build and test, plus the crun
+    RuntimeClass that probe-crun.py recorded in rootful mode."""
+    template: dict = {}
+    if stage in ("build", "test"):
+        template["hostUsers"] = False
+        runtime_class = state / "runtime-class"
+        if runtime_class.exists():
+            name = runtime_class.read_text().strip()
+            if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", name):
+                raise ValueError("Invalid saved harness RuntimeClass name")
+            template["runtimeClassName"] = name
+    return template
+
+
+def run(state: Path, timeout: int, image: str) -> int:
     manifest = {
         "apiVersion": "tekton.dev/v1",
         "kind": "PipelineRun",
-        "metadata": {"generateName": "harness-smoke-"},
+        "metadata": {"generateName": "harness-build-"},
         "spec": {
-            "pipelineRef": {"name": "harness-smoke"},
-            "params": [{"name": "runner-image", "value": RUNNER_IMAGE}],
+            "pipelineRef": {"name": "harness-build"},
+            "params": [
+                {"name": "runner-image", "value": RUNNER_IMAGE},
+                {"name": "image", "value": image},
+            ],
             "taskRunTemplate": {
                 "serviceAccountName": "factory-offline",
                 "podTemplate": {
-                    "securityContext": {"runAsNonRoot": True, "runAsUser": 10001, "fsGroup": 10001}
+                    "securityContext": {
+                        "runAsNonRoot": True,
+                        "runAsUser": 10001,
+                        "runAsGroup": 10001,
+                        "fsGroup": 10001,
+                        "fsGroupChangePolicy": "OnRootMismatch",
+                    },
+                    "automountServiceAccountToken": False,
                 },
             },
+            "taskRunSpecs": [
+                {"pipelineTaskName": stage, "podTemplate": pod_template(state, stage)}
+                for stage in ("build", "test")
+            ],
+            "timeouts": {"pipeline": f"{timeout}s"},
             "workspaces": [
                 {
                     "name": "shared",
                     "volumeClaimTemplate": {
                         "spec": {
                             "accessModes": ["ReadWriteOnce"],
-                            "resources": {"requests": {"storage": "2Gi"}},
+                            "resources": {"requests": {"storage": "20Gi"}},
                         }
                     },
                 }
@@ -67,7 +111,7 @@ def run(state: Path, timeout: int) -> int:
     ).stdout
     print(f"created {created}")
     (state / "last-pipelinerun").write_text(created)
-    deadline = time.time() + timeout
+    deadline = time.time() + timeout + 120
     while time.time() < deadline:
         status = json.loads(kubectl(state, "get", "pipelinerun", created, "-o", "json"))
         conditions = status.get("status", {}).get("conditions", [])
@@ -88,14 +132,8 @@ def check(state: Path, name: str) -> int:
         item["metadata"]["labels"]["tekton.dev/pipelineTask"]: item["status"]["conditions"][0]
         for item in runs
     }
-    expected = {
-        "checkout": "True",
-        "validate": "True",
-        "consume": "True",
-        "tamper-detected": "False",
-    }
     failures = []
-    for task, want in expected.items():
+    for task, want in EXPECTED.items():
         got = statuses.get(task, {}).get("status")
         print(f"{task}: {got} (want {want})")
         if got != want:
@@ -121,12 +159,13 @@ def main() -> int:
     parser.add_argument("--state", type=Path, default=Path(".local-factory/kind-review"))
     commands = parser.add_subparsers(dest="command", required=True)
     run_parser = commands.add_parser("run")
-    run_parser.add_argument("--timeout", type=int, default=900)
+    run_parser.add_argument("--timeout", type=int, default=3600)
+    run_parser.add_argument("--image", default="ubi9-minimal", help="a catalog base image")
     commands.add_parser("status")
     commands.add_parser("log")
     args = parser.parse_args()
     if args.command == "run":
-        return run(args.state, args.timeout)
+        return run(args.state, args.timeout, args.image)
     name = (args.state / "last-pipelinerun").read_text().strip()
     if args.command == "status":
         return check(args.state, name)

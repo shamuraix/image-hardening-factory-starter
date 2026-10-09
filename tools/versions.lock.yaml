@@ -8,10 +8,6 @@ tools:
     project: https://github.com/rootless-containers/rootlesskit
     license: Apache-2.0
     version: 3.1.0
-  lima:
-    project: https://github.com/lima-vm/lima
-    license: Apache-2.0
-    version: 1.1.0
   tekton-pipelines:
     project: https://github.com/tektoncd/pipeline
     license: Apache-2.0
@@ -67,7 +63,8 @@ tools:
   trivy:
     project: https://github.com/aquasecurity/trivy
     license: Apache-2.0
-    version: 0.66.0
+    # Trivy no longer publishes binaries for releases before 0.70.0.
+    version: 0.75.0
   osv-scanner:
     project: https://github.com/google/osv-scanner
     license: Apache-2.0
@@ -76,6 +73,10 @@ tools:
     project: https://github.com/open-policy-agent/opa
     license: Apache-2.0
     version: 1.7.1
+  clamav:
+    project: https://github.com/Cisco-Talos/clamav
+    license: GPL-2.0
+    version: 1.4.6
   openscap:
     project: https://github.com/OpenSCAP/openscap
     license: LGPL-2.1-or-later

@@ -43,6 +43,8 @@ upkeep is assisted by **Claude Code agents** that can only propose changes.
 | `.tekton/tasks/`, `.tekton/pipelines/` | Hand-written Tekton Tasks and Pipelines |
 | `.tekton/*-on-*.yaml` | **Generated** PaC PipelineRuns — edit `factory/tekton.py`, run `make tekton-render` |
 | `deploy/` | Kustomize: namespace, ServiceAccounts, NetworkPolicies, Repository CR, Chains config, schedules, admission policy |
+| `toolchain/` | Runner, intake-runner, and agent Containerfiles; `download-tools.py` reads `tools/versions.lock.yaml` |
+| `tests/integration/kind/` | Disposable kind cluster that runs the real build, SBOM, and test Tasks (`make harness-up`, `make harness-run`) |
 | `.claude/agents/` | Agent personas (usable interactively and in CI) |
 | `.claude/skills/` | Reusable procedures the personas load |
 | `agents/` | CI agent settings and structured-output schemas |
@@ -61,7 +63,13 @@ make tekton-render  # regenerate .tekton PipelineRuns from the catalog
 make tekton-check   # fail if generated PipelineRuns drifted
 make policy-test    # OPA tests (needs opa)
 make agents         # list agent personas, their modes and purpose
+make toolchain      # download pinned tools + build the wheel into dist/ (needs network)
+make harness-up     # kind cluster with the real runner image and Tekton
+make harness-run    # build, SBOM, and test a base image on that cluster
 ```
+
+There is no host-side build: images are built only by the Tekton Task, in the
+pipeline or in the harness.
 
 ## Iron Bank overlay rules (summary — see `.claude/skills/ironbank-overlays`)
 

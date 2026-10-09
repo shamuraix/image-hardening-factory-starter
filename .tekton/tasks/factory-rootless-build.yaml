@@ -77,6 +77,12 @@ spec:
         - name: ARTIFACTORY_READ_TOKEN
           valueFrom:
             secretKeyRef: {name: factory-artifactory-read, key: token}
+        - name: FACTORY_RPM_MIRROR_USERNAME
+          valueFrom:
+            secretKeyRef: {name: factory-rpm-mirror, key: username}
+        - name: FACTORY_RPM_MIRROR_PASSWORD
+          valueFrom:
+            secretKeyRef: {name: factory-rpm-mirror, key: password}
         - {name: FACTORY_BUILDKIT_NO_PROCESS_SANDBOX, value: "true"}
       volumeMounts:
         - {name: buildkit-tmp, mountPath: /tmp}

@@ -31,16 +31,10 @@ flowchart LR
 
 ## New here? Start in 10 minutes
 
-### 1) Install local prerequisites
-
-- Python 3.11+, `git`, `curl`, `jq`, `yq`
-- For local builds: Podman, Skopeo, Lima (`limactl`) with `template://buildkit`,
-  BuildKit client (`buildctl`), `umoci`
-- Optional: `opa` (policy tests), Claude Code (interactive agents), `tkn`
-
-Use the versions in `tools/versions.lock.yaml`.
-
-### 2) Install and check
+Day-one needs Python 3.11+ and git. The only other host software is for the
+optional local cluster: a container runtime (Podman or Docker), `kind`, and
+`kubectl`. There is no host-side build toolchain to install; builds run inside
+the same runner image and Tekton Task the pipeline uses.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
@@ -49,17 +43,20 @@ make ci          # validate, tekton-check, release-requests, lint, test (+ opa i
 make agents      # list the agent personas
 ```
 
-### 3) Build locally (development only, never releasable)
+To build an image for real on a disposable local cluster (about 15 minutes the
+first time; needs `kind` at the version in `tools/versions.lock.yaml`):
 
 ```bash
-limactl start --name factory-buildkit template://buildkit
-export FACTORY_BUILDKIT_LIMA_INSTANCE=factory-buildkit
-make local-build IMAGE=ubi9-minimal LOCAL_USE_UPSTREAM_UBI_REPOS=true
-make local-test IMAGE=ubi9-minimal
-make local-assessment IMAGE=ubi9-minimal
+make harness-up                  # kind cluster, runner image, Tekton, factory objects
+make harness-run IMAGE=ubi9-minimal   # rootless build, SBOM, tests, seal checks
+make harness-down
 ```
 
-### 4) Work with the agents interactively
+Harness builds use Red Hat's public UBI content and an unsigned lock, so they
+can never be imported, signed, or promoted. See
+[docs/local-kubernetes-testing.md](docs/local-kubernetes-testing.md).
+
+### Work with the agents interactively
 
 Open the repository in Claude Code. `CLAUDE.md`, the personas in
 `.claude/agents/`, the skills in `.claude/skills/`, and the guard hooks in
@@ -92,13 +89,14 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 | `.tekton/tasks/`, `.tekton/pipelines/` | Tekton Tasks and Pipelines |
 | `.tekton/*-on-*.yaml` | Generated PaC PipelineRuns (`make tekton-render`) |
 | `deploy/` | Namespace, ServiceAccounts, NetworkPolicies, Repository CR, schedules, admission policy, Chains config |
+| `toolchain/` | Runner image Containerfiles and the pinned-tool downloader (`make toolchain`) |
 | `releases/` | Release requests; merging one signs and promotes |
 | `.claude/` | Agent personas, skills, settings, and hooks for Claude Code |
 | `agents/` | CI agent settings and output schemas |
 | `factory/` | Python: catalog, planning, findings, gate input, Tekton rendering, agents, release requests |
 | `scripts/` | Stage scripts; `scripts/tekton/` runtime helpers; `scripts/agents/` agent plumbing |
 | `policies/` | OPA release policy and approved exceptions |
-| `tests/` | Unit tests and the kind/k3s Tekton harness |
+| `tests/` | Unit tests, product test profiles, and the kind Tekton harness |
 
 ## Documentation
 
@@ -108,7 +106,7 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 - [Operations](docs/operations.md) — bootstrap, release process, day-2 cadence, runbooks
 - [Evidence model](docs/evidence-model.md) — what is produced, signed, and verified
 - [Migration from Jenkins](docs/migration-from-jenkins.md) — concept mapping
-- [Local development](docs/local-development.md) and [Kubernetes harness](docs/local-kubernetes-testing.md)
+- [Local cluster harness](docs/local-kubernetes-testing.md) — build an image end to end on kind
 - [Implementation status](docs/implementation-status.md)
 
 ## Notes and expectations

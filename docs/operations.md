@@ -9,11 +9,10 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
 
 ## Bootstrap sequence
 
-1. Build and sign the runner, intake-runner, and agent images; record their
-   digests in `deploy/base/repository.yaml`. The intake runner image needs
-   `grype`, `trivy`, `osv-scanner`, `freshclam`, `clamscan`, `cosign`,
-   `skopeo`, `curl`, `jq`, `yq`, and the ComplianceAsCode SCAP content (see
-   [configuration.md](configuration.md#intake-runner-image)).
+1. On a connected host run `make toolchain`, then build and sign the runner,
+   intake-runner, and agent images from `toolchain/` and record their digests
+   in `deploy/base/repository.yaml` (see
+   [configuration.md](configuration.md#runner-images)).
 2. Install Tekton Pipelines, Pipelines-as-Code, and Tekton Chains; apply
    `deploy/chains/chains-config.yaml`.
 3. Create Artifactory repositories for source, upstream OCI, quarantine,
@@ -121,6 +120,8 @@ history). Re-check policy with current data before redeploying.
 
 ## Local development
 
-Local builds are for development only and can never be released. Use them to
-iterate on overlays and tests; CI and the release pipeline are the only path to
-release. See [local-development.md](local-development.md).
+There is no host-side build. To iterate on an overlay, run the kind harness
+(`make harness-up`, `make harness-run`), which builds the image with the same
+Tekton Task the pipeline uses. Harness builds carry a `localDevelopment` lock
+and can never be imported, signed, or promoted. See
+[local-kubernetes-testing.md](local-kubernetes-testing.md).

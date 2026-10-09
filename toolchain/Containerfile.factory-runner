@@ -1,19 +1,40 @@
+# Factory runner: the image every pipeline step runs in (except the agent
+# steps, which use Containerfile.factory-agent layered on this one, and the
+# connected security-data and intake tasks, which use
+# Containerfile.factory-intake-runner layered on this one).
+#
+# Inputs, produced by `make toolchain` (toolchain/download-tools.py and a wheel
+# of this repository), are copied in; nothing is downloaded while building:
+#   dist/tools/         pinned static binaries (tools/versions.lock.yaml)
+#   dist/rpms/          the ClamAV package (not in the UBI repositories)
+#   dist/factory-wheel/ this repository and its Python dependencies
+#
+# BASE_REF is the UBI 9 minimal image: the internal hardened base in production,
+# registry.access.redhat.com/ubi9/ubi-minimal in the kind harness.
 ARG BASE_REF
 FROM ${BASE_REF}
 
 ARG FACTORY_UID=10001
 ARG FACTORY_GID=10001
 COPY dist/tools/ /usr/local/bin/
+COPY dist/rpms/ /tmp/rpms/
 COPY dist/factory-wheel/ /tmp/wheels/
 
-RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman skopeo openscap-scanner \
-    && python3.12 -m pip install --no-index --find-links /tmp/wheels 'image-hardening-factory[dev]' \
+# UBI 9 AppStream/BaseOS packages: Python 3.12 (the system python3 is 3.9),
+# rootless Podman with its user-namespace helpers, Skopeo, OpenSCAP, git, jq, curl.
+RUN microdnf install -y --setopt=install_weak_deps=0 \
+      python3.12 python3.12-pip git-core jq curl tar gzip \
+      podman skopeo slirp4netns fuse-overlayfs shadow-utils-subid openscap-scanner \
+    && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
+    && ln -sf /usr/bin/pip3.12 /usr/local/bin/pip3 \
+    && python3 -m pip install --no-cache-dir --no-index --find-links /tmp/wheels 'image-hardening-factory[dev]' \
+    && rpm -i /tmp/rpms/clamav-*.rpm \
     && chmod 0555 /usr/local/bin/* \
-    && test -x /usr/local/bin/umoci \
-    && test -x /usr/local/bin/buildctl \
-    && test -x /usr/local/bin/buildkitd \
-    && test -x /usr/local/bin/buildkit-runc \
-    && test -x /usr/local/bin/rootlesskit \
+    && for tool in buildctl buildkitd buildkit-runc rootlesskit umoci cosign oras \
+         syft grype trivy osv-scanner yq opa clamscan; do \
+         test -x "/usr/local/bin/${tool}" || { echo "missing tool: ${tool}" >&2; exit 1; }; \
+       done \
+    && python3 -c 'import factory.cli' \
     && printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
       "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \
@@ -26,7 +47,7 @@ RUN microdnf install -y python3.12 python3.12-pip git-core jq curl podman skopeo
       /home/factory /home/factory/.config /home/factory/.config/containers \
       /home/factory/.local/share/containers /tmp/factory-runtime \
     && microdnf clean all \
-    && rm -rf /tmp/wheels /var/cache/dnf
+    && rm -rf /tmp/wheels /tmp/rpms /var/cache/dnf
 
 COPY --chown=${FACTORY_UID}:${FACTORY_GID} toolchain/storage.conf /home/factory/.config/containers/storage.conf
 

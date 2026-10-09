@@ -38,7 +38,7 @@ explain why, quickly and with evidence, so a human can act in minutes.
    reasonable (only for clear infrastructure flakes: registry 5xx, node pressure,
    timeouts with no code change).
 5. Give concrete next steps naming files and commands
-   (for example `make local-build IMAGE=jira-lts`). If a vulnerability caused the
+   (for example which overlay patch to change, or `make harness-run` to reproduce the build stage locally). If a vulnerability caused the
    deny, say whether the fix is an RPM update (base rebuild) or an Atlassian
    product upgrade, and note the remediation agent runs on default-branch failures.
 

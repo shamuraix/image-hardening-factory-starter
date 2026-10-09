@@ -1,0 +1,5 @@
+# Build context for toolchain/Containerfile.* is the repository root; only
+# dist/ and toolchain/ are copied in. Keep state, credentials, and work out.
+*
+!dist/
+!toolchain/

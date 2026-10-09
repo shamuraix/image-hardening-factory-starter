@@ -52,16 +52,15 @@ human decision about the freshness rule, not a scanner ignore.
 
 ## Requirements for the intake runner image
 
-The bundle is built in the intake runner image, which must provide `grype`,
-`trivy`, `osv-scanner`, `freshclam`, `cosign`, `curl`, `jq`, and the
-ComplianceAsCode datastreams in `COMPLIANCE_AS_CODE_DATASTREAM_DIR`
+The bundle is built in `toolchain/Containerfile.factory-intake-runner`, which
+already carries `grype`, `trivy`, `osv-scanner`, `freshclam`, `cosign`, `curl`,
+`jq`, and the ComplianceAsCode datastreams at `COMPLIANCE_AS_CODE_DATASTREAM_DIR`
 (`deploy/base/settings.yaml`). Its egress allowlist (NetworkPolicy
 `approved-upstreams`) must reach the Grype, Trivy, OSV, and ClamAV database
 mirrors and the CISA KEV feed.
 
 ## Local runs
 
-`make local-assessment` reads the bundle from `FACTORY_SECURITY_DATA`
-(default `/opt/security-data`). Download and verify a bundle as in step 3, or
-build one with `scripts/build_security_bundle.sh`, and point that variable at
-the unpacked directory.
+The scan stage is not run outside the pipeline. To inspect a bundle by hand,
+download and verify it as in step 3 and point `FACTORY_SECURITY_DATA` at the
+unpacked directory before calling `scripts/scan_image.sh`.

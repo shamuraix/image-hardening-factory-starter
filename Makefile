@@ -1,5 +1,5 @@
 .PHONY: validate test lint plan ci tekton-render tekton-check release-requests agents \
-	local-build local-test local-assessment update-pins package policy-test
+	update-pins package policy-test toolchain harness-up harness-run harness-down
 
 PY := PYTHONPATH=. python3
 
@@ -37,15 +37,17 @@ ci: validate tekton-check release-requests lint test
 update-pins:
 	scripts/update_source_pins.sh
 
-local-build:
-	@test -n "$(IMAGE)" || { echo "usage: make local-build IMAGE=ubi9-minimal [LOCAL_RPM_REPO_DIR=/path/to/snapshot]" >&2; exit 2; }
-	scripts/local_build.sh "$(IMAGE)"
+toolchain:
+	toolchain/build-dist.sh dist
 
-local-test: local-build
-	scripts/run_tests.sh "catalog/images/$(IMAGE).yaml" "work/$(IMAGE)"
+harness-up:
+	tests/integration/kind/up.sh
 
-local-assessment: local-build
-	scripts/scan_image.sh "catalog/images/$(IMAGE).yaml" "work/$(IMAGE)"
+harness-run:
+	python3 tests/integration/kind/tekton.py --state "$${FACTORY_HARNESS_STATE:-.local-factory/kind-review}" run --image "$${IMAGE:-ubi9-minimal}"
+
+harness-down:
+	tests/integration/kind/down.sh
 
 package:
 	git archive --format=tar.gz --output=image-hardening-factory.tar.gz HEAD

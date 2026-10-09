@@ -17,7 +17,7 @@ and on a first end-to-end run in a real cluster.
 |---|---|---|
 | Five-image catalog and schema | Implemented and tested | Change ownership and governance |
 | PaC triggers generated from the catalog | Implemented; drift-tested | Install the PaC app or webhook; branch protection |
-| Build, evidence, and gate pipeline (Tekton) | Implemented; invariants tested; the kind harness covers stage sealing | First real-cluster run of the rootless build and test stages |
+| Build, evidence, and gate pipeline (Tekton) | Implemented; invariants tested; the kind harness runs validate, build, SBOM, test, and sealing with the real Tasks | First run of the harness and of the full pipeline on a real cluster |
 | Stage sealing (tamper-evident handoff between tasks) | Implemented and tested (`scripts/tekton/artifacts.sh`) | — |
 | Per-task trust classes (ServiceAccount, NetworkPolicy, and secrets per task) | Implemented | Replace placeholder CIDRs; workload identity |
 | PR secret isolation admission policy | Implemented | Confirm PaC event-type propagation to pods |
@@ -37,8 +37,10 @@ and on a first end-to-end run in a real cluster.
 
 ## Known gaps and follow-ups
 
-- The kind harness checks stage sealing only. It does not run the rootless build
-  stages, PaC, Chains, or agents (see `docs/local-kubernetes-testing.md`).
+- The kind harness builds, SBOMs, and tests a base image with the real Tasks but
+  does not run scan, gate, quarantine, PaC, Chains, or the agents (see
+  `docs/local-kubernetes-testing.md`). Its first run on a real machine is still
+  pending.
 - The KEV freshness check uses the date CISA last changed the catalog. A gap of
   more than 72 hours in CISA updates makes every scan fail; a human needs to
   decide whether to accept that risk or change the rule.
