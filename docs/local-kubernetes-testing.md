@@ -79,7 +79,10 @@ you gave `FACTORY_HARNESS_STATE`, if you set one.
 4. Runs `deploy.sh`: installs the pinned Tekton Pipelines release, applies the
    factory ServiceAccounts, settings (with `FACTORY_RPM_SOURCE_MODE:
    public-upstream`, so builds install RPMs from Red Hat's public UBI CDN),
-   Tasks, Pipelines, and the harness objects.
+   placeholder `factory-artifactory-read` and `factory-rpm-mirror` Secrets
+   (the build Task binds them by `secretKeyRef`, so the pod cannot start
+   without them; nothing on the harness path reads the values), Tasks,
+   Pipelines, and the harness objects.
 5. In rootful mode only, `probe-crun.py` installs and probes a crun
    RuntimeClass and records its name in the state directory; `tekton.py` then
    sets `runtimeClassName` on the build and test pods.
