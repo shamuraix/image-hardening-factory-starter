@@ -19,6 +19,10 @@ podman image exists "${LOCAL_IMAGE_REF}" || {
 image=${LOCAL_IMAGE_REF}
 export FACTORY_TEST_IMAGE="${image}"
 export FACTORY_TEST_OUTPUT="${output}"
+# The candidate's declared platform; tests pass it to Podman so the right
+# image is selected without a platform warning on a foreign (emulating) node.
+FACTORY_TEST_PLATFORM=$(yq -r '.build.platforms[0]' "${catalog}")
+export FACTORY_TEST_PLATFORM
 
 set +e
 "tests/profiles/${profile}/test.sh" >"${output}/test.log" 2>&1

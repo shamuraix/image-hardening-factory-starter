@@ -31,6 +31,11 @@ exit "$RPM_STATUS"
                 (1, "missing     /usr/share/zoneinfo/UTC\n", "", False),
                 (1, "Unsatisfied dependencies for java:\n\tcups-libs is needed\n", "", False),
                 (3, "S.5......  c /etc/allowed\n", "", False),
+                # Podman's platform warning (emulated candidate on a foreign
+                # node) is kept as evidence but is not an rpm error.
+                (0, "", "WARNING: image platform (linux/amd64) does not match\n", True),
+                (1, "S.5......  c /etc/allowed\n", "WARNING: image platform mismatch\n", True),
+                (1, "", "WARNING: something\nerror: database corrupt\n", False),
             ]
             for status, output, error, expected in cases:
                 with self.subTest(status=status, output=output, error=error):
