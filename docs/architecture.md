@@ -224,10 +224,14 @@ The prepare stage writes two seals: `prepare` (build context and lock) and
   Podman runs rootless with VFS storage for scans and tests. The build and test
   pods run in their own user namespace (`hostUsers: false`, set by the
   generated `taskRunSpecs`), and only those two run steps relax
-  `allowPrivilegeEscalation`, seccomp/AppArmor, and `procMount`, because
-  `newuidmap`/`newgidmap` are setuid programs and nested containers mount their
-  own `/proc`. `scripts/runtime_preflight.sh` checks these conditions before the
-  build. No step is privileged or uses host namespaces or host paths.
+  `allowPrivilegeEscalation`, seccomp/AppArmor, and `procMount` and keep
+  `CAP_SETUID`/`CAP_SETGID` in their capability bounding set, because
+  `newuidmap`/`newgidmap` are setuid programs (a setuid program gets only the
+  caller's bounding set) and nested containers mount their own `/proc`. The
+  helpers are compiled with libcap in the runner image so they need nothing
+  more (docs/configuration.md, "User-namespace helpers").
+  `scripts/runtime_preflight.sh` checks these conditions before the build. No
+  step is privileged or uses host namespaces or host paths.
 - BuildKit builds with a source policy that denies remote image, HTTP, and Git
   sources. Every input is a digest-verified local OCI layout or a locked file.
 - Scanner and compliance stages unpack the image with `umoci` under

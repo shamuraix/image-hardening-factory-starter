@@ -29,7 +29,13 @@ def _harness_documents() -> dict[str, dict]:
 class HarnessTests(unittest.TestCase):
     def test_pipeline_uses_real_factory_tasks_and_chains_seals(self) -> None:
         harness = _harness_documents()
-        tasks = {t["name"]: t for t in harness["harness-build"]["spec"]["tasks"]}
+        pipeline = harness["harness-build"]["spec"]
+        tasks = {t["name"]: t for t in pipeline["tasks"]}
+        # The deliberately failing tamper probe runs in finally: a failed task
+        # under tasks would stop Tekton from scheduling build, sbom, and test.
+        final = {t["name"]: t for t in pipeline["finally"]}
+        self.assertEqual(set(final), {"tamper-detected"})
+        tasks |= final
         real = documents("Task")
         for name, entry in tasks.items():
             ref = entry["taskRef"]["name"]

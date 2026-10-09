@@ -91,8 +91,16 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         privileged: false
-        # Required by setuid newuidmap/newgidmap for rootless BuildKit.
+        # Rootless BuildKit/Podman map the factory user's subordinate IDs through
+        # the setuid newuidmap/newgidmap helpers. A setuid program receives only
+        # the capabilities in the caller's bounding set, so that set must keep
+        # CAP_SETUID and CAP_SETGID; the step process itself (uid 10001) still
+        # has no effective capabilities, and the libcap-aware helpers built in
+        # Containerfile.factory-runner keep exactly the one they need.
         allowPrivilegeEscalation: true
+        capabilities:
+          drop: [ALL]
+          add: [SETUID, SETGID]
         # Nested containers mount their own /proc; needs the pod user namespace
         # (hostUsers: false, set by the rendered taskRunSpecs podTemplate).
         procMount: Unmasked

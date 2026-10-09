@@ -144,9 +144,10 @@ directory that `make toolchain` assembles on a connected host:
 
 1. `toolchain/download-tools.py` fetches every pinned binary from GitHub
    releases (cosign, oras, BuildKit, RootlessKit, yq, OPA, Syft, Grype, Trivy,
-   OSV-Scanner, umoci), the ClamAV package, and the ComplianceAsCode SCAP
-   datastreams, checking each against the SHA-256 digest GitHub records for the
-   asset, and refusing any asset without one. With `--with-claude` it also
+   OSV-Scanner, umoci), the ClamAV package, the shadow source archive (see
+   [User-namespace helpers](#user-namespace-helpers)), and the ComplianceAsCode
+   SCAP datastreams, checking each against the SHA-256 digest GitHub records
+   for the asset, and refusing any asset without one. With `--with-claude` it also
    fetches the Claude Code binary and checks it against the release manifest.
    Versions come only from `tools/versions.lock.yaml`.
 2. `pip wheel` packages this repository and its dependencies for Python 3.12 on
@@ -156,7 +157,7 @@ Then:
 
 | Image | Containerfile | Base | Adds |
 |---|---|---|---|
-| `runner_image` | `Containerfile.factory-runner` | `BASE_REF`: the internal hardened UBI 9 minimal (the harness uses `registry.access.redhat.com/ubi9/ubi-minimal`) | UBI packages (Python 3.12, rootless Podman, Skopeo, OpenSCAP, git, jq, curl), the pinned tools, ClamAV, the factory package, the `factory` user with subordinate IDs |
+| `runner_image` | `Containerfile.factory-runner` | `BASE_REF`: the internal hardened UBI 9 minimal (the harness uses `registry.access.redhat.com/ubi9/ubi-minimal`) | UBI packages (Python 3.12, rootless Podman, Skopeo, OpenSCAP, git, jq, curl), the pinned tools, ClamAV, the factory package, the `factory` user with subordinate IDs, `newuidmap`/`newgidmap` compiled with libcap in a throwaway build stage (needs `gcc`, `make`, `libcap-devel`, `glibc-devel`, `libxcrypt-devel`, `xz` from the UBI AppStream/BaseOS mirror) |
 | `intake_runner_image` | `Containerfile.factory-intake-runner` | the runner image | SCAP datastreams at `COMPLIANCE_AS_CODE_DATASTREAM_DIR`, `freshclam.conf` |
 | `agent_image` | `Containerfile.factory-agent` | the runner image | the pinned Claude Code binary |
 
@@ -175,11 +176,42 @@ internal CA; unnecessary when the internal hardened base already trusts them.
 The build and test run steps start a short-lived rootless `buildkitd` or
 rootless Podman inside the step container. There is no shared daemon, host
 socket, or privileged sidecar. These two steps need
-`allowPrivilegeEscalation: true` and Unconfined seccomp/AppArmor because
-`newuidmap`/`newgidmap` are setuid programs. Every other step uses
-`RuntimeDefault` seccomp with all capabilities dropped. For that reason the
+`allowPrivilegeEscalation: true`, Unconfined seccomp/AppArmor, and
+`capabilities: {drop: [ALL], add: [SETUID, SETGID]}` because
+`newuidmap`/`newgidmap` are setuid programs (next section). Every other step
+uses `RuntimeDefault` seccomp with all capabilities dropped. For that reason the
 namespace's [Pod Security](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
 level is `privileged`, with `restricted` warnings and audit.
+
+### User-namespace helpers
+
+Rootless BuildKit and Podman map the `factory` user's subordinate range
+(`100000:65536`) into a child user namespace by running `newuidmap` and
+`newgidmap`, which write `/proc/<pid>/uid_map` and `gid_map`. Three kernel
+rules decide whether that works inside a pod:
+
+- Inside a pod user namespace (`hostUsers: false`) the kernel ignores file
+  capabilities written outside that namespace, so the helpers must be setuid
+  root; the runner image sets that bit.
+- A setuid program receives only the capabilities in the caller's *bounding
+  set* ([capabilities(7)](https://man7.org/linux/man-pages/man7/capabilities.7.html),
+  "Capabilities and execution of programs by root"). With `drop: [ALL]` alone
+  the helper is root with no capabilities and fails with
+  `open of uid_map failed: Permission denied`. The run steps therefore keep
+  `CAP_SETUID` and `CAP_SETGID` in the bounding set. The step process itself
+  runs as uid 10001 with no effective capabilities; they only materialise
+  inside the two helpers.
+- Writing a map needs `CAP_SETUID`/`CAP_SETGID` in the parent namespace, and
+  the opener must be the namespace owner or hold `CAP_SYS_ADMIN` over it
+  (`kernel/user_namespace.c`, `map_write`). The UBI `shadow-utils` helpers are
+  built without libcap, stay uid 0, and so would need `CAP_SYS_ADMIN` and
+  `CAP_DAC_OVERRIDE` as well. The runner instead compiles the helpers from the
+  pinned [shadow](https://github.com/shadow-maint/shadow) release with
+  `libcap-devel` present: that build drops back to the caller's uid before
+  opening the map and keeps only the one capability it needs
+  (`lib/idmapping.c`, `write_mapping`). The image build fails if the installed
+  helpers are not that build, and `scripts/runtime_preflight.sh` checks both
+  the bounding set and the helpers before every build.
 
 `FACTORY_BUILD_NETWORK` accepts `default` (production), `none`, or `host`
 (explicit only).

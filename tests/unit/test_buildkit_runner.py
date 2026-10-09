@@ -175,23 +175,31 @@ class BuildkitRunnerTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.log.exists())
 
-    def test_kubernetes_build_task_avoids_host_privileges(self) -> None:
-        task = yaml.safe_load((ROOT / ".tekton/tasks/factory-rootless-build.yaml").read_text())
-        spec = task["spec"]
-        self.assertFalse(any("hostPath" in volume for volume in spec.get("volumes", [])))
-        steps = {step["name"]: step for step in spec["steps"]}
-        run = steps["run"]["securityContext"]
-        self.assertFalse(run["privileged"])
-        self.assertTrue(run["runAsNonRoot"])
-        # Required by setuid newuidmap/newgidmap; no added capabilities.
-        self.assertTrue(run["allowPrivilegeEscalation"])
-        self.assertNotIn("add", run.get("capabilities", {}))
-        # Only the run step relaxes the defaults; verify and seal stay restricted.
-        template = spec["stepTemplate"]["securityContext"]
-        self.assertFalse(template["allowPrivilegeEscalation"])
-        self.assertEqual(template["capabilities"], {"drop": ["ALL"]})
-        for name in ("verify", "seal"):
-            self.assertNotIn("securityContext", steps[name])
+    def test_kubernetes_build_and_test_tasks_avoid_host_privileges(self) -> None:
+        for task_file in ("factory-rootless-build.yaml", "factory-rootless-test.yaml"):
+            with self.subTest(task=task_file):
+                task = yaml.safe_load((ROOT / ".tekton/tasks" / task_file).read_text())
+                spec = task["spec"]
+                self.assertFalse(any("hostPath" in volume for volume in spec.get("volumes", [])))
+                steps = {step["name"]: step for step in spec["steps"]}
+                run = steps["run"]["securityContext"]
+                self.assertFalse(run["privileged"])
+                self.assertTrue(run["runAsNonRoot"])
+                # The setuid newuidmap/newgidmap helpers receive only the
+                # capabilities in the caller's bounding set, so the run step
+                # keeps exactly CAP_SETUID and CAP_SETGID there and nothing else
+                # (never SYS_ADMIN or DAC_OVERRIDE, which the UBI shadow-utils
+                # build would need; the runner compiles libcap-aware helpers).
+                self.assertTrue(run["allowPrivilegeEscalation"])
+                self.assertEqual(
+                    run["capabilities"], {"drop": ["ALL"], "add": ["SETUID", "SETGID"]}
+                )
+                # Only the run step relaxes the defaults; verify and seal stay restricted.
+                template = spec["stepTemplate"]["securityContext"]
+                self.assertFalse(template["allowPrivilegeEscalation"])
+                self.assertEqual(template["capabilities"], {"drop": ["ALL"]})
+                for name in ("verify", "seal"):
+                    self.assertNotIn("securityContext", steps[name])
         # Pods never get a Kubernetes API token.
         run_template = yaml.safe_load((ROOT / ".tekton/jira-lts-on-push.yaml").read_text())["spec"][
             "taskRunTemplate"

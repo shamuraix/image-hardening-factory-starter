@@ -8,6 +8,8 @@ time. Output layout (``dist/`` by default):
 
   tools/   static binaries copied to /usr/local/bin
   rpms/    packages installed with rpm (ClamAV)
+  src/     source archives compiled inside the runner image (shadow, for the
+           libcap-aware newuidmap/newgidmap)
   scap/    ComplianceAsCode datastreams for the intake runner
   claude/  the Claude Code binary for the agent runner
 """
@@ -44,7 +46,7 @@ class Asset:
     repo: str
     tag: str
     asset: str
-    kind: str  # binary | tar | rpm | scap-zip
+    kind: str  # binary | tar | rpm | source | scap-zip
     names: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -53,11 +55,17 @@ class Asset:
 
     @property
     def subdir(self) -> str:
-        return {"binary": "tools", "tar": "tools", "rpm": "rpms", "scap-zip": "scap"}[self.kind]
+        return {
+            "binary": "tools",
+            "tar": "tools",
+            "rpm": "rpms",
+            "source": "src",
+            "scap-zip": "scap",
+        }[self.kind]
 
     @property
     def outputs(self) -> tuple[str, ...]:
-        if self.kind == "rpm":
+        if self.kind in ("rpm", "source"):
             return (self.asset,)
         if self.kind == "scap-zip":
             return DATASTREAMS
@@ -148,6 +156,8 @@ def specifications(arch: str, versions: dict[str, str] | None = None) -> list[As
             f"scap-security-guide-{v['compliance-as-code']}.zip",
             "scap-zip",
         ),
+        # Architecture-independent; compiled by Containerfile.factory-runner.
+        Asset("shadow-maint/shadow", v["shadow"], f"shadow-{v['shadow']}.tar.xz", "source"),
     ]
 
 
@@ -171,7 +181,7 @@ def _extract(asset: Asset, archive: Path, destination: Path) -> None:
     """Write the asset's outputs next to their final names, with a temporary suffix."""
     if asset.kind == "binary":
         shutil.copyfile(archive, destination / f".{asset.names[0]}.download")
-    elif asset.kind == "rpm":
+    elif asset.kind in ("rpm", "source"):
         shutil.copyfile(archive, destination / f".{asset.asset}.download")
     elif asset.kind == "tar":
         # Extract only the named regular files; never follow archive paths or links.

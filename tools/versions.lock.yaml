@@ -85,3 +85,12 @@ tools:
     project: https://github.com/ComplianceAsCode/content
     license: BSD-3-Clause
     version: 0.1.77
+  shadow:
+    project: https://github.com/shadow-maint/shadow
+    license: BSD-3-Clause
+    # Source for newuidmap/newgidmap, built with libcap inside the runner image.
+    # The UBI shadow-utils build lacks libcap, so as setuid programs those
+    # copies keep uid 0 and need CAP_SYS_ADMIN and CAP_DAC_OVERRIDE; this build
+    # drops to the caller and keeps only CAP_SETUID/CAP_SETGID
+    # (toolchain/Containerfile.factory-runner).
+    version: 4.20.2

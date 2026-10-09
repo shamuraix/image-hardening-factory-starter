@@ -7,6 +7,7 @@
 # of this repository), are copied in; nothing is downloaded while building:
 #   dist/tools/         pinned static binaries (tools/versions.lock.yaml)
 #   dist/rpms/          the ClamAV package (not in the UBI repositories)
+#   dist/src/           the shadow source archive (newuidmap/newgidmap, below)
 #   dist/factory-wheel/ this repository and its Python dependencies
 #   dist/ca-trust/      optional extra CA certificates (*.crt, PEM) to trust,
 #                       such as a TLS-inspecting proxy's root; see
@@ -15,6 +16,45 @@
 # BASE_REF is the UBI 9 minimal image: the internal hardened base in production,
 # registry.access.redhat.com/ubi9/ubi-minimal in the kind harness.
 ARG BASE_REF
+
+# ---------------------------------------------------------------------------
+# Stage 1: newuidmap/newgidmap built with libcap. Nothing from this stage but
+# the two binaries reaches the runner.
+#
+# Rootless BuildKit and Podman map the factory user's subordinate ID range into
+# a child user namespace through these setuid helpers. The kernel gives a
+# setuid-root program only the capabilities in the caller's bounding set, and
+# the build and test steps keep that set to CAP_SETUID and CAP_SETGID. The UBI
+# shadow-utils build has no libcap support: as a setuid program it stays uid 0,
+# so opening the child's /proc/<pid>/uid_map needs CAP_DAC_OVERRIDE and the
+# kernel's map_write() check needs CAP_SYS_ADMIN over the target namespace. A
+# libcap-aware build instead drops back to the caller's uid before opening the
+# map and keeps only CAP_SETUID (or CAP_SETGID), which is exactly what the
+# steps grant (shadow lib/idmapping.c, write_mapping).
+# ---------------------------------------------------------------------------
+FROM ${BASE_REF} AS idmap-build
+COPY dist/ca-trust/ /tmp/ca-trust/
+COPY dist/src/ /tmp/src/
+RUN if ls /tmp/ca-trust/*.crt >/dev/null 2>&1; then \
+      cp /tmp/ca-trust/*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust; fi
+RUN microdnf install -y --setopt=install_weak_deps=0 \
+      gcc make glibc-devel libcap-devel libxcrypt-devel tar xz \
+    && microdnf clean all
+RUN cd /tmp/src && tar -xJf shadow-*.tar.xz && cd shadow-*/ \
+    && test -r /usr/include/sys/capability.h \
+    && ./configure --quiet --disable-shared --disable-nls --disable-logind \
+         --without-libpam --without-selinux --without-audit --without-libbsd \
+         --without-su --enable-subordinate-ids \
+    && make -s -C lib && make -s -C src newuidmap newgidmap \
+    && for helper in src/newuidmap src/newgidmap; do \
+         grep -aq 'Could not set caps' "${helper}" \
+           || { echo "${helper} was built without the libcap lockdown" >&2; exit 1; }; \
+       done \
+    && install -d /out && install -m 0755 src/newuidmap src/newgidmap /out/
+
+# ---------------------------------------------------------------------------
+# Stage 2: the runner.
+# ---------------------------------------------------------------------------
 FROM ${BASE_REF}
 
 ARG FACTORY_UID=10001
@@ -41,13 +81,16 @@ RUN if ! curl -fsS -o /dev/null https://cdn-ubi.redhat.com/content/public/ubi/di
     fi
 
 # UBI 9 AppStream/BaseOS packages: Python 3.12 (the system python3 is 3.9),
-# rootless Podman with its user-namespace helpers (newuidmap/newgidmap are in
-# shadow-utils, which the minimal base does not ship), Skopeo, OpenSCAP, git,
-# jq. curl is already present as curl-minimal (installing "curl" conflicts).
+# rootless Podman with its user-namespace libraries (shadow-utils-subid reads
+# /etc/subuid for Podman; shadow-utils' own newuidmap/newgidmap are replaced
+# below), Skopeo, OpenSCAP, git, jq. curl is already present as curl-minimal
+# (installing "curl" conflicts).
 RUN microdnf install -y --setopt=install_weak_deps=0 \
       python3.12 python3.12-pip git-core jq tar gzip \
       podman skopeo shadow-utils shadow-utils-subid slirp4netns fuse-overlayfs openscap-scanner \
     && microdnf clean all && rm -rf /var/cache/dnf
+# The libcap-aware mapping helpers from stage 1 replace the shadow-utils copies.
+COPY --from=idmap-build /out/newuidmap /out/newgidmap /usr/bin/
 
 # The factory package and its dependencies, from the offline wheel directory.
 RUN ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
@@ -75,17 +118,22 @@ RUN chmod 0555 /usr/local/bin/* \
 # cap_setgid) instead of the setuid bit. Inside a pod user namespace
 # (hostUsers: false) the kernel ignores capability xattrs written outside that
 # namespace, so the helpers would not work there; the setuid bit does, because
-# the image's root maps to the pod's root. Set it explicitly.
+# the image's root maps to the pod's root. Set it explicitly, on the libcap-aware
+# build from stage 1 (verified by its lockdown message), and list every setuid
+# file in the image for the build log.
 RUN printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
       "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \
     && printf 'factory:100000:65536\n' >>/etc/subuid \
     && printf 'factory:100000:65536\n' >>/etc/subgid \
     && for helper in /usr/bin/newuidmap /usr/bin/newgidmap; do \
-         test -x "${helper}" || { echo "${helper} is missing (shadow-utils)" >&2; exit 1; }; \
+         test -x "${helper}" || { echo "${helper} is missing" >&2; exit 1; }; \
+         grep -aq 'Could not set caps' "${helper}" \
+           || { echo "${helper} is not the libcap-aware build from stage 1" >&2; exit 1; }; \
          chown root:root "${helper}" && chmod 4755 "${helper}"; \
          test -u "${helper}" || { echo "could not make ${helper} setuid" >&2; ls -l "${helper}" >&2; exit 1; }; \
        done \
+    && echo "setuid files in the runner:" && find / -xdev -type f -perm -4000 -exec ls -l {} + \
     && { test -x /usr/bin/slirp4netns || { echo "slirp4netns is missing" >&2; exit 1; }; } \
     && install -d -m 0700 -o "${FACTORY_UID}" -g "${FACTORY_GID}" \
       /home/factory /home/factory/.config /home/factory/.config/containers \
