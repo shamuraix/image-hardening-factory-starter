@@ -224,6 +224,14 @@ rules decide whether that works inside a pod:
 `FACTORY_BUILD_NETWORK` accepts `default` (production), `none`, or `host`
 (explicit only).
 
+Containers the product tests start get no network namespace of their own: a
+step container has no `/dev/net/tun`, so rootless Podman's `pasta` and
+`slirp4netns` cannot create one. `toolchain/containers.conf` sets
+`netns = "none"` as the default, one-shot checks pass `--network none`, and the
+Atlassian integration run passes `--network host`, which inside a pod is the
+pod's own namespace (never the node's) and lets the runner poll the product on
+loopback at its fixed port. A unit test keeps every `podman run` explicit.
+
 ## Tekton Chains
 
 `deploy/chains/chains-config.yaml` sets the `slsa/v2alpha3` provenance format

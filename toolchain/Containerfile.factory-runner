@@ -139,7 +139,7 @@ RUN printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
       /home/factory /home/factory/.config /home/factory/.config/containers \
       /home/factory/.local/share/containers /tmp/factory-runtime
 
-COPY --chown=${FACTORY_UID}:${FACTORY_GID} toolchain/storage.conf /home/factory/.config/containers/storage.conf
+COPY --chown=${FACTORY_UID}:${FACTORY_GID} toolchain/storage.conf toolchain/containers.conf /home/factory/.config/containers/
 
 ENV HOME=/home/factory \
     XDG_RUNTIME_DIR=/tmp/factory-runtime \
