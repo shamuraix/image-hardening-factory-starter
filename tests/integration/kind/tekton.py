@@ -180,16 +180,27 @@ def check(state: Path, name: str) -> int:
     for task in failures:
         if statuses.get(task, {}).get("status") != "False" or EXPECTED.get(task) == "False":
             continue
-        pod = next(
-            item["status"].get("podName", "")
-            for item in runs
-            if item["metadata"]["labels"]["tekton.dev/pipelineTask"] == task
+        taskrun = next(
+            item for item in runs if item["metadata"]["labels"]["tekton.dev/pipelineTask"] == task
         )
+        pod = taskrun["status"].get("podName", "")
         if not pod:
             continue
-        print(f"\n--- {task}: last 60 lines of step-run ({pod}) ---")
+        # The first step that exited non-zero is the one that explains the
+        # failure; later steps only report "Skipping step because a previous
+        # step failed". The run step has onError: continue, so a failure there
+        # surfaces in seal's exit code while run holds the real output.
+        failed = [
+            s["name"]
+            for s in taskrun["status"].get("steps", [])
+            if s.get("terminated", {}).get("exitCode", 0) != 0
+        ]
+        step = failed[0] if failed else "run"
+        if step == "seal" and "run" not in failed:
+            step = "run"
+        print(f"\n--- {task}: last 60 lines of step-{step} ({pod}); failed steps: {failed} ---")
         try:
-            print(kubectl(state, "logs", pod, "-c", "step-run", "--tail=60"))
+            print(kubectl(state, "logs", pod, "-c", f"step-{step}", "--tail=60"))
         except subprocess.CalledProcessError as error:
             print(f"(could not read the log: {error.stderr.strip()})")
         break
