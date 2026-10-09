@@ -28,10 +28,15 @@ tekton_version=$(python3 -c 'import yaml; print(yaml.safe_load(open("tools/versi
 # content comes from Red Hat's public UBI CDN (no mirror credential), and the
 # catalog directory is unchanged. Everything else keeps the placeholder values.
 "${k[@]}" -n factory-harness apply -f deploy/base/serviceaccounts.yaml
-python3 - <<'PYTHON' | "${k[@]}" -n factory-harness apply -f -
-import yaml
+python3 - "${state}" <<'PYTHON' | "${k[@]}" -n factory-harness apply -f -
+import pathlib, sys, yaml
 settings = yaml.safe_load(open("deploy/base/settings.yaml"))
 settings["data"]["FACTORY_RPM_SOURCE_MODE"] = "public-upstream"
+if (pathlib.Path(sys.argv[1]) / "ca-bundle").exists():
+    # The runner was built with extra CAs (FACTORY_CA_BUNDLE); the images it
+    # builds reach the network through the same proxy, so mount the runner's
+    # merged trust store into their RUN steps.
+    settings["data"]["FACTORY_CA_BUNDLE"] = "/etc/pki/tls/certs/ca-bundle.crt"
 print(yaml.safe_dump(settings))
 PYTHON
 "${k[@]}" -n factory-harness apply -f .tekton/tasks/ -f .tekton/pipelines/

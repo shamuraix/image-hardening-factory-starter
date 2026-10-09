@@ -163,6 +163,13 @@ Then:
 Because every tool is in the runner, no stage downloads anything at run time,
 and the harness builds the identical runner image for local use.
 
+`FACTORY_CA_BUNDLE` (optional, for `make toolchain` and as a setting): a PEM
+bundle of extra CA certificates. The runner image trusts it, and
+`scripts/build_image.sh` mounts the runner's merged trust store into the RUN
+steps of the image being built (a BuildKit secret, not a layer). Needed when
+builds reach the network through a TLS-inspecting proxy or a mirror with an
+internal CA; unnecessary when the internal hardened base already trusts them.
+
 ## BuildKit and Podman
 
 The build and test run steps start a short-lived rootless `buildkitd` or

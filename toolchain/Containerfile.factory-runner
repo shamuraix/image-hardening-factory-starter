@@ -8,6 +8,9 @@
 #   dist/tools/         pinned static binaries (tools/versions.lock.yaml)
 #   dist/rpms/          the ClamAV package (not in the UBI repositories)
 #   dist/factory-wheel/ this repository and its Python dependencies
+#   dist/ca-trust/      optional extra CA certificates (*.crt, PEM) to trust,
+#                       such as a TLS-inspecting proxy's root; see
+#                       FACTORY_CA_BUNDLE in toolchain/build-dist.sh
 #
 # BASE_REF is the UBI 9 minimal image: the internal hardened base in production,
 # registry.access.redhat.com/ubi9/ubi-minimal in the kind harness.
@@ -19,6 +22,12 @@ ARG FACTORY_GID=10001
 COPY dist/tools/ /usr/local/bin/
 COPY dist/rpms/ /tmp/rpms/
 COPY dist/factory-wheel/ /tmp/wheels/
+COPY dist/ca-trust/ /tmp/ca-trust/
+
+# Extra CA certificates must be trusted before the first network access below.
+RUN if ls /tmp/ca-trust/*.crt >/dev/null 2>&1; then \
+      cp /tmp/ca-trust/*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust; \
+    fi && rm -rf /tmp/ca-trust
 
 # UBI 9 AppStream/BaseOS packages: Python 3.12 (the system python3 is 3.9),
 # rootless Podman with its user-namespace helpers, Skopeo, OpenSCAP, git, jq, curl.

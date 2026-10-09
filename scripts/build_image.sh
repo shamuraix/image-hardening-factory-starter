@@ -156,8 +156,17 @@ while IFS=$'\t' read -r key value; do
   args+=(--opt "build-arg:${key}=${value}")
 done < <(yq -r '.build.buildArgs // {} | to_entries[] | [.key,.value] | @tsv' "${catalog}")
 
+# FACTORY_CA_BUNDLE: a PEM bundle (system roots plus extra CAs) that the image
+# being built must trust during RUN steps, for example behind a TLS-inspecting
+# proxy. Mounted as a secret, so it never lands in a layer.
+adapt_args=()
+if [[ -n ${FACTORY_CA_BUNDLE:-} ]]; then
+  [[ -s ${FACTORY_CA_BUNDLE} ]] || { echo "FACTORY_CA_BUNDLE ${FACTORY_CA_BUNDLE} is not readable" >&2; exit 2; }
+  args+=(--secret "id=factory-ca,src=${FACTORY_CA_BUNDLE}")
+  adapt_args+=(--ca-bundle)
+fi
 PYTHONPATH="${PWD}${PYTHONPATH:+:${PYTHONPATH}}" python3 -m factory.buildkit adapt-dockerfile \
-  "${work_dir}/context/${containerfile}" >"${dockerfile_dir}/Dockerfile"
+  "${adapt_args[@]}" "${work_dir}/context/${containerfile}" >"${dockerfile_dir}/Dockerfile"
 if [[ -f "${work_dir}/context/${containerfile}.dockerignore" ]]; then
   cp "${work_dir}/context/${containerfile}.dockerignore" "${dockerfile_dir}/Dockerfile.dockerignore"
 fi
