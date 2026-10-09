@@ -20,6 +20,8 @@ spec:
     value: '{{ revision }}'
   - name: sender
     value: '{{ sender }}'
+  - name: enable-agents
+    value: '{{ enable_agents }}'
   - name: runner-image
     value: '{{ runner_image }}'
   - name: agent-image

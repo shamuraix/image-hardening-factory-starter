@@ -18,6 +18,8 @@ spec:
   params:
   - name: agent
     value: exception-steward
+  - name: enable-agents
+    value: '{{ enable_agents }}'
   - name: mode
     value: propose-change
   - name: repo-url

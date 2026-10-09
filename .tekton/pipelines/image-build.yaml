@@ -260,6 +260,7 @@ spec:
         - {input: $(params.enable-release-request), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: release-readiness}
         - {name: mode, value: release-request}
         - {name: quarantine-seal, value: $(tasks.quarantine.results.seal)}
@@ -283,6 +284,7 @@ spec:
         - {input: $(params.enable-agents), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: failure-triage}
         - {name: mode, value: report}
         - name: task-statuses
@@ -315,6 +317,7 @@ spec:
         - {input: $(params.enable-remediation), operator: in, values: ["true"]}
       taskRef: {name: factory-claude-agent}
       params:
+        - {name: enabled, value: $(params.enable-agents)}
         - {name: agent, value: cve-remediation}
         - {name: mode, value: propose-change}
         - {name: scm-secret, value: $(params.scm-secret)}

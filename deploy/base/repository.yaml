@@ -1,23 +1,36 @@
-# Pipelines-as-Code Repository: binds the git repository to this namespace.
+# Pipelines-as-Code Repository: binds the GitLab project to this namespace.
+# The webhook on the project (Merge request, Push, Comments, Tag push events)
+# points at the Pipelines-as-Code controller; create it with
+# `tkn pac create repo` or by hand in Settings > Webhooks. On GitLab, merge
+# requests from project members (inherited membership) and from users listed
+# in an OWNERS file on the default branch start runs automatically; anyone
+# else needs /ok-to-test from a member. Make the factory bot a project member
+# so agent-proposed merge requests are validated.
 apiVersion: pipelinesascode.tekton.dev/v1alpha1
 kind: Repository
 metadata:
   name: image-hardening-factory
 spec:
-  url: https://github.com/shamuraix/image-hardening-factory-starter
+  url: https://gitlab.internal.example/platform/image-hardening-factory
+  git_provider:
+    type: gitlab
+    # API URL of the internal instance. The token (scope: api) and the webhook
+    # shared secret live in Secret factory-gitlab-webhook.
+    url: https://gitlab.internal.example
+    secret:
+      name: factory-gitlab-webhook
+      key: provider.token
+    webhook_secret:
+      name: factory-gitlab-webhook
+      key: webhook.secret
   # Bounds concurrent PipelineRuns (each holds a PVC and up to 8 CPUs for the
   # build). Release ordering does not depend on this: one release request per
   # merge, digest-tagged destinations, and idempotent evidence copies.
   concurrency_limit: 3
   settings:
-    # Load PipelineRun definitions from the default branch only. A pull request
+    # Load PipelineRun definitions from the default branch only. A merge request
     # cannot add, edit, or re-target a PipelineRun to reach protected secrets.
     pipelinerun_provenance: default_branch
-    policy:
-      # Teams allowed to trigger PR runs and /ok-to-test. Include the bot
-      # account so agent-proposed changes are validated automatically.
-      pull_request: [image-factory-maintainers]
-      ok_to_test: [image-factory-maintainers]
   params:
     # Digest-pinned images; promote new runner/agent images by changing these.
     - name: runner_image
@@ -27,7 +40,12 @@ spec:
     - name: agent_image
       value: artifactory.internal.example/factory-tools/factory-agent@sha256:REPLACE
     - name: git_provider
-      value: github
+      value: gitlab
+    # "false" turns off the triage, remediation, and readiness agents for every
+    # run on this cluster (for example a local cluster with no LLM gateway).
+    # Release requests are still opened; their briefing is empty.
+    - name: enable_agents
+      value: "true"
   incoming:
     - type: webhook-url
       secret:

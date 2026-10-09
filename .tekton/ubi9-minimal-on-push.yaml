@@ -47,7 +47,7 @@ spec:
   - name: publish
     value: 'true'
   - name: enable-agents
-    value: 'true'
+    value: '{{ enable_agents }}'
   - name: enable-remediation
     value: 'true'
   - name: enable-release-request

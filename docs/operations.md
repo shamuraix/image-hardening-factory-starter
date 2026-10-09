@@ -35,6 +35,52 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
 9. Merge a **commercial** release request first. Enable gov1/gov2 only after the
    approver flow and environment keys are verified.
 
+## Running the full pipeline on a local cluster
+
+A local cluster (Rancher Desktop or kind) can run the whole factory against
+the real GitLab instance and Artifactory; only the cluster is local. Prepare
+the cluster as in
+[local-kubernetes-testing.md](local-kubernetes-testing.md#using-a-cluster-you-already-run-rancher-desktop),
+then:
+
+1. Build, sign, and push the three runner images to Artifactory (`make
+   toolchain`, the Containerfiles in `toolchain/`) and put their digests in
+   `deploy/base/repository.yaml`.
+2. Install Tekton Pipelines, Pipelines-as-Code, and Tekton Chains at the
+   pinned versions (`tools/versions.lock.yaml`), and apply
+   `deploy/chains/chains-config.yaml`.
+3. Create the Secrets from `deploy/secrets.example.yaml` with real values:
+   Artifactory tokens scoped per repository, the RPM mirror credential, cosign
+   keys, the GitLab token and webhook secret, the SCM bot token, and the
+   incoming-webhook secret. Agents are off in this overlay, so
+   `factory-ai-gateway` is optional.
+4. Apply the local overlay: `kubectl apply -k deploy/overlays/local`. It is
+   `deploy/base` without the NetworkPolicies (their CIDRs are placeholders a
+   laptop cannot satisfy) and with agents switched off; ServiceAccounts, the
+   admission policy, schedules, and the Repository CR are identical to
+   production. Label and taint the node for the compliance stage:
+   `kubectl label node <node> factory.dev/fips-node=true` and
+   `kubectl taint node <node> factory.dev/fips-node=true:NoSchedule`.
+5. Make the PaC controller reachable from GitLab. The internal GitLab must
+   reach the controller's URL; on a laptop that is a routable address on your
+   network or VPN, or a relay. Pipelines-as-Code's `tkn pac bootstrap` can
+   deploy a gosmee forwarder, which relays through
+   `https://hook.pipelinesascode.com` ([PaC install](https://pipelinesascode.com/docs/install/kubernetes/));
+   gosmee can also be self-hosted inside the network, which is the right
+   choice for an internal GitLab, because webhook payloads carry repository
+   details.
+6. Create the GitLab webhook (`tkn pac create repo`, or Settings > Webhooks)
+   for Merge request, Push, Comments, and Tag push events, pointing at that
+   URL, with the secret from `factory-gitlab-webhook`.
+7. Run the bootstrap sequence above from step 5 (security-data, intake, a
+   trivial merge request, a merge, a release request).
+
+What a local run proves: the trust boundaries (per-task ServiceAccounts,
+per-step secrets, the admission policy, sealing), digest continuity through
+quarantine, signing, and promotion, and the release-request flow. What it does
+not prove: network isolation (the policies are removed), FIPS (the node is
+only labelled), and production scale.
+
 ## Releasing an image
 
 1. A merge to `main` that changes an image's inputs (or a base release) builds,

@@ -31,8 +31,9 @@ Every trigger is a PipelineRun file in `.tekton/`, generated from the catalog by
 `factory/tekton.py` (`make tekton-render`). PaC reads these files **only from the
 default branch** (`pipelinerun_provenance: default_branch`, see the PaC
 [Repository CR guide](https://pipelinesascode.com/docs/guides/repository-crd/)).
-A pull request therefore cannot add or edit a trigger to reach protected
-credentials.
+A merge request therefore cannot add or edit a trigger to reach protected
+credentials. (GitLab calls them merge requests; PaC and the generated files use
+the event name `pull_request` for every provider.)
 
 | PipelineRun | Started by | Pipeline | Publishes |
 |---|---|---|---|
@@ -175,9 +176,11 @@ is mounted only into the one step that uses it.
 
 `deploy/base/admission-policy.yaml` is a Kubernetes
 [ValidatingAdmissionPolicy](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/).
-It rejects any pod created for a `pull_request` event that references a write,
-signing, release, mirror, SCM-bot, or incoming-webhook secret. It checks the
-pod, after Tekton has filled in every parameter.
+It allows a write, signing, release, mirror, SCM-bot, or incoming-webhook
+secret only in pods whose Pipelines-as-Code event type is `push` or
+`incoming`; every other event (`pull_request` on GitHub, `Merge Request` on
+GitLab, comment retests, or no marker) is refused. It checks the pod, after
+Tekton has filled in every parameter.
 
 ## Sealing stage outputs
 

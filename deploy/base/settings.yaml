@@ -36,9 +36,10 @@ data:
   # Pipelines-as-Code incoming webhook (schedules and base-release fan-out)
   FACTORY_PAC_CONTROLLER_URL: https://pac-controller.internal.example
   FACTORY_PAC_REPOSITORY: image-hardening-factory
-  # Git provider APIs used by agents for comments and change requests
-  FACTORY_GITHUB_API_URL: https://api.github.com
-  # FACTORY_GITLAB_API_URL defaults to https://<git host>/api/v4 when unset.
+  # Git provider API used by agents for comments and merge requests. Defaults
+  # to https://<git host>/api/v4 for GitLab; set it when the API lives
+  # elsewhere. FACTORY_GITHUB_API_URL applies only when git_provider is github.
+  FACTORY_GITLAB_API_URL: https://gitlab.internal.example/api/v4
   SCM_BOT_AUTHOR_NAME: image-factory-bot
   SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
   # Claude Code agents: an Anthropic-format LLM gateway (for example your

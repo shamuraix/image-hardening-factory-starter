@@ -10,7 +10,8 @@ internal hardened UBI 9 base and produces, for every candidate:
 - an OPA release decision bound to the candidate digest
 - Cosign signatures and in-toto attestations, plus Tekton Chains SLSA provenance
 
-Pipelines run on **Tekton**, triggered by **Pipelines-as-Code** (PaC). Day-to-day
+Pipelines run on **Tekton**, triggered by **Pipelines-as-Code** (PaC) from an
+internal **GitLab** instance, with **Artifactory** holding every artifact. Day-to-day
 upkeep — failure triage, CVE remediation, Iron Bank upstream tracking, release
 briefings, exception hygiene, and pipeline reviews — is assisted by **Claude Code
 agents** that can only *propose* changes for human review.
@@ -19,7 +20,7 @@ It is a build-and-evidence system, not a deployment platform.
 
 ```mermaid
 flowchart LR
-    PR[Pull request] -->|PaC| Build[factory-image-build<br/>publish=false]
+    PR[Merge request] -->|PaC| Build[factory-image-build<br/>publish=false]
     Main[Merge to main] -->|PaC| BuildP[factory-image-build<br/>publish=true]
     BuildP --> Q[Quarantine + evidence referrer]
     Q --> RR[Release request PR<br/>releases/env/image.yaml]
@@ -65,8 +66,9 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 
 ## How a change flows
 
-1. **Pull request** — PaC runs `factory-checks` and, for each image whose inputs
-   changed, `<image>-on-pull-request`: validate → prepare → rootless build → SBOM →
+1. **Merge request** (GitLab; PaC calls the event `pull_request`) — PaC runs
+   `factory-checks` and, for each image whose inputs changed,
+   `<image>-on-pull-request`: validate → prepare → rootless build → SBOM →
    scan/assessment → compliance (FIPS nodes) + tests → gate. Nothing is published.
    Failures get a triage comment from the `failure-triage` agent.
 2. **Merge to `main`** — `<image>-on-push` repeats the build, imports the passing

@@ -181,6 +181,15 @@ class PullRequestIsolationTests(unittest.TestCase):
             pipeline_params = {item["name"]: item for item in pipeline(name)["spec"]["params"]}
             self.assertEqual(pipeline_params["scm-secret"]["default"], "factory-scm-disabled")
 
+    def test_admission_policy_fails_closed_for_every_non_push_event(self) -> None:
+        # GitLab reports merge requests as "Merge Request", not "pull_request",
+        # so the policy must allowlist trusted events rather than deny one name.
+        text = (ROOT / "deploy/base/admission-policy.yaml").read_text(encoding="utf-8")
+        self.assertIn("variables.eventType in ['push', 'incoming']", text)
+        self.assertNotIn("!= 'pull_request'", text)
+        self.assertEqual(text.count("variables.trusted ||"), 3)
+        self.assertIn("validationActions: [Deny, Audit]", text)
+
     def test_admission_policy_covers_every_protected_secret(self) -> None:
         text = (ROOT / "deploy/base/admission-policy.yaml").read_text(encoding="utf-8")
         listed = set(re.findall(r"'(factory-[a-z0-9-]+)'", text))

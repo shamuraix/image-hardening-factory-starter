@@ -83,6 +83,57 @@ each task's outcome. Rerun `deploy.sh` alone after editing Tasks, Pipelines,
 or scripts (`FACTORY_HARNESS_STATE=... KUBECONFIG=$FACTORY_HARNESS_STATE/kubeconfig tests/integration/kind/deploy.sh`);
 the source snapshot must fit the 1 MiB ConfigMap limit.
 
+## Using a cluster you already run (Rancher Desktop)
+
+The harness can target an existing cluster instead of creating one with kind.
+Rancher Desktop works when:
+
+- Kubernetes **1.33 or later** is selected (the user-namespace and `procMount`
+  feature gates are on by default from 1.33). k3s 1.33 ships containerd 2.x
+  and runc 1.2+, which support pod user namespaces
+  ([k3s release notes](https://docs.k3s.io/release-notes/v1.33.X)).
+- The container engine is **containerd**, not dockerd. With dockerd, k3s uses
+  cri-dockerd, which cannot run `hostUsers: false` pods.
+- The kubelet allows 262144 IDs per pod. k3s reads kubelet drop-ins from
+  `/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/`
+  ([k3s configuration](https://docs.k3s.io/installation/configuration)); write
+  one from a Rancher Desktop provisioning script, which runs before k3s starts
+  ([provisioning scripts](https://docs.rancherdesktop.io/how-to-guides/provisioning-scripts)):
+
+  ```yaml
+  # macOS/Linux: ~/Library/Application Support/rancher-desktop/lima/_config/override.yaml
+  provision:
+    - mode: system
+      script: |
+        mkdir -p /var/lib/rancher/k3s/agent/etc/kubelet.conf.d
+        cat >/var/lib/rancher/k3s/agent/etc/kubelet.conf.d/10-factory-userns.conf <<'EOF'
+        apiVersion: kubelet.config.k8s.io/v1beta1
+        kind: KubeletConfiguration
+        userNamespaces:
+          idsPerPod: 262144
+        EOF
+  ```
+
+  On Windows, put the same shell in `%LOCALAPPDATA%\rancher-desktop\provisioning\factory-userns.start`
+  (Unix line endings). Restart Kubernetes afterwards; `up.sh` checks the value.
+- The VM has at least 6 CPUs, 12 GiB RAM, and 40 GiB disk.
+
+Then:
+
+```bash
+export FACTORY_HARNESS_KUBECONFIG=~/.kube/config          # Rancher Desktop's context
+export FACTORY_HARNESS_STATE=.local-factory/rancher-desktop
+make harness-up        # builds the runner, loads it with nerdctl, installs Tekton
+make harness-run IMAGE=ubi9-minimal
+```
+
+`up.sh` loads the runner image with `nerdctl --namespace k8s.io load -i`;
+set `FACTORY_HARNESS_LOAD_COMMAND` if your image load command differs.
+`make harness-down` refuses to touch a cluster it did not create; remove the
+`factory-harness` and `tekton-pipelines` namespaces yourself. The same cluster
+can then run the full pipeline (see
+[operations.md](operations.md#running-the-full-pipeline-on-a-local-cluster)).
+
 ## If the build stage fails
 
 `runtime_preflight.sh` runs first and names what is missing. The usual causes

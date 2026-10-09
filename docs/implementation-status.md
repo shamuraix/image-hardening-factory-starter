@@ -16,11 +16,11 @@ and on a first end-to-end run in a real cluster.
 | Capability | Code status | Environment work remaining |
 |---|---|---|
 | Five-image catalog and schema | Implemented and tested | Change ownership and governance |
-| PaC triggers generated from the catalog | Implemented; drift-tested | Install the PaC app or webhook; branch protection |
+| PaC triggers generated from the catalog | Implemented; drift-tested | GitLab webhook and token (Secret `factory-gitlab-webhook`); protected `main` with code-owner approval |
 | Build, evidence, and gate pipeline (Tekton) | Implemented; invariants tested; the kind harness runs validate, build, SBOM, test, and sealing with the real Tasks | First run of the harness and of the full pipeline on a real cluster |
 | Stage sealing (tamper-evident handoff between tasks) | Implemented and tested (`scripts/tekton/artifacts.sh`) | — |
 | Per-task trust classes (ServiceAccount, NetworkPolicy, and secrets per task) | Implemented | Replace placeholder CIDRs; workload identity |
-| PR secret isolation admission policy | Implemented | Confirm PaC event-type propagation to pods |
+| Merge-request secret isolation admission policy | Implemented as an allowlist (`push`, `incoming` only), so GitLab's `Merge Request` event type is covered | Confirm PaC event-type propagation to pods on the real cluster |
 | Source mirroring and resource locks | Implemented and tested | Approved origins, retention |
 | Rootless BuildKit OCI build | Implemented; build and test pods request `hostUsers: false` and `procMount: Unmasked` | Kubernetes 1.33+ (or both feature gates on), containerd 2.0+/CRI-O, kubelet `idsPerPod` ≥ 262144 |
 | SBOM, scanners, compliance, tests | Implemented; Grype validation fails closed | FIPS node pool |

@@ -37,23 +37,34 @@ object that connects a Git repository to PaC.
    secret manager.
 5. **Configure Chains** with `deploy/chains/chains-config.yaml` and a signing key
    (KMS recommended).
-6. **Connect the Git provider** (PaC GitHub App, or a GitHub, GitLab, or
-   Bitbucket webhook) and protect `main` with required reviews, CODEOWNERS, and
-   required status checks. Two features the factory relies on are limited by
-   provider: the per-image path filters use `.pathChanged()`, which PaC
-   [supports on GitHub and GitLab only](https://pipelinesascode.com/docs/guides/event-matching/cel-expressions/),
-   and the Repository CR `policy` setting is
-   [supported on GitHub and Forgejo only](https://pipelinesascode.com/docs/advanced/policy-authorization/).
+6. **Connect GitLab.** Create a project (or group) access token with the `api`
+   scope and a webhook secret, store them in Secret `factory-gitlab-webhook`,
+   and add a project webhook to the PaC controller URL for **Merge request,
+   Push, Comments, and Tag push** events — `tkn pac create repo` does this, or
+   do it under Settings > Webhooks
+   ([PaC GitLab setup](https://pipelinesascode.com/docs/install/gitlab/)).
+   Protect `main`: merge requests only, required approvals, and "require
+   approval from code owners" so the `CODEOWNERS` file governs `releases/` and
+   the trust-boundary paths (a GitLab Premium feature; without it, use a
+   protected-branch rule that limits who may merge). Merge requests from
+   members of the project, including inherited group membership, start runs
+   automatically; anyone else needs `/ok-to-test` from a member. Make the
+   factory bot a project member so agent-proposed merge requests are validated.
+   PaC's `settings.policy` block is not used: it applies to GitHub and Forgejo
+   only ([PaC docs](https://pipelinesascode.com/docs/advanced/policy-authorization/)).
+   Terms: GitLab calls them merge requests; PaC and the generated PipelineRuns
+   use the event name `pull_request` for both GitLab and GitHub.
 7. Confirm contributors can run `make ci` locally.
 
 ## Pipelines-as-Code Repository (`deploy/base/repository.yaml`)
 
 | Field | Value | Why |
 |---|---|---|
-| `settings.pipelinerun_provenance` | `default_branch` | PR runs use PipelineRun definitions from `main`, never from the PR ([PaC docs](https://pipelinesascode.com/docs/guides/repository-crd/)) |
-| `settings.policy.pull_request` / `ok_to_test` | maintainer team (add the bot account) | who may trigger PR runs ([PaC docs](https://pipelinesascode.com/docs/advanced/policy-authorization/)) |
+| `url` | the GitLab project URL | which project's webhooks this namespace serves |
+| `git_provider.type` / `url` / `secret` / `webhook_secret` | `gitlab`, the instance URL, Secret `factory-gitlab-webhook` keys `provider.token` and `webhook.secret` | API access and webhook validation for a self-hosted instance ([PaC GitLab setup](https://pipelinesascode.com/docs/install/gitlab/)) |
+| `settings.pipelinerun_provenance` | `default_branch` | merge-request runs use PipelineRun definitions from `main`, never from the merge request ([PaC docs](https://pipelinesascode.com/docs/guides/repository-crd/)) |
 | `concurrency_limit` | `3` | at most three PipelineRuns at once; each holds a volume and up to 8 CPUs ([PaC docs](https://pipelinesascode.com/docs/guides/repository-crd/concurrency/)) |
-| `params` | `runner_image`, `intake_runner_image`, `agent_image`, `git_provider` | digest-pinned images and the provider, filled into the generated PipelineRuns |
+| `params` | `runner_image`, `intake_runner_image`, `agent_image`, `git_provider`, `enable_agents` | digest-pinned images, the provider, and the cluster-wide agent switch, filled into the generated PipelineRuns |
 | `incoming` | `webhook-url`, Secret `factory-pac-incoming`, target `main` | lets CronJobs and the release pipeline start runs ([PaC docs](https://pipelinesascode.com/docs/advanced/incoming-webhooks/)) |
 
 ## Settings (`deploy/base/settings.yaml`, ConfigMap `factory-settings`)
@@ -77,7 +88,7 @@ Every factory step receives these as environment variables (`envFrom`).
 | `COMPLIANCE_AS_CODE_DATASTREAM_DIR` | directory in the intake runner image that holds the [ComplianceAsCode](https://github.com/ComplianceAsCode/content) SCAP datastreams `ssg-rhel9-ds.xml` and `ssg-rhel10-ds.xml` |
 | `FACTORY_UPSTREAM_BRANCH` | Repo One branch followed by intake and upstream-sync |
 | `FACTORY_PAC_CONTROLLER_URL` / `FACTORY_PAC_REPOSITORY` | PaC incoming endpoint and Repository CR name |
-| `FACTORY_GITHUB_API_URL` / `FACTORY_GITLAB_API_URL` | provider APIs for agent comments and change requests (GitLab defaults to `https://<git host>/api/v4`) |
+| `FACTORY_GITLAB_API_URL` | GitLab API for agent comments and merge requests; defaults to `https://<git host>/api/v4` (`FACTORY_GITHUB_API_URL` applies only when `git_provider` is `github`) |
 | `SCM_BOT_AUTHOR_NAME` / `SCM_BOT_AUTHOR_EMAIL` | commit identity for agent proposals and release requests |
 | `ANTHROPIC_BASE_URL` | Anthropic-format [LLM gateway](https://code.claude.com/docs/en/llm-gateway) for Claude Code |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` / `_OPUS_MODEL` | optional gateway model names for the `sonnet`/`opus` aliases ([model configuration](https://code.claude.com/docs/en/model-config)) |
@@ -104,6 +115,7 @@ Each is mounted only into the step that needs it.
 | `factory-scm-bot` | `username`, `token` | agent publish step (default branch only) |
 | `factory-ai-gateway` | `token` | agent step |
 | `factory-pac-incoming` | `secret` | Repository incoming webhook, schedules, dependents |
+| `factory-gitlab-webhook` | `provider.token`, `webhook.secret` | Pipelines-as-Code GitLab provider (read by the PaC controller, not by any Task) |
 
 Create one cosign key pair per release environment
 ([cosign key generation](https://docs.sigstore.dev/cosign/key_management/signing_with_self-managed_keys/)):
@@ -121,7 +133,7 @@ rather than editing the generated files.
 | Param | PR | push | schedule | base-release |
 |---|---|---|---|---|
 | `publish` | false | true | false | true |
-| `enable-agents` (triage) | true | true | true | true |
+| `enable-agents` (triage, remediation, readiness) | `{{ enable_agents }}` from the Repository CR (default `"true"`) | same | same | same |
 | `enable-remediation` | false | true | true | true |
 | `enable-release-request` | false | true | false | true |
 

@@ -20,6 +20,13 @@ spec:
   params:
     - name: agent
       description: Agent persona name under .claude/agents/.
+    - name: enabled
+      default: "true"
+      description: >-
+        "false" skips the model call (outcome no-op) while still running the
+        context, validate, publish, and report steps, so a cluster without an
+        LLM gateway (Repository CR param enable_agents) still gets its release
+        requests opened.
     - name: image
       default: factory
       description: Catalog image the agent works on, or "factory" for repo-wide agents.
@@ -117,13 +124,19 @@ spec:
       env:
         - name: ANTHROPIC_AUTH_TOKEN
           valueFrom:
-            secretKeyRef: {name: factory-ai-gateway, key: token}
+            # Optional so a cluster with agents disabled needs no gateway Secret;
+            # with agents enabled, run_agent.sh fails fast when it is absent.
+            secretKeyRef: {name: factory-ai-gateway, key: token, optional: true}
         - {name: CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC, value: "1"}
         - {name: DISABLE_AUTOUPDATER, value: "1"}
         - {name: DISABLE_TELEMETRY, value: "1"}
       script: |
         #!/usr/bin/env bash
         set -uo pipefail
+        if [[ "$(params.enabled)" != true ]]; then
+          echo "agents are disabled for this cluster (enable_agents); skipping ${FACTORY_AGENT}"
+          exit 0
+        fi
         mkdir -p "${HOME}"
         scripts/agents/run_agent.sh
         status=$?

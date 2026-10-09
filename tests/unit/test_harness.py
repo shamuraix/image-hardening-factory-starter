@@ -71,7 +71,8 @@ class HarnessTests(unittest.TestCase):
 
     def test_harness_hosts_need_only_the_documented_tools(self) -> None:
         up = (HARNESS / "up.sh").read_text()
-        self.assertIn('for tool in kind "${provider}" kubectl git python3; do', up)
+        self.assertIn('required=(kubectl git python3 "${provider}")', up)
+        self.assertIn("FACTORY_HARNESS_KUBECONFIG", up)
         for removed in ("skopeo", " jq ", " yq ", "openssl", "limactl"):
             self.assertNotIn(removed, up)
 
