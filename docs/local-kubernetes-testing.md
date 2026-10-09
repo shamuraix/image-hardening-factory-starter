@@ -194,6 +194,9 @@ on a local cluster:
 - the `ProcMountType` or `UserNamespacesSupport` feature gate is off (both are
   on by default from Kubernetes 1.33;
   [feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/));
+- `pasta failed ... Failed to open() /dev/net/tun` from the test stage — a
+  container was started without `--network none|host`; pods have no TUN
+  device (docs/configuration.md, "BuildKit and Podman");
 - `newuidmap: open of uid_map failed: Permission denied` from RootlessKit —
   the run step's capability bounding set lacks `SETUID`/`SETGID`, or the
   runner has the UBI `shadow-utils` helpers instead of the libcap-aware build
