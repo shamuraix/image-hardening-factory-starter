@@ -15,9 +15,16 @@ if [[ ${rootful} == true ]]; then
   runtime=(sudo -n podman)
 fi
 [[ ${provider} == podman || ${provider} == docker ]] || { echo "Provider must be podman or docker" >&2; exit 2; }
-for tool in kind "${provider}" kubectl skopeo curl openssl python3 jq; do
+for tool in kind "${provider}" kubectl skopeo curl openssl python3 jq yq; do
   command -v "${tool}" >/dev/null || { echo "Missing ${tool}" >&2; exit 2; }
 done
+# The node tools and Tekton come from tools/versions.lock.yaml; kind must too.
+kind_pinned=$(yq -r '.tools.kind.version' tools/versions.lock.yaml)
+kind_actual=$(kind version -q 2>/dev/null || kind version | awk '{print $2}')
+[[ ${kind_actual#v} == "${kind_pinned#v}" ]] || {
+  echo "kind ${kind_actual} found; tools/versions.lock.yaml pins ${kind_pinned}" >&2
+  exit 2
+}
 if [[ ${provider} == podman && ${rootful} == false ]]; then
   # Reserve the node's own IDs plus 110 pod namespaces of 262144 IDs. Check
   # before creating a cluster which cannot run the required user-namespaced pod.

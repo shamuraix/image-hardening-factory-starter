@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -110,19 +111,38 @@ class RemediationRegressionTests(unittest.TestCase):
             data["source"]["revision"] = "b"
             path.write_text(yaml.safe_dump(data))
             subprocess.run(["git", "add", "."], cwd=root, check=True)
-            command = [sys.executable, str(ROOT / "scripts/validate_remediation.py")]
+            command = [
+                sys.executable,
+                "-m",
+                "factory.cli",
+                "agent-check",
+                "--agent",
+                "cve-remediation",
+                "--repo-root",
+                str(ROOT),
+            ]
+            env = {**os.environ, "PYTHONPATH": str(ROOT)}
             self.assertEqual(
-                subprocess.run(command, cwd=root, capture_output=True, check=False).returncode, 0
+                subprocess.run(
+                    command, cwd=root, env=env, capture_output=True, check=False
+                ).returncode,
+                0,
             )
             data["policy"]["critical"] = False
             path.write_text(yaml.safe_dump(data))
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             self.assertNotEqual(
-                subprocess.run(command, cwd=root, capture_output=True, check=False).returncode, 0
+                subprocess.run(
+                    command, cwd=root, env=env, capture_output=True, check=False
+                ).returncode,
+                0,
             )
             subprocess.run(["git", "reset", "--hard", "-q"], cwd=root, check=True)
             (root / "new-pipeline.yaml").write_text("malicious new pipeline")
             subprocess.run(["git", "add", "."], cwd=root, check=True)
             self.assertNotEqual(
-                subprocess.run(command, cwd=root, capture_output=True, check=False).returncode, 0
+                subprocess.run(
+                    command, cwd=root, env=env, capture_output=True, check=False
+                ).returncode,
+                0,
             )

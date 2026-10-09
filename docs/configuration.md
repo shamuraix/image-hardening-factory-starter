@@ -9,10 +9,17 @@ object that connects a Git repository to PaC.
 ## Quick setup checklist
 
 1. **Cluster prerequisites** (versions in `tools/versions.lock.yaml`)
-   - Kubernetes 1.30 or later (needed for the ValidatingAdmissionPolicy in
-     `deploy/base/admission-policy.yaml`), with
-     [user namespaces](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/)
-     available to unprivileged users on build nodes
+   - Kubernetes 1.33 or later. The build and test stages run in a pod
+     [user namespace](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/)
+     (`hostUsers: false`) with an unmasked `/proc` on the run step
+     (`procMount: Unmasked`); the `UserNamespacesSupport` and `ProcMountType`
+     feature gates are on by default from 1.33
+     ([feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/)).
+     On 1.30–1.32 enable both gates by hand. The ValidatingAdmissionPolicy in
+     `deploy/base/admission-policy.yaml` needs 1.30 or later. Build nodes need a
+     runtime that supports user namespaces (containerd 2.0+ or CRI-O 1.25+) and
+     kubelet `userNamespaces.idsPerPod` of at least 262144, so the runner's
+     `100000:65536` subordinate range fits.
    - [Tekton Pipelines](https://tekton.dev/docs/pipelines/) v1.15,
      Pipelines-as-Code v0.51, [Tekton Chains](https://github.com/tektoncd/chains/blob/v0.28.0/docs/config.md) v0.28
    - A default StorageClass for the per-run `volumeClaimTemplate` workspaces

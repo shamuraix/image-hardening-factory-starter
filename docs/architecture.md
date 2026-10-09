@@ -218,10 +218,13 @@ The prepare stage writes two seals: `prepare` (build context and lock) and
 
 - BuildKit runs rootless in each build step, using the `native` snapshotter
   ([BuildKit rootless mode](https://github.com/moby/buildkit/blob/v0.33.0/docs/rootless.md)).
-  Podman runs rootless with VFS storage for scans and tests. Only those two run
-  steps relax `allowPrivilegeEscalation` and seccomp/AppArmor, because
-  `newuidmap`/`newgidmap` are setuid programs. No step is privileged or uses
-  host namespaces or host paths.
+  Podman runs rootless with VFS storage for scans and tests. The build and test
+  pods run in their own user namespace (`hostUsers: false`, set by the
+  generated `taskRunSpecs`), and only those two run steps relax
+  `allowPrivilegeEscalation`, seccomp/AppArmor, and `procMount`, because
+  `newuidmap`/`newgidmap` are setuid programs and nested containers mount their
+  own `/proc`. `scripts/runtime_preflight.sh` checks these conditions before the
+  build. No step is privileged or uses host namespaces or host paths.
 - BuildKit builds with a source policy that denies remote image, HTTP, and Git
   sources. Every input is a digest-verified local OCI layout or a locked file.
 - Scanner and compliance stages unpack the image with `umoci` under

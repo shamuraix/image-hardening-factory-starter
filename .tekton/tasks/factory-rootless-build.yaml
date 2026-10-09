@@ -87,6 +87,9 @@ spec:
         privileged: false
         # Required by setuid newuidmap/newgidmap for rootless BuildKit.
         allowPrivilegeEscalation: true
+        # Nested containers mount their own /proc; needs the pod user namespace
+        # (hostUsers: false, set by the rendered taskRunSpecs podTemplate).
+        procMount: Unmasked
         seccompProfile:
           type: Unconfined
         appArmorProfile:

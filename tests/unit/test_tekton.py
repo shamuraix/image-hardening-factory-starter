@@ -256,10 +256,26 @@ class TaskHygieneTests(unittest.TestCase):
         for name, document in documents("Task").items():
             for item in document["spec"]["steps"]:
                 context = item.get("securityContext", {})
-                if context.get("allowPrivilegeEscalation"):
+                relaxed = context.get("allowPrivilegeEscalation") or "procMount" in context
+                if relaxed:
                     self.assertIn(name, {"factory-rootless-build", "factory-rootless-test"})
                     self.assertEqual(item["name"], "run")
+                    self.assertEqual(context.get("procMount"), "Unmasked")
                 self.assertFalse(context.get("privileged", False), f"{name}/{item['name']}")
+
+    def test_rootless_stages_run_in_a_pod_user_namespace(self) -> None:
+        for run_name, run in pipeline_runs().items():
+            if run["spec"]["pipelineRef"]["name"] != "factory-image-build":
+                continue
+            templates = {
+                spec["pipelineTaskName"]: spec.get("podTemplate", {})
+                for spec in run["spec"]["taskRunSpecs"]
+            }
+            for stage in ("build", "test"):
+                self.assertIs(templates[stage].get("hostUsers"), False, f"{run_name}/{stage}")
+            for stage, template in templates.items():
+                if stage not in ("build", "test"):
+                    self.assertNotIn("hostUsers", template, f"{run_name}/{stage}")
 
     def test_quarantine_emits_chains_type_hints(self) -> None:
         results = {item["name"] for item in task("factory-quarantine")["spec"]["results"]}

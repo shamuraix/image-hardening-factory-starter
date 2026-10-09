@@ -17,7 +17,10 @@ PY
 sudo -n true || { echo 'Run sudo -v in this terminal, then retry.' >&2; exit 2; }
 output="${state}/startup-diagnostics"
 mkdir -p "${output}"
+# The redirects deliberately write as the invoking user, not as root.
+# shellcheck disable=SC2024
 sudo -n podman inspect "${node}" --format '{{.HostConfig.Privileged}} {{.HostConfig.SecurityOpt}}' >"${output}/outer-security.txt"
+# shellcheck disable=SC2024
 sudo -n podman exec "${node}" sh -ec '
   runc --version
   cat /proc/self/uid_map /proc/self/gid_map

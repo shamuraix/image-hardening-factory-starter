@@ -6,6 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
     "harness_downloads", ROOT / "tests/integration/kind/download-tools.py"
@@ -20,8 +22,15 @@ class HarnessDownloadsTests(unittest.TestCase):
             assets = [entry[2] for entry in module.specifications(architecture)]
             self.assertIn(f"rootlesskit-{rootless}.tar.gz", assets)
             self.assertIn(f"yq_linux_{architecture}", assets)
-            self.assertIn(f"grype_0.118.0_linux_{architecture}.tar.gz", assets)
+            grype = module.locked_version("grype")
+            self.assertIn(f"grype_{grype}_linux_{architecture}.tar.gz", assets)
             self.assertFalse(any("darwin" in asset for asset in assets))
+
+    def test_every_specification_version_comes_from_the_lock(self):
+        lock = yaml.safe_load((ROOT / "tools/versions.lock.yaml").read_text())["tools"]
+        by_project = {entry["project"]: entry["version"].lstrip("v") for entry in lock.values()}
+        for repo, version, _asset, _names in module.specifications("amd64"):
+            self.assertEqual(version.lstrip("v"), by_project[f"https://github.com/{repo}"], repo)
 
     def test_checksum_failure_preserves_existing_binary_and_cache_is_verified(self):
         with TemporaryDirectory() as directory:

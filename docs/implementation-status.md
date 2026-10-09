@@ -22,7 +22,7 @@ and on a first end-to-end run in a real cluster.
 | Per-task trust classes (ServiceAccount, NetworkPolicy, and secrets per task) | Implemented | Replace placeholder CIDRs; workload identity |
 | PR secret isolation admission policy | Implemented | Confirm PaC event-type propagation to pods |
 | Source mirroring and resource locks | Implemented and tested | Approved origins, retention |
-| Rootless BuildKit OCI build | Implemented | Node user-namespace support |
+| Rootless BuildKit OCI build | Implemented; build and test pods request `hostUsers: false` and `procMount: Unmasked` | Kubernetes 1.33+ (or both feature gates on), containerd 2.0+/CRI-O, kubelet `idsPerPod` ≥ 262144 |
 | SBOM, scanners, compliance, tests | Implemented; Grype validation fails closed | FIPS node pool |
 | Signed offline security-data bundle (daily) | Implemented and tested (`tests/unit/test_security_data.py`) | Intake runner image with scanner tools and SCAP content; egress to database mirrors and the CISA KEV feed |
 | Signed vulnerability baselines | Verification implemented in `factory/grype.py` | No process yet to create, sign, and distribute baselines; without one every finding counts as new |

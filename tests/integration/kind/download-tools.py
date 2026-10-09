@@ -10,28 +10,39 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+LOCK = Path(__file__).resolve().parents[3] / "tools/versions.lock.yaml"
+
+
+def locked_version(tool, lock=LOCK):
+    """Return a tool's version from tools/versions.lock.yaml, without a leading v."""
+    import yaml
+
+    return str(yaml.safe_load(lock.read_text())["tools"][tool]["version"]).lstrip("v")
+
 
 def specifications(arch):
+    """Pinned node tools; every version comes from tools/versions.lock.yaml."""
     machine = {"amd64": "x86_64", "arm64": "aarch64"}[arch]
+    v = locked_version
     return [
-        ("sigstore/cosign", "v2.6.0", f"cosign-linux-{arch}", ["cosign"]),
-        ("oras-project/oras", "v1.3.0", f"oras_1.3.0_linux_{arch}.tar.gz", ["oras"]),
+        ("sigstore/cosign", f"v{v('cosign')}", f"cosign-linux-{arch}", ["cosign"]),
+        ("oras-project/oras", f"v{v('oras')}", f"oras_{v('oras')}_linux_{arch}.tar.gz", ["oras"]),
         (
             "moby/buildkit",
-            "v0.33.0",
-            f"buildkit-v0.33.0.linux-{arch}.tar.gz",
+            f"v{v('buildkit')}",
+            f"buildkit-v{v('buildkit')}.linux-{arch}.tar.gz",
             ["buildctl", "buildkitd", "buildkit-runc"],
         ),
         (
             "rootless-containers/rootlesskit",
-            "v3.1.0",
+            f"v{v('rootlesskit')}",
             f"rootlesskit-{machine}.tar.gz",
             ["rootlesskit"],
         ),
-        ("mikefarah/yq", "v4.53.6", f"yq_linux_{arch}", ["yq"]),
-        ("open-policy-agent/opa", "v1.7.1", f"opa_linux_{arch}_static", ["opa"]),
-        ("anchore/syft", "v1.30.0", f"syft_1.30.0_linux_{arch}.tar.gz", ["syft"]),
-        ("anchore/grype", "v0.118.0", f"grype_0.118.0_linux_{arch}.tar.gz", ["grype"]),
+        ("mikefarah/yq", f"v{v('yq')}", f"yq_linux_{arch}", ["yq"]),
+        ("open-policy-agent/opa", f"v{v('opa')}", f"opa_linux_{arch}_static", ["opa"]),
+        ("anchore/syft", f"v{v('syft')}", f"syft_{v('syft')}_linux_{arch}.tar.gz", ["syft"]),
+        ("anchore/grype", f"v{v('grype')}", f"grype_{v('grype')}_linux_{arch}.tar.gz", ["grype"]),
     ]
 
 

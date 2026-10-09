@@ -32,10 +32,14 @@ tools:
     project: https://github.com/anthropics/claude-code
     license: Proprietary (Anthropic Commercial Terms); validate entitlement before packaging
     version: 2.1.294
-  k3s:
-    project: https://github.com/k3s-io/k3s
+  kind:
+    project: https://github.com/kubernetes-sigs/kind
     license: Apache-2.0
-    version: v1.31.4+k3s1
+    version: v0.33.0
+  yq:
+    project: https://github.com/mikefarah/yq
+    license: MIT
+    version: 4.53.6
   skopeo:
     project: https://github.com/containers/skopeo
     license: Apache-2.0

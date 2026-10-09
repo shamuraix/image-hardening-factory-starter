@@ -172,6 +172,10 @@ def _task_run_specs(accounts: dict[str, str]) -> list[dict[str, Any]]:
     specs = []
     for task, account in accounts.items():
         spec: dict[str, Any] = {"pipelineTaskName": task, "serviceAccountName": account}
+        if task in ("build", "test"):
+            # Rootless BuildKit/Podman need a pod user namespace (hostUsers: false)
+            # so the run step can create nested namespaces and an unmasked /proc.
+            spec["podTemplate"] = {"hostUsers": False}
         if task == "compliance":
             spec["podTemplate"] = {
                 "nodeSelector": dict(FIPS_NODE_SELECTOR),

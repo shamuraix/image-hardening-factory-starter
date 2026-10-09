@@ -73,6 +73,8 @@ spec:
     serviceAccountName: factory-reader
   - pipelineTaskName: build
     serviceAccountName: factory-buildkit
+    podTemplate:
+      hostUsers: false
   - pipelineTaskName: sbom
     serviceAccountName: factory-offline
   - pipelineTaskName: scan
@@ -91,6 +93,8 @@ spec:
         effect: NoSchedule
   - pipelineTaskName: test
     serviceAccountName: factory-test
+    podTemplate:
+      hostUsers: false
   - pipelineTaskName: gate
     serviceAccountName: factory-offline
   - pipelineTaskName: quarantine
