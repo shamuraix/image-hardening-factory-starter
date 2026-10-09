@@ -43,7 +43,10 @@ toolchain:
 harness-up:
 	tests/integration/kind/up.sh
 
+# harness-run first redeploys the source snapshot, Tasks, and Pipelines, so a
+# pulled fix is what the next run executes (idempotent, a few seconds).
 harness-run:
+	KUBECONFIG="$${FACTORY_HARNESS_STATE:-.local-factory/kind-review}/kubeconfig" tests/integration/kind/deploy.sh
 	python3 tests/integration/kind/tekton.py --state "$${FACTORY_HARNESS_STATE:-.local-factory/kind-review}" run --image "$${IMAGE:-ubi9-minimal}"
 
 harness-down:
