@@ -148,7 +148,11 @@ build_args=(--platform "linux/${architecture}"
   -t localhost/factory-review-runner:review -f toolchain/Containerfile.factory-runner .)
 if [[ -n ${existing} ]]; then
   # Built directly into the cluster's containerd image store; nothing to load.
-  "${build_command[@]}" "${build_args[@]}"
+  # Plain progress so a failed step's full output survives, also in the log.
+  if ! "${build_command[@]}" --progress=plain "${build_args[@]}" 2>&1 | tee "${state}/runner-build.log"; then
+    echo "runner image build failed; full log: ${state}/runner-build.log" >&2
+    exit 1
+  fi
 else
   "${runtime[@]}" build "${build_args[@]}"
   rm -f "${state}/runner.tar"

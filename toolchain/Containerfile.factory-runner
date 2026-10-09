@@ -25,14 +25,26 @@ COPY dist/factory-wheel/ /tmp/wheels/
 COPY dist/ca-trust/ /tmp/ca-trust/
 
 # Extra CA certificates must be trusted before the first network access below.
+# The probe that follows fails with a plain explanation when the UBI CDN is
+# unreachable over TLS, which behind an inspecting proxy means the proxy's root
+# is missing from dist/ca-trust/ (FACTORY_CA_BUNDLE).
 RUN if ls /tmp/ca-trust/*.crt >/dev/null 2>&1; then \
-      cp /tmp/ca-trust/*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust; \
-    fi && rm -rf /tmp/ca-trust
+      echo "trusting extra CA certificates:" && ls /tmp/ca-trust/ \
+      && cp /tmp/ca-trust/*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust; \
+    else echo "no extra CA certificates"; fi \
+    && rm -rf /tmp/ca-trust
+RUN if ! curl -fsS -o /dev/null https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/x86_64/baseos/os/repodata/repomd.xml; then \
+      echo "cannot reach cdn-ubi.redhat.com over TLS from inside the build." >&2; \
+      echo "Behind a TLS-inspecting proxy, export its root certificate and set FACTORY_CA_BUNDLE (docs/local-kubernetes-testing.md)." >&2; \
+      curl -sS -o /dev/null https://cdn-ubi.redhat.com/ >&2 || true; \
+      exit 1; \
+    fi
 
 # UBI 9 AppStream/BaseOS packages: Python 3.12 (the system python3 is 3.9),
-# rootless Podman with its user-namespace helpers, Skopeo, OpenSCAP, git, jq, curl.
+# rootless Podman with its user-namespace helpers, Skopeo, OpenSCAP, git, jq.
+# curl is already present as curl-minimal (installing "curl" conflicts with it).
 RUN microdnf install -y --setopt=install_weak_deps=0 \
-      python3.12 python3.12-pip git-core jq curl tar gzip \
+      python3.12 python3.12-pip git-core jq tar gzip \
       podman skopeo slirp4netns fuse-overlayfs shadow-utils-subid openscap-scanner \
     && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
     && ln -sf /usr/bin/pip3.12 /usr/local/bin/pip3 \
