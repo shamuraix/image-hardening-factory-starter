@@ -31,7 +31,12 @@ rm -rf "${dist}/factory-wheel"
 mkdir -p "${dist}/factory-wheel"
 python3 -m pip wheel --quiet --no-deps --wheel-dir "${dist}/factory-wheel" .
 # Dependencies as prebuilt wheels for the runner's platform, not the host's.
+# pip evaluates environment markers against the host interpreter even with
+# --python-version, so a dependency guarded by python_version < "3.13"
+# (typing-extensions, needed by jsonschema's referencing) is skipped on a
+# newer host. List it explicitly; the install in the Containerfile is offline
+# and fails loudly if anything else is missing.
 python3 -m pip download --quiet --only-binary=:all: --platform "${platform}" \
   --python-version 3.12 --implementation cp --dest "${dist}/factory-wheel" \
-  'PyYAML>=6.0,<7' 'jsonschema>=4.23,<5' 'ruff>=0.6,<1'
+  'PyYAML>=6.0,<7' 'jsonschema>=4.23,<5' 'ruff>=0.6,<1' 'typing-extensions>=4.4.0'
 echo "toolchain assembled in ${dist}/ for ${arch}"
