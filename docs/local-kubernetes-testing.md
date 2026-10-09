@@ -128,6 +128,14 @@ Rancher Desktop works when:
   On Windows, put the same shell in `%LOCALAPPDATA%\rancher-desktop\provisioning\factory-userns.start`
   (Unix line endings). Restart Kubernetes afterwards; `up.sh` checks the value.
 - The VM has at least 6 CPUs, 12 GiB RAM, and 40 GiB disk.
+- On Apple silicon, the VZ virtual machine type with Rosetta enabled, so the
+  `linux/amd64` RUN steps of the images being built execute through binfmt.
+  Two artefacts of that emulation are expected and harmless: a crash of
+  BuildKit's own `check` probe (`buildkitd` runs a tiny embedded program per
+  architecture at start-up to learn which platforms and amd64 feature levels
+  the host can run; Rosetta raises SIGTRAP for the instructions it does not
+  emulate and BuildKit records that level as unsupported), and amd64 builds
+  that are several times slower than native. Real x86-64 nodes have neither.
 
 Then:
 
