@@ -49,3 +49,9 @@ export STORAGE_DRIVER=vfs
 
 mkdir -p "${FACTORY_WORK_DIR}/logs" "${XDG_RUNTIME_DIR}"
 chmod 0700 "${XDG_RUNTIME_DIR}"
+
+# No core dumps, from this shell or anything it starts (hard limit, so a child
+# cannot raise it). Steps hold credentials in memory, and a crashed process
+# would write them into the shared workspace, where every later task can read
+# them; a stray "core" file in the checkout also fails verify-source.
+ulimit -H -c 0
