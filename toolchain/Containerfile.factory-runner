@@ -41,34 +41,48 @@ RUN if ! curl -fsS -o /dev/null https://cdn-ubi.redhat.com/content/public/ubi/di
     fi
 
 # UBI 9 AppStream/BaseOS packages: Python 3.12 (the system python3 is 3.9),
-# rootless Podman with its user-namespace helpers, Skopeo, OpenSCAP, git, jq.
-# curl is already present as curl-minimal (installing "curl" conflicts with it).
+# rootless Podman with its user-namespace helpers (newuidmap/newgidmap are in
+# shadow-utils, which the minimal base does not ship), Skopeo, OpenSCAP, git,
+# jq. curl is already present as curl-minimal (installing "curl" conflicts).
 RUN microdnf install -y --setopt=install_weak_deps=0 \
       python3.12 python3.12-pip git-core jq tar gzip \
-      podman skopeo slirp4netns fuse-overlayfs shadow-utils-subid openscap-scanner \
-    && ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
+      podman skopeo shadow-utils shadow-utils-subid slirp4netns fuse-overlayfs openscap-scanner \
+    && microdnf clean all && rm -rf /var/cache/dnf
+
+# The factory package and its dependencies, from the offline wheel directory.
+RUN ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
     && ln -sf /usr/bin/pip3.12 /usr/local/bin/pip3 \
     && python3 -m pip install --no-cache-dir --no-index --find-links /tmp/wheels 'image-hardening-factory[dev]' \
-    && rpm -i /tmp/rpms/clamav-*.rpm \
-    && chmod 0555 /usr/local/bin/* \
+    && python3 -c 'import factory.cli' \
+    && rm -rf /tmp/wheels
+
+# ClamAV from the official package (not in the UBI repositories).
+RUN rpm -i /tmp/rpms/clamav-*.rpm && rm -rf /tmp/rpms
+
+# Every tool the stage scripts call must be present; name the missing one.
+RUN chmod 0555 /usr/local/bin/* \
     && for tool in buildctl buildkitd buildkit-runc rootlesskit umoci cosign oras \
-         syft grype trivy osv-scanner yq opa clamscan; do \
+         syft grype trivy osv-scanner yq opa clamscan freshclam; do \
          test -x "/usr/local/bin/${tool}" || { echo "missing tool: ${tool}" >&2; exit 1; }; \
        done \
-    && python3 -c 'import factory.cli' \
-    && printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
+    && for tool in podman skopeo oscap git jq curl; do \
+         command -v "${tool}" >/dev/null || { echo "missing package tool: ${tool}" >&2; exit 1; }; \
+       done
+
+# The unprivileged factory user with the subordinate ID range rootless BuildKit
+# and Podman map into, and the setuid helpers that make that mapping possible.
+RUN printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
       "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \
     && printf 'factory:100000:65536\n' >>/etc/subuid \
     && printf 'factory:100000:65536\n' >>/etc/subgid \
-    && test -u /usr/bin/newuidmap \
-    && test -u /usr/bin/newgidmap \
-    && test -x /usr/bin/slirp4netns \
+    && for helper in /usr/bin/newuidmap /usr/bin/newgidmap; do \
+         test -u "${helper}" || { echo "${helper} is missing or not setuid (shadow-utils)" >&2; ls -l "${helper}" >&2 || true; exit 1; }; \
+       done \
+    && { test -x /usr/bin/slirp4netns || { echo "slirp4netns is missing" >&2; exit 1; }; } \
     && install -d -m 0700 -o "${FACTORY_UID}" -g "${FACTORY_GID}" \
       /home/factory /home/factory/.config /home/factory/.config/containers \
-      /home/factory/.local/share/containers /tmp/factory-runtime \
-    && microdnf clean all \
-    && rm -rf /tmp/wheels /tmp/rpms /var/cache/dnf
+      /home/factory/.local/share/containers /tmp/factory-runtime
 
 COPY --chown=${FACTORY_UID}:${FACTORY_GID} toolchain/storage.conf /home/factory/.config/containers/storage.conf
 
