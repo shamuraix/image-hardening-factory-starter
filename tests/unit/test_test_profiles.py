@@ -21,6 +21,7 @@ class TestProfileTests(unittest.TestCase):
             self.assertNotIn("podman port", text, script)
             for line in re.findall(r"podman run[^\n]*", text):
                 self.assertRegex(line, r"--network (none|host)", f"{script}: {line}")
+                self.assertRegex(line, r"--platform|platform_args", f"{script}: {line}")
                 if "--detach" not in line:
                     self.assertIn("--network none", line, f"{script}: {line}")
 
