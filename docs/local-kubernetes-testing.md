@@ -198,6 +198,23 @@ kubectl --kubeconfig "$FACTORY_HARNESS_STATE/kubeconfig" -n factory-harness get 
 sudo -v && tests/integration/kind/node-diagnostics.sh
 ```
 
+To look at a run's workspace after the fact (evidence, logs, or a stray
+file), `workspace-exec.sh` runs a command in a throwaway runner pod with that
+PipelineRun's volume mounted read-only at `/workspace`:
+
+```bash
+tests/integration/kind/workspace-exec.sh harness-build-abcde ls -la /workspace/source /workspace/source/work/ubi9-minimal
+# a later stage reports "repository checkout was modified ... ?? core":
+tests/integration/kind/workspace-exec.sh harness-build-abcde \
+  python3 - /workspace/source/core < tests/integration/kind/core-info.py
+```
+
+`core-info.py` prints only the crashed program's name, argument line, and
+signal from the core file's notes, never its memory. Every step sets a hard
+core-size limit of zero (`scripts/tekton/env.sh`), so a core file in the
+workspace means the step started before that limit existed or something
+bypassed `env.sh`.
+
 ## Teardown
 
 ```bash

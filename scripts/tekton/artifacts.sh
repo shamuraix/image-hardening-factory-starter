@@ -94,6 +94,9 @@ cmd_verify_source() {
   dirty=$(git status --porcelain --untracked-files=all -- . ':(exclude)work')
   [[ -z ${dirty} ]] || {
     printf 'repository checkout was modified by an earlier task:\n%s\n' "${dirty}" >&2
+    if grep -qE '^\?\? core(\.[0-9]+)?$' <<<"${dirty}"; then
+      echo 'a process in an earlier step crashed and dumped core into the checkout; tests/integration/kind/core-info.py names it' >&2
+    fi
     exit 1
   }
 }
