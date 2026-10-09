@@ -107,3 +107,34 @@ class ArtifactSealTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StepEnvironmentTests(unittest.TestCase):
+    def test_env_sh_forbids_core_dumps_from_an_unlimited_start(self) -> None:
+        # The pod starts with an unlimited core size; env.sh must lower both
+        # limits (hard-only is EINVAL when the soft limit is higher) and leave
+        # the hard limit at 0 so children cannot raise it.
+        script = """
+        set -e
+        ulimit -S -c unlimited 2>/dev/null || ulimit -S -c 1024
+        cd "$1" && source "$2"
+        printf 'hard=%s soft=%s\\n' "$(ulimit -H -c)" "$(ulimit -S -c)"
+        (ulimit -c 1 2>/dev/null) && echo raised || echo locked
+        """
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run(
+                ["bash", "-c", script, "bash", directory, str(ROOT / "scripts/tekton/env.sh")],
+                env={
+                    **os.environ,
+                    "FACTORY_IMAGE": "ubi9-minimal",
+                    "FACTORY_PIPELINERUN": "run-1",
+                    "FACTORY_COMMIT_SHA": "0" * 40,
+                },
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("ulimit", result.stderr)
+        self.assertIn("hard=0 soft=0", result.stdout)
+        self.assertIn("locked", result.stdout)
