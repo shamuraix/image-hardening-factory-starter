@@ -151,6 +151,24 @@ def check(state: Path, name: str) -> int:
     print(f"validate seal: {seal or 'missing'}")
     if len(seal) != 64:
         failures.append("validate-seal")
+    # Show why the first unexpected failure happened, so nobody has to find the
+    # pod and step by hand. Skipped tasks (None) have no pod.
+    for task in failures:
+        if statuses.get(task, {}).get("status") != "False" or EXPECTED.get(task) == "False":
+            continue
+        pod = next(
+            item["status"].get("podName", "")
+            for item in runs
+            if item["metadata"]["labels"]["tekton.dev/pipelineTask"] == task
+        )
+        if not pod:
+            continue
+        print(f"\n--- {task}: last 60 lines of step-run ({pod}) ---")
+        try:
+            print(kubectl(state, "logs", pod, "-c", "step-run", "--tail=60"))
+        except subprocess.CalledProcessError as error:
+            print(f"(could not read the log: {error.stderr.strip()})")
+        break
     return 1 if failures else 0
 
 

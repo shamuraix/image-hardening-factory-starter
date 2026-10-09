@@ -25,6 +25,7 @@ version=$(yq -r '.product.version' "${catalog}")
 base_ref="registry.access.redhat.com/ubi${major}/ubi-minimal:${version}"
 platform=$(yq -r '.build.platforms[0]' "${catalog}")
 
+echo "harness prepare: cloning ${upstream} @ ${revision}"
 rm -rf "${context}"
 git clone --quiet --filter=blob:none --no-checkout "${upstream}" "${context}"
 git -C "${context}" checkout --quiet --detach "${revision}"
@@ -35,8 +36,10 @@ if [[ -n ${overlay} ]]; then
     git -C "${context}" apply "${FACTORY_WORKSPACE}/${patch}"
   done < <(find "${overlay}" -type f -name '*.patch' -print0 | sort -z)
 fi
+echo "harness prepare: validating the build context"
 scripts/validate_context.py "${catalog}" "${context}"
 
+echo "harness prepare: pulling ${base_ref} for ${platform}"
 # Single-platform copy of the public base; build_image.sh verifies the digest.
 skopeo copy --retry-times 5 --override-os "${platform%%/*}" --override-arch "${platform##*/}" \
   "docker://${base_ref}" "oci-archive:${work}/base.oci.tar"
