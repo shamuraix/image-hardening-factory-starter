@@ -6,9 +6,10 @@
 # per-stage write scopes are Artifactory permission targets on those prefixes
 # (docs/configuration.md, "Artifactory layout").
 #
-# Still required by hand: the GitLab project URL in deploy/base/repository.yaml,
-# the runner image digests below (after pushing them), the node label/taint for
-# the compliance stage, and the Secrets from deploy/secrets.example.yaml.
+# Still required by hand: the runner image digests below (after pushing them),
+# FACTORY_PAC_CONTROLLER_URL (the address GitLab can reach the controller at),
+# the node label/taint for the compliance stage, and the Secrets from
+# deploy/secrets.example.yaml.
 # Apply with
 #   kubectl apply -k deploy/overlays/dev
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -23,6 +24,10 @@ patches:
       metadata:
         name: factory-settings
       data:
+        # GitLab: the factory project and the group that holds the source
+        # mirrors intake pushes (one project per mirrored upstream repository).
+        INTERNAL_GIT_BASE_URL: https://gitlab.cicd.dc/techops-cicd/cicd-federal/mirrors
+        FACTORY_GITLAB_API_URL: https://gitlab.cicd.dc/api/v4
         ARTIFACTORY_URL: https://artifactory.cicd.dc
         ARTIFACTORY_REGISTRY: artifactory.cicd.dc
         ARTIFACTORY_USERNAME: techops-cicd-esd-hip-dev-bot
@@ -41,6 +46,18 @@ patches:
         # account and its token. techops-cicd-esd-hip-rpm-dev-local is not
         # used: a local rpm repository cannot mirror the CDN.
         FACTORY_UBI_MIRROR_URL: https://artifactory.cicd.dc/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist
+  # The GitLab project this Repository CR binds; Pipelines-as-Code matches the
+  # webhook payload's project URL against spec.url exactly.
+  - patch: |
+      - op: replace
+        path: /spec/url
+        value: https://gitlab.cicd.dc/techops-cicd/cicd-federal/govcloud-image-hardening-factory
+      - op: replace
+        path: /spec/git_provider/url
+        value: https://gitlab.cicd.dc
+    target:
+      kind: Repository
+      name: image-hardening-factory
   # Runner images live under factory/ in the docker repository; pin the digests
   # printed when you push them (skopeo inspect --format '{{.Digest}}').
   - patch: |
