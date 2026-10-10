@@ -123,13 +123,13 @@ placeholder names.
 | `FACTORY_RELEASE_REPOSITORY` | `…docker-dev-local/release` | promoted images, cosign signatures and attestations | `factory-artifactory-release` write; `-sign` for signatures |
 | `FACTORY_CANARY_REPOSITORY` | `…docker-dev-local/canary` | UBI 10 canary | release |
 | `FACTORY_SOURCE_REPOSITORY` | `…generic-dev-local/factory` | `locks/` (signed resource locks), intake resources, `releases/<image>/current.json` (pointers), `security-data/` (signed scanner bundle) | `-intake` writes locks, resources, and the bundle; `-pointer` writes pointers; `-read` reads |
-| `FACTORY_UBI_MIRROR_URL` | `https://<host>/artifactory/<remote rpm repository>` | mirror of `https://cdn-ubi.redhat.com/content/public/ubi/dist`, same layout | `factory-rpm-mirror` read |
+| `FACTORY_UBI_MIRROR_URL` | `https://<host>/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist` | remote repository in front of the UBI CDN, same layout | `factory-rpm-mirror` (bot account + token) read |
 
 Permission targets for the dev overlay (repository, include pattern, who):
 
 | Target | Repository | Include pattern | Permission | Used by |
 |---|---|---|---|---|
-| factory-read | docker, generic | `**` | read | `factory-artifactory-read`, `factory-rpm-mirror` |
+| factory-read | docker, generic, ext-redhat-ubi-remote | `**` | read | `factory-artifactory-read`, `factory-rpm-mirror` |
 | factory-intake | docker | `upstream/**` | read, deploy | `factory-artifactory-intake` |
 | factory-intake | generic | `factory/locks/**`, `factory/resources/**`, `factory/security-data/**` | read, deploy | `factory-artifactory-intake` |
 | factory-quarantine | docker | `quarantine/**` | read, deploy | `factory-artifactory-quarantine` |
@@ -141,17 +141,30 @@ No token can remove artifacts, and no token's include pattern crosses from
 quarantine to release except the signature token, which writes only signature
 and attestation tags next to an existing digest.
 
+If the instance grants `anonymous` read (the dev instance does), the read
+rows above are redundant and only the deploy grants need creating; the
+scripts still present the read tokens, which is harmless. One exception is
+required: exclude `quarantine/**` and `upstream/**` from the anonymous read
+permission on the docker repository. Those prefixes hold candidates that are
+built but not gated, and unmodified upstream bases that have not been through
+the pipeline; the design assumes only the factory's tokens can pull them, so
+that nobody consumes an unreleased image because its tag happened to exist.
+`release/**`, `canary/**`, and the generic repository (signed locks, release
+pointers, the signed security-data bundle) can stay anonymously readable.
+
 What the given repositories cannot provide:
 
-- **RPM content.** A *local* rpm repository serves only what is uploaded to
-  it; the build expects the UBI CDN layout (`ubi9/9/x86_64/baseos/os/…`) under
-  `FACTORY_UBI_MIRROR_URL`. Request a *remote* rpm repository (or a virtual in
-  front of one) whose URL is `https://cdn-ubi.redhat.com/content/public/ubi/dist`
-  (public content, no entitlement). Until it exists the dev overlay sets
-  `FACTORY_RPM_SOURCE_MODE: public-upstream`, so builds install from the CDN
-  directly; `image-metadata.json` records `rpmSource` either way. The
-  alternative is a scheduled `dnf reposync --download-metadata` into the local
-  repository with its yum depth set to match the layout.
+- **RPM content** does not come from the local rpm repository: a *local*
+  repository serves only what is uploaded to it, and the build expects the UBI
+  CDN layout (`ubi9/9/x86_64/baseos/os/…`) under `FACTORY_UBI_MIRROR_URL`. The
+  dev instance already has a *remote* repository, `ext-redhat-ubi-remote`, in
+  front of `https://cdn-ubi.redhat.com`, so the overlay points at
+  `…/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist` and the
+  catalog's `build.rpm.source: private-mirror` applies. `factory-rpm-mirror`
+  holds the bot account and its token (Artifactory accepts a token as the
+  basic-auth password). Without such a remote repository, set
+  `FACTORY_RPM_SOURCE_MODE: public-upstream` to install from the CDN directly;
+  `image-metadata.json` records `rpmSource` either way.
 - **Environment separation.** One `dev` repository per type is fine for
   development. The `commercial`/`gov1`/`gov2` release environments and the
   quarantine-to-release boundary are designed as separate repositories with

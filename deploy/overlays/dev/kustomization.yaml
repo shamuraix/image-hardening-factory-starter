@@ -34,14 +34,13 @@ patches:
         FACTORY_APPLICATION_QUARANTINE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/quarantine/apps
         FACTORY_RELEASE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/release
         FACTORY_CANARY_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/canary
-        # RPM content. techops-cicd-esd-hip-rpm-dev-local is a local repository
-        # and cannot mirror the UBI CDN by itself; until a remote rpm repository
-        # for https://cdn-ubi.redhat.com/content/public/ubi/dist exists, builds
-        # install from the public CDN directly (recorded as rpmSource in
-        # image-metadata.json). Then remove this key and set the mirror URL to
-        # https://artifactory.cicd.dc/artifactory/<remote rpm repository key>.
-        FACTORY_RPM_SOURCE_MODE: public-upstream
-        FACTORY_UBI_MIRROR_URL: https://artifactory.cicd.dc/artifactory/REPLACE-remote-ubi-cdn
+        # RPM content: ext-redhat-ubi-remote is a remote repository in front of
+        # https://cdn-ubi.redhat.com, so the CDN layout continues below this
+        # root (ubi9/9/x86_64/baseos/os, ...). The catalog's build.rpm.source
+        # (private-mirror) applies; Secret factory-rpm-mirror holds the bot
+        # account and its token. techops-cicd-esd-hip-rpm-dev-local is not
+        # used: a local rpm repository cannot mirror the CDN.
+        FACTORY_UBI_MIRROR_URL: https://artifactory.cicd.dc/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist
   # Runner images live under factory/ in the docker repository; pin the digests
   # printed when you push them (skopeo inspect --format '{{.Digest}}').
   - patch: |
