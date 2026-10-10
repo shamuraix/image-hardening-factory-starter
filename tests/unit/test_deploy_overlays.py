@@ -72,6 +72,8 @@ class DevOverlayTests(unittest.TestCase):
         self.assertEqual(
             changed,
             {
+                "INTERNAL_GIT_BASE_URL",
+                "FACTORY_GITLAB_API_URL",
                 "ARTIFACTORY_URL",
                 "ARTIFACTORY_REGISTRY",
                 "ARTIFACTORY_USERNAME",
@@ -127,6 +129,13 @@ class DevOverlayTests(unittest.TestCase):
                 r"^artifactory\.cicd\.dc/techops-cicd-esd-hip-docker-dev-local/factory/[a-z-]+@sha256:",
             )
         self.assertEqual(params["enable_agents"], "false")
+        repository = dev[("Repository", "image-hardening-factory")]["spec"]
+        self.assertEqual(
+            repository["url"],
+            "https://gitlab.cicd.dc/techops-cicd/cicd-federal/govcloud-image-hardening-factory",
+        )
+        self.assertEqual(repository["git_provider"]["url"], "https://gitlab.cicd.dc")
+        self.assertEqual(repository["git_provider"]["type"], "gitlab")
         for key, document in dev.items():
             if key[0] not in ("ConfigMap", "Repository"):
                 self.assertEqual(document, local[key], key)
