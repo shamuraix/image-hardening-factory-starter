@@ -141,6 +141,17 @@ No token can remove artifacts, and no token's include pattern crosses from
 quarantine to release except the signature token, which writes only signature
 and attestation tags next to an existing digest.
 
+If the instance grants `anonymous` read (the dev instance does), the read
+rows above are redundant and only the deploy grants need creating; the
+scripts still present the read tokens, which is harmless. One exception is
+required: exclude `quarantine/**` and `upstream/**` from the anonymous read
+permission on the docker repository. Those prefixes hold candidates that are
+built but not gated, and unmodified upstream bases that have not been through
+the pipeline; the design assumes only the factory's tokens can pull them, so
+that nobody consumes an unreleased image because its tag happened to exist.
+`release/**`, `canary/**`, and the generic repository (signed locks, release
+pointers, the signed security-data bundle) can stay anonymously readable.
+
 What the given repositories cannot provide:
 
 - **RPM content** does not come from the local rpm repository: a *local*
