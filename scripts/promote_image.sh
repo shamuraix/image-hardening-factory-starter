@@ -24,7 +24,7 @@ trap 'rm -rf "${authdir}"' EXIT
 export DOCKER_CONFIG="${authdir}"
 export REGISTRY_AUTH_FILE="${authdir}/config.json"
 printf '%s' "${ARTIFACTORY_RELEASE_TOKEN}" | skopeo login --authfile "${REGISTRY_AUTH_FILE}" \
-  --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
+  --username "${ARTIFACTORY_USERNAME:-oidc}" --password-stdin "${ARTIFACTORY_REGISTRY}"
 source_ref="${IMPORTED_IMAGE_REF}@${IMPORTED_IMAGE_DIGEST}"
 scripts/verify_release_evidence.sh "${source_ref}"
 

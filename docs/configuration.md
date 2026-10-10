@@ -75,6 +75,7 @@ Every factory step receives these as environment variables (`envFrom`).
 |---|---|
 | `INTERNAL_GIT_BASE_URL` | internal SCM namespace that holds the source mirrors |
 | `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Artifactory API base URL and OCI registry host |
+| `ARTIFACTORY_USERNAME` | registry login name paired with the `factory-artifactory-*` tokens (the user the tokens were issued to, for example the bot account); REST calls send the token as a bearer and need no name |
 | `FACTORY_SOURCE_REPOSITORY` | generic repository for locks, intake files, release pointers, and the security-data bundle |
 | `UPSTREAM_OCI_REPOSITORY` | digest-pinned upstream base images |
 | `FACTORY_{BASE,APPLICATION}_QUARANTINE_REPOSITORY` | protected candidate repositories; the catalog `publication.quarantineRepository` field expands these names |
@@ -93,6 +94,77 @@ Every factory step receives these as environment variables (`envFrom`).
 | `ANTHROPIC_BASE_URL` | Anthropic-format [LLM gateway](https://code.claude.com/docs/en/llm-gateway) for Claude Code |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` / `_OPUS_MODEL` | optional gateway model names for the `sonnet`/`opus` aliases ([model configuration](https://code.claude.com/docs/en/model-config)) |
 | `FACTORY_AGENT_TIMEOUT` | wall-clock limit per agent run |
+
+## Artifactory layout
+
+The scripts address Artifactory in exactly two ways, so any set of repositories
+works as long as these two hold:
+
+- **OCI**: `${ARTIFACTORY_REGISTRY}/${repository}/${path}:tag` — the
+  repository-path access method, where `${repository}` may itself contain a
+  path (`<repository key>/<prefix>`). The subdomain method
+  (`<repository key>.<host>`) is not supported.
+- **Files**: `${ARTIFACTORY_URL}/artifactory/${FACTORY_SOURCE_REPOSITORY}/<file>`
+  — a generic repository, again with an optional prefix.
+
+The factory's logical repositories are therefore path prefixes, and the trust
+boundaries between them are enforced with Artifactory permission targets
+(include patterns on the prefix) and one access token per target. The
+`deploy/overlays/dev` overlay is a worked example on one docker and one
+generic repository (`artifactory.cicd.dc`); the base manifests use neutral
+placeholder names.
+
+| Factory setting | Dev value (prefix) | Holds | Token (Secret) and scope |
+|---|---|---|---|
+| runner images (Repository CR params) | `…docker-dev-local/factory/` | the three runner images, by digest | pushed by an operator; read by the kubelet |
+| `UPSTREAM_OCI_REPOSITORY` | `…docker-dev-local/upstream` | Iron Bank bases imported by intake | `factory-artifactory-intake` write; `-read` read |
+| `FACTORY_BASE_QUARANTINE_REPOSITORY` | `…docker-dev-local/quarantine/bases` | gated base candidates and their evidence referrers | `factory-artifactory-quarantine` write |
+| `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | `…docker-dev-local/quarantine/apps` | gated application candidates | same |
+| `FACTORY_RELEASE_REPOSITORY` | `…docker-dev-local/release` | promoted images, cosign signatures and attestations | `factory-artifactory-release` write; `-sign` for signatures |
+| `FACTORY_CANARY_REPOSITORY` | `…docker-dev-local/canary` | UBI 10 canary | release |
+| `FACTORY_SOURCE_REPOSITORY` | `…generic-dev-local/factory` | `locks/` (signed resource locks), intake resources, `releases/<image>/current.json` (pointers), `security-data/` (signed scanner bundle) | `-intake` writes locks, resources, and the bundle; `-pointer` writes pointers; `-read` reads |
+| `FACTORY_UBI_MIRROR_URL` | `https://<host>/artifactory/<remote rpm repository>` | mirror of `https://cdn-ubi.redhat.com/content/public/ubi/dist`, same layout | `factory-rpm-mirror` read |
+
+Permission targets for the dev overlay (repository, include pattern, who):
+
+| Target | Repository | Include pattern | Permission | Used by |
+|---|---|---|---|---|
+| factory-read | docker, generic | `**` | read | `factory-artifactory-read`, `factory-rpm-mirror` |
+| factory-intake | docker | `upstream/**` | read, deploy | `factory-artifactory-intake` |
+| factory-intake | generic | `factory/locks/**`, `factory/resources/**`, `factory/security-data/**` | read, deploy | `factory-artifactory-intake` |
+| factory-quarantine | docker | `quarantine/**` | read, deploy | `factory-artifactory-quarantine` |
+| factory-sign | docker | `quarantine/**`, `release/**` | read, deploy (tags `sha256-*.sig`, `.att`) | `factory-artifactory-sign` |
+| factory-release | docker | `release/**`, `canary/**` | read, deploy | `factory-artifactory-release` |
+| factory-pointer | generic | `factory/releases/**` | read, deploy | `factory-artifactory-pointer` |
+
+No token can remove artifacts, and no token's include pattern crosses from
+quarantine to release except the signature token, which writes only signature
+and attestation tags next to an existing digest.
+
+What the given repositories cannot provide:
+
+- **RPM content.** A *local* rpm repository serves only what is uploaded to
+  it; the build expects the UBI CDN layout (`ubi9/9/x86_64/baseos/os/…`) under
+  `FACTORY_UBI_MIRROR_URL`. Request a *remote* rpm repository (or a virtual in
+  front of one) whose URL is `https://cdn-ubi.redhat.com/content/public/ubi/dist`
+  (public content, no entitlement). Until it exists the dev overlay sets
+  `FACTORY_RPM_SOURCE_MODE: public-upstream`, so builds install from the CDN
+  directly; `image-metadata.json` records `rpmSource` either way. The
+  alternative is a scheduled `dnf reposync --download-metadata` into the local
+  repository with its yum depth set to match the layout.
+- **Environment separation.** One `dev` repository per type is fine for
+  development. The `commercial`/`gov1`/`gov2` release environments and the
+  quarantine-to-release boundary are designed as separate repositories with
+  separate write scopes; use prefixes only where a single misconfigured
+  permission target is an acceptable blast radius.
+- **OCI referrers.** `publish_evidence_bundle.sh` attaches evidence with
+  `oras attach`. Artifactory versions without the OCI 1.1 referrers API are
+  handled by oras's fallback to the referrers tag schema; signatures and
+  attestations are ordinary tags.
+- **Helm and PyPI repositories** are not used: `deploy/` is Kustomize, and
+  `make toolchain` resolves Python dependencies on a connected host and bakes
+  them into the runner image (a PyPI repository is only a `pip --index-url`
+  for that host).
 
 ## Secrets
 

@@ -73,7 +73,7 @@ if [[ ! -f "${work_dir}/base.oci.tar" ]]; then
   factory_registry_auth "${private_dir}/auth"
   authfile="${private_dir}/auth/config.json"
   printf '%s' "${ARTIFACTORY_READ_TOKEN:?}" | skopeo login --authfile "${authfile}" \
-    --username oidc --password-stdin "${ARTIFACTORY_REGISTRY}"
+    --username "${ARTIFACTORY_USERNAME:-oidc}" --password-stdin "${ARTIFACTORY_REGISTRY}"
   skopeo copy --authfile "${authfile}" --all --preserve-digests "${skopeo_copy_args[@]}" \
     "docker://${BASE_REF}" "oci-archive:${work_dir}/base.oci.tar"
   rm -f "${authfile}"

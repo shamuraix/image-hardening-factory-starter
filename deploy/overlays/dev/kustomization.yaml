@@ -1,0 +1,59 @@
+# Dev overlay: the local overlay (single-node cluster, no NetworkPolicies,
+# agents off) pointed at the dev Artifactory repositories. Artifactory serves
+# OCI images with the repository-path method, so every image reference is
+# artifactory.cicd.dc/<repository key>/<path>; the factory's logical
+# repositories are path prefixes inside the one docker repository, and the
+# per-stage write scopes are Artifactory permission targets on those prefixes
+# (docs/configuration.md, "Artifactory layout").
+#
+# Still required by hand: the GitLab project URL in deploy/base/repository.yaml,
+# the runner image digests below (after pushing them), the node label/taint for
+# the compliance stage, and the Secrets from deploy/secrets.example.yaml.
+# Apply with
+#   kubectl apply -k deploy/overlays/dev
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: image-factory
+resources:
+  - ../local
+patches:
+  - patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: factory-settings
+      data:
+        ARTIFACTORY_URL: https://artifactory.cicd.dc
+        ARTIFACTORY_REGISTRY: artifactory.cicd.dc
+        ARTIFACTORY_USERNAME: techops-cicd-esd-hip-dev-bot
+        # Generic repository: locks/, intake resources, releases/, security-data/
+        FACTORY_SOURCE_REPOSITORY: techops-cicd-esd-hip-generic-dev-local/factory
+        # Docker repository, one prefix per trust boundary
+        UPSTREAM_OCI_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/upstream
+        FACTORY_BASE_QUARANTINE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/quarantine/bases
+        FACTORY_APPLICATION_QUARANTINE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/quarantine/apps
+        FACTORY_RELEASE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/release
+        FACTORY_CANARY_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/canary
+        # RPM content. techops-cicd-esd-hip-rpm-dev-local is a local repository
+        # and cannot mirror the UBI CDN by itself; until a remote rpm repository
+        # for https://cdn-ubi.redhat.com/content/public/ubi/dist exists, builds
+        # install from the public CDN directly (recorded as rpmSource in
+        # image-metadata.json). Then remove this key and set the mirror URL to
+        # https://artifactory.cicd.dc/artifactory/<remote rpm repository key>.
+        FACTORY_RPM_SOURCE_MODE: public-upstream
+        FACTORY_UBI_MIRROR_URL: https://artifactory.cicd.dc/artifactory/REPLACE-remote-ubi-cdn
+  # Runner images live under factory/ in the docker repository; pin the digests
+  # printed when you push them (skopeo inspect --format '{{.Digest}}').
+  - patch: |
+      - op: replace
+        path: /spec/params/0/value
+        value: artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory/factory-runner@sha256:REPLACE
+      - op: replace
+        path: /spec/params/1/value
+        value: artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory/factory-intake-runner@sha256:REPLACE
+      - op: replace
+        path: /spec/params/2/value
+        value: artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory/factory-agent@sha256:REPLACE
+    target:
+      kind: Repository
+      name: image-hardening-factory

@@ -9,6 +9,9 @@ data:
   INTERNAL_GIT_BASE_URL: https://git.internal.example/mirrors
   ARTIFACTORY_URL: https://artifactory.internal.example
   ARTIFACTORY_REGISTRY: artifactory.internal.example
+  # Registry login name used with the factory-artifactory-* tokens: Artifactory
+  # accepts an access token as the password for the user it was issued to.
+  ARTIFACTORY_USERNAME: oidc
   FACTORY_SOURCE_REPOSITORY: factory-source
   UPSTREAM_OCI_REPOSITORY: factory-upstream-oci
   FACTORY_BASE_QUARANTINE_REPOSITORY: factory-base-quarantine
