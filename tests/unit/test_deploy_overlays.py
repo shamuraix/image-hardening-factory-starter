@@ -81,10 +81,16 @@ class DevOverlayTests(unittest.TestCase):
                 "FACTORY_APPLICATION_QUARANTINE_REPOSITORY",
                 "FACTORY_RELEASE_REPOSITORY",
                 "FACTORY_CANARY_REPOSITORY",
-                "FACTORY_RPM_SOURCE_MODE",
                 "FACTORY_UBI_MIRROR_URL",
             },
         )
+        # The remote repository mirrors the CDN root; write_repo_config.sh
+        # appends ubi<major>/<major>/<arch>/{baseos,appstream}/os.
+        self.assertEqual(
+            settings["FACTORY_UBI_MIRROR_URL"],
+            "https://artifactory.cicd.dc/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist",
+        )
+        self.assertNotIn("FACTORY_RPM_SOURCE_MODE", settings)
         # Repository-path addressing: every OCI repository is <key>/<prefix>
         # inside the one docker repository, so scripts build
         # ${ARTIFACTORY_REGISTRY}/${repository}/${path} unchanged.
