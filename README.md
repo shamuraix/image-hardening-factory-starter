@@ -40,8 +40,9 @@ flowchart LR
 
 Day-one needs Python 3.11+, git, and the GNU `sha256sum` and `sort` the seal
 scripts use (`brew install coreutils` on macOS). That is all: there is no
-host-side build toolchain, container runtime, or local cluster harness. Images
-are built only by the Tekton Task, in a cluster.
+host-side build toolchain or container runtime. Images are built only by the
+Tekton Task, in a cluster; to build one on a local Kubernetes 1.28+ cluster
+(Rancher Desktop), see [docs/local-harness.md](docs/local-harness.md).
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate

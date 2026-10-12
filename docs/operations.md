@@ -170,9 +170,12 @@ history). Re-check policy with current data before redeploying.
 
 ## Local development
 
-There is no host-side build and no laptop harness. Images are built only by the
-Tekton Task. To iterate on an overlay, open a merge request: the PR PipelineRun
-builds, scans, and gates the candidate without publishing it, or run the
-pipeline on a development cluster with `deploy/environments/dev`. `make ci`
+There is no host-side build. Images are built only by the Tekton Task. To
+iterate on an overlay or a product upgrade, build it with the local harness
+([local-harness.md](local-harness.md): validate, prepare, context-check, build,
+SBOM, image-check on your own 1.28+ cluster), then open a merge request: the
+PR PipelineRun builds, scans, and gates the candidate without publishing it.
+To run the whole pipeline, use a development cluster with
+`deploy/environments/dev`. `make ci`
 covers everything that does not need a cluster. Runtime testing of a candidate
 happens outside the pipeline ([scope.md](scope.md)).
