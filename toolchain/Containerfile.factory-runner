@@ -9,6 +9,8 @@
 #   dist/src/           the shadow source archive (newuidmap/newgidmap, below)
 #   dist/factory-wheel/ this repository and its Python dependencies
 #   dist/rpm-versions.txt  RPM-installed tools and their pinned versions
+#   dist/arch           the architecture dist/ was assembled for
+#                       (FACTORY_TOOLCHAIN_ARCH, default amd64)
 #   dist/ca-trust/      optional extra CA certificates (*.crt, PEM) to trust,
 #                       such as a TLS-inspecting proxy's root; see
 #                       FACTORY_CA_BUNDLE in toolchain/build-dist.sh
@@ -56,6 +58,17 @@ FROM ${BASE_REF}
 
 ARG FACTORY_UID=10001
 ARG FACTORY_GID=10001
+# dist/ holds binaries and wheels for one architecture; stop here, with the
+# fix, when this build targets another (for example an Apple Silicon host
+# building without --platform linux/amd64).
+COPY dist/arch /tmp/dist-arch
+RUN expected=$(cat /tmp/dist-arch) \
+    && case "$(uname -m)" in x86_64) actual=amd64 ;; aarch64) actual=arm64 ;; *) actual=$(uname -m) ;; esac \
+    && { [ "${actual}" = "${expected}" ] || { \
+         echo "dist/ was assembled for ${expected} but this build is ${actual}." >&2; \
+         echo "Build with --platform linux/${expected}, or rerun make toolchain with FACTORY_TOOLCHAIN_ARCH=${actual}." >&2; \
+         exit 1; }; } \
+    && rm /tmp/dist-arch
 COPY dist/tools/ /usr/local/bin/
 COPY dist/factory-wheel/ /tmp/wheels/
 COPY dist/rpm-versions.txt /tmp/rpm-versions.txt

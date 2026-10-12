@@ -15,7 +15,7 @@ before you go on.
 
 ## 0. Before you start
 
-- VPN access to `gitlab.cicd.dc` and `artifactory.cicd.dc`, from both the
+- VPN access to the GitLab and Artifactory hosts in the dev manifest, from both the
   laptop and the Rancher Desktop VM.
 - The Zscaler root CA exported as a PEM file (for example `~/zscaler-root.pem`).
 - An **amd64** laptop if you can. The catalog builds `linux/amd64` only, and on
@@ -72,20 +72,34 @@ before you go on.
 
 The runner pods reach the internet (Iron Bank, scanner databases, the CISA KEV
 feed) through Zscaler. Bake the Zscaler root into the runner images for this
-environment:
+environment (`FACTORY_CA_BUNDLE`).
+
+The runner images run as pods on the Rancher Desktop node, so build them for
+the node's architecture (arm64 on Apple Silicon). `make toolchain` assembles
+`dist/` for amd64 unless `FACTORY_TOOLCHAIN_ARCH` says otherwise, and the
+runner build stops if `dist/` and `--platform` disagree.
 
 ```bash
-FACTORY_CA_BUNDLE=~/zscaler-root.pem make toolchain
-REG=artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory
-nerdctl build -f toolchain/Containerfile.factory-runner \
+case "$(rdctl shell uname -m)" in aarch64) ARCH=arm64 ;; *) ARCH=amd64 ;; esac
+FACTORY_TOOLCHAIN_ARCH=$ARCH FACTORY_CA_BUNDLE=~/zscaler-root.pem make toolchain
+# The registry path the dev manifest's RUNNER_IMAGE points at
+REG=$(sed -n 's#^  RUNNER_IMAGE: \(.*\)/factory-runner@.*#\1#p' deploy/environments/dev/manifest/environment.yaml)
+nerdctl build --platform "linux/$ARCH" -f toolchain/Containerfile.factory-runner \
   --build-arg BASE_REF=registry.access.redhat.com/ubi9/ubi-minimal \
-  -t "$REG/factory-runner:dev" .
-nerdctl push "$REG/factory-runner:dev"        # note the pushed digest
-nerdctl build -f toolchain/Containerfile.factory-intake-runner \
+  -t "$REG/factory-runner:dev-$ARCH" .
+nerdctl push "$REG/factory-runner:dev-$ARCH"        # note the pushed digest
+nerdctl build --platform "linux/$ARCH" -f toolchain/Containerfile.factory-intake-runner \
   --build-arg FACTORY_RUNNER_REF="$REG/factory-runner@sha256:<digest>" \
-  -t "$REG/factory-intake-runner:dev" .
-nerdctl push "$REG/factory-intake-runner:dev"
+  -t "$REG/factory-intake-runner:dev-$ARCH" .
+nerdctl push "$REG/factory-intake-runner:dev-$ARCH"
 ```
+
+On an arm64 node the product builds are still `linux/amd64` (catalog
+`build.platforms`), so BuildKit needs amd64 emulation in the VM: use the VZ
+backend with Rosetta enabled (**Preferences > Virtual Machine > Emulation**) and
+**Check** `rdctl shell ls /proc/sys/fs/binfmt_misc/` lists an x86-64 handler.
+Production runner images are amd64 only; keep `dev-arm64` digests in the dev
+manifest.
 
 The agent image is optional while agents are off. Sign each image by digest with
 cosign, then put the digests in
@@ -93,7 +107,7 @@ cosign, then put the digests in
 `INTAKE_RUNNER_IMAGE`, `AGENT_IMAGE`). These images trust Zscaler, so keep them
 out of any other environment's manifest.
 
-**Check**: the runner build stops if skopeo or the CA setup don't match
+**Check**: the runner build stops if the architecture, skopeo, or the CA setup don't match
 (`toolchain/Containerfile.factory-runner`). A clean build is the check.
 
 ## 3. Install Tekton at the pinned versions

@@ -76,6 +76,15 @@ class PinConsistencyTests(unittest.TestCase):
         self.assertIn("COPY dist/rpm-versions.txt", containerfile)
         self.assertIn("does not match tools/versions.lock.yaml", containerfile)
 
+    def test_runner_build_checks_dist_architecture(self) -> None:
+        build_dist = (ROOT / "toolchain/build-dist.sh").read_text()
+        containerfile = (ROOT / "toolchain/Containerfile.factory-runner").read_text()
+        self.assertIn('echo "${arch}" >"${dist}/arch"', build_dist)
+        runner_stage = containerfile.split("# Stage 2: the runner.")[1]
+        self.assertLess(
+            runner_stage.index("COPY dist/arch"), runner_stage.index("COPY dist/tools/")
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
