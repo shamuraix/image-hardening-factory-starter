@@ -1,0 +1,14 @@
+# Factory objects for dev: deploy/base on a single-node cluster (local-cluster
+# component) filled from the environment manifest in manifest/environment.yaml.
+# Apply with
+#   kubectl apply -k deploy/environments/dev
+# and the Chains configuration (tekton-chains namespace) with
+#   kubectl apply -k deploy/environments/dev/chains
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - manifest
+components:
+  - ../../components/local-cluster
+  - ../../components/environment

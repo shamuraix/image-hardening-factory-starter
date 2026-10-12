@@ -1,51 +1,19 @@
-# Non-secret environment settings, injected into every factory step with
-# envFrom. Values below are placeholders.
+# Non-secret settings shared by every environment, injected into every factory
+# step with envFrom. Environment-specific keys (hosts, repositories, URLs, the
+# bot identity, approvers) are added to this ConfigMap from the environment
+# manifest, deploy/environments/<env>/manifest/environment.yaml, by
+# deploy/components/environment.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: factory-settings
 data:
-  # Repositories and routing
-  INTERNAL_GIT_BASE_URL: https://git.internal.example/mirrors
-  ARTIFACTORY_URL: https://artifactory.internal.example
-  ARTIFACTORY_REGISTRY: artifactory.internal.example
-  # Registry login name used with the factory-artifactory-* tokens: Artifactory
-  # accepts an access token as the password for the user it was issued to.
-  ARTIFACTORY_USERNAME: oidc
-  FACTORY_SOURCE_REPOSITORY: factory-source
-  UPSTREAM_OCI_REPOSITORY: factory-upstream-oci
-  FACTORY_BASE_QUARANTINE_REPOSITORY: factory-base-quarantine
-  FACTORY_APPLICATION_QUARANTINE_REPOSITORY: factory-app-quarantine
-  FACTORY_RELEASE_REPOSITORY: factory-release
-  FACTORY_CANARY_REPOSITORY: factory-canary
   FACTORY_CATALOG_DIR: catalog/images
-  # Internal mirror of https://cdn-ubi.redhat.com/content/public/ubi/dist (same
-  # layout below this root: ubi9/9/x86_64/baseos/os, ...). Builds with
-  # build.rpm.source: private-mirror install RPMs from here, authenticated with
-  # Secret factory-rpm-mirror.
-  FACTORY_UBI_MIRROR_URL: https://artifactory.internal.example/artifactory/ubi-cdn/content/public/ubi/dist
   FACTORY_DEFAULT_BRANCH: main
   # Release governance
-  FACTORY_GOV_APPROVER_PATTERN: "^(alice|bob)$"
   FACTORY_POINTER_ENVIRONMENT: commercial
-  # Security-data bundle (scripts/build_security_bundle.sh). The KEV URL is the
-  # JSON feed CISA links from https://www.cisa.gov/known-exploited-vulnerabilities-catalog.
-  CISA_KEV_URL: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
   # Upstream tracking (Repo One branch followed by intake and upstream-sync)
   FACTORY_UPSTREAM_BRANCH: development
-  # Pipelines-as-Code incoming webhook (schedules and base-release fan-out)
-  FACTORY_PAC_CONTROLLER_URL: https://pac-controller.internal.example
+  # Pipelines-as-Code Repository CR name (deploy/base/repository.yaml)
   FACTORY_PAC_REPOSITORY: image-hardening-factory
-  # Git provider API used by agents for comments and merge requests. Defaults
-  # to https://<git host>/api/v4 for GitLab; set it when the API lives
-  # elsewhere. FACTORY_GITHUB_API_URL applies only when git_provider is github.
-  FACTORY_GITLAB_API_URL: https://gitlab.internal.example/api/v4
-  SCM_BOT_AUTHOR_NAME: image-factory-bot
-  SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
-  # Claude Code agents: an Anthropic-format LLM gateway (for example your
-  # organization's enterprise gateway). The token lives in Secret
-  # factory-ai-gateway. If the gateway exposes its own model names, add
-  # ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL here so the
-  # aliases in .claude/agents/*.md resolve; leave them unset otherwise.
-  ANTHROPIC_BASE_URL: https://llm-gateway.internal.example
   FACTORY_AGENT_TIMEOUT: 1500s

@@ -50,7 +50,7 @@ make agents      # list the agent personas
 
 To build an image for real, open a merge request (the PR pipeline builds,
 scans, and gates without publishing) or run the pipeline on a development
-cluster with `deploy/overlays/local` ([docs/operations.md](docs/operations.md#running-the-full-pipeline-on-a-local-cluster)).
+cluster with a local-cluster environment such as `deploy/environments/dev` ([docs/operations.md](docs/operations.md#running-the-full-pipeline-on-a-local-cluster)).
 
 ### Work with the agents interactively
 

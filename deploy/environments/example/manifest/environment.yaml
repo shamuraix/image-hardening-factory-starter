@@ -1,0 +1,96 @@
+# Environment manifest: every value that differs between installations of the
+# factory (servers, git repositories, Artifactory repositories, webhook and API
+# URLs, egress CIDRs, runner image digests, release approvers). Nothing outside
+# deploy/environments/<env>/ holds these values; deploy/components/environment
+# copies each key into the objects that use it. The values here are
+# placeholders: copy deploy/environments/example to deploy/environments/<name>/
+# and edit
+# this file only.
+#
+# Kustomize reads this ConfigMap but does not apply it (local-config). Secrets
+# never go here; see deploy/secrets.example.yaml.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-environment
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  # --- Git provider ---------------------------------------------------------
+  # Pipelines-as-Code provider type ("gitlab" or "github"), its instance URL,
+  # and the factory project. PaC matches the webhook payload's project URL
+  # against GIT_REPOSITORY_URL exactly.
+  GIT_PROVIDER: gitlab
+  GIT_PROVIDER_URL: https://gitlab.internal.example
+  GIT_REPOSITORY_URL: https://gitlab.internal.example/platform/image-hardening-factory
+  # Git provider API used by agents for comments and merge requests. Defaults
+  # to https://<git host>/api/v4 for GitLab when empty.
+  FACTORY_GITLAB_API_URL: https://gitlab.internal.example/api/v4
+  # Group or namespace that holds the source mirrors intake pushes (one project
+  # per mirrored upstream repository).
+  INTERNAL_GIT_BASE_URL: https://git.internal.example/mirrors
+  # Commit identity for agent proposals and release requests.
+  SCM_BOT_AUTHOR_NAME: image-factory-bot
+  SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
+
+  # --- Pipelines-as-Code ----------------------------------------------------
+  # Incoming-webhook address of the PaC controller (schedules and base-release
+  # fan-out), as reachable from the factory namespace.
+  FACTORY_PAC_CONTROLLER_URL: https://pac-controller.internal.example
+
+  # --- Artifactory ----------------------------------------------------------
+  # API base URL and OCI registry host. Images are addressed with the
+  # repository-path method: ${ARTIFACTORY_REGISTRY}/<repository>/<path>.
+  ARTIFACTORY_URL: https://artifactory.internal.example
+  ARTIFACTORY_REGISTRY: artifactory.internal.example
+  # Registry login name used with the factory-artifactory-* tokens: Artifactory
+  # accepts an access token as the password for the user it was issued to.
+  ARTIFACTORY_USERNAME: oidc
+  # Generic repository (optionally <key>/<prefix>): locks/, intake resources,
+  # releases/, security-data/.
+  FACTORY_SOURCE_REPOSITORY: factory-source
+  # OCI repositories, one per trust boundary (optionally <key>/<prefix>).
+  UPSTREAM_OCI_REPOSITORY: factory-upstream-oci
+  FACTORY_BASE_QUARANTINE_REPOSITORY: factory-base-quarantine
+  FACTORY_APPLICATION_QUARANTINE_REPOSITORY: factory-app-quarantine
+  FACTORY_RELEASE_REPOSITORY: factory-release
+  FACTORY_CANARY_REPOSITORY: factory-canary
+  # Internal mirror of https://cdn-ubi.redhat.com/content/public/ubi/dist (same
+  # layout below this root: ubi9/9/x86_64/baseos/os, ...). Builds with
+  # build.rpm.source: private-mirror install RPMs from here, authenticated with
+  # Secret factory-rpm-mirror.
+  FACTORY_UBI_MIRROR_URL: https://artifactory.internal.example/artifactory/ubi-cdn/content/public/ubi/dist
+
+  # --- Runner images --------------------------------------------------------
+  # Digest-pinned; pin the digests printed when you push them
+  # (skopeo inspect --format '{{.Digest}}'). RUNNER_IMAGE also runs the
+  # schedule CronJobs.
+  RUNNER_IMAGE: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+  INTAKE_RUNNER_IMAGE: artifactory.internal.example/factory-tools/factory-intake-runner@sha256:REPLACE
+  AGENT_IMAGE: artifactory.internal.example/factory-tools/factory-agent@sha256:REPLACE
+
+  # --- External feeds -------------------------------------------------------
+  # CISA KEV JSON feed (linked from
+  # https://www.cisa.gov/known-exploited-vulnerabilities-catalog), or an
+  # internal mirror of it; used when building the security-data bundle.
+  CISA_KEV_URL: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+
+  # --- Claude Code agents ---------------------------------------------------
+  # Anthropic-format LLM gateway. The token lives in Secret factory-ai-gateway.
+  ANTHROPIC_BASE_URL: https://llm-gateway.internal.example
+
+  # --- Release governance ---------------------------------------------------
+  # Regular expression the merging approver must match for gov1/gov2.
+  FACTORY_GOV_APPROVER_PATTERN: "^(alice|bob)$"
+
+  # --- Egress (deploy/base/network-policies.yaml) ----------------------------
+  # Documentation ranges below; replace with your endpoints.
+  GIT_HOST_CIDR: 198.51.100.10/32         # git host (and its API)
+  ARTIFACTORY_CIDR: 198.51.100.20/32      # Artifactory
+  GIT_MIRRORS_CIDR: 198.51.100.30/32      # internal git mirrors
+  UPSTREAM_EGRESS_CIDR: 203.0.113.0/24    # egress proxy / allowlisted upstreams
+  LLM_GATEWAY_CIDR: 198.51.100.40/32      # LLM gateway
+
+  # --- Tekton Chains (deploy/chains) -----------------------------------------
+  # Builder identity recorded in Chains SLSA provenance.
+  CHAINS_BUILDER_ID: https://image-factory.internal.example/tekton-chains

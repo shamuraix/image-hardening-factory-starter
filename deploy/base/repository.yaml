@@ -11,12 +11,15 @@ kind: Repository
 metadata:
   name: image-hardening-factory
 spec:
-  url: https://gitlab.internal.example/platform/image-hardening-factory
+  # url, git_provider.type and .url, and the image and git_provider params come
+  # from the environment manifest
+  # (deploy/environments/<env>/manifest/environment.yaml).
+  url: from-environment
   git_provider:
-    type: gitlab
+    type: from-environment
     # API URL of the internal instance. The token (scope: api) and the webhook
     # shared secret live in Secret factory-gitlab-webhook.
-    url: https://gitlab.internal.example
+    url: from-environment
     secret:
       name: factory-gitlab-webhook
       key: provider.token
@@ -34,13 +37,13 @@ spec:
   params:
     # Digest-pinned images; promote new runner/agent images by changing these.
     - name: runner_image
-      value: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+      value: from-environment
     - name: intake_runner_image
-      value: artifactory.internal.example/factory-tools/factory-intake-runner@sha256:REPLACE
+      value: from-environment
     - name: agent_image
-      value: artifactory.internal.example/factory-tools/factory-agent@sha256:REPLACE
+      value: from-environment
     - name: git_provider
-      value: gitlab
+      value: from-environment
     # "false" turns off the triage, remediation, and readiness agents for every
     # run on this cluster (for example a local cluster with no LLM gateway).
     # Release requests are still opened; their briefing is empty.

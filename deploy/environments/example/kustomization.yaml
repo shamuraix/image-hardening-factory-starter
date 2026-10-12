@@ -1,0 +1,12 @@
+# Factory objects for a production-shaped environment: deploy/base filled from
+# the environment manifest in manifest/environment.yaml. Apply with
+#   kubectl apply -k deploy/environments/example
+# and the Chains configuration (tekton-chains namespace) with
+#   kubectl apply -k deploy/environments/example/chains
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - manifest
+components:
+  - ../../components/environment

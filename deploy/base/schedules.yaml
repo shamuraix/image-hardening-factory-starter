@@ -1,6 +1,6 @@
 # Pipelines-as-Code has no cron trigger, so CronJobs call its incoming webhook.
 # Each job runs an inline script (no repository code) with the incoming secret.
-# Times are UTC; stagger them so builds do not contend for the same nodes.
+# The trigger image is the environment's RUNNER_IMAGE. Times are UTC; stagger them so builds do not contend for the same nodes.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -43,7 +43,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: trigger
-              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              image: from-environment  # RUNNER_IMAGE
               command: ["/bin/sh", "/scripts/trigger.sh"]
               args: [security-data-on-schedule]
               envFrom:
@@ -86,7 +86,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: trigger
-              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              image: from-environment  # RUNNER_IMAGE
               command: ["/bin/sh", "/scripts/trigger.sh"]
               args: [bitbucket-lts-on-schedule, confluence-lts-on-schedule, jira-lts-on-schedule]
               envFrom:
@@ -127,7 +127,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: trigger
-              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              image: from-environment  # RUNNER_IMAGE
               command: ["/bin/sh", "/scripts/trigger.sh"]
               args: [ubi9-minimal-on-schedule, ubi10-minimal-on-schedule]
               envFrom:
@@ -172,7 +172,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: trigger
-              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              image: from-environment  # RUNNER_IMAGE
               command: ["/bin/sh", "/scripts/trigger.sh"]
               args: [intake-on-schedule, agent-upstream-sync-on-schedule]
               envFrom:
@@ -213,7 +213,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: trigger
-              image: artifactory.internal.example/factory-tools/factory-runner@sha256:REPLACE
+              image: from-environment  # RUNNER_IMAGE
               command: ["/bin/sh", "/scripts/trigger.sh"]
               args: [agent-exception-steward-on-schedule]
               envFrom:

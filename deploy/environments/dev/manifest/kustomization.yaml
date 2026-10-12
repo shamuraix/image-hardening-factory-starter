@@ -1,0 +1,6 @@
+# The dev environment manifest as a kustomize package, read by
+# deploy/environments/dev (factory objects) and deploy/environments/dev/chains.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - environment.yaml

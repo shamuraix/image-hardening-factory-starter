@@ -46,7 +46,7 @@ has not yet run in a cluster.
 ## Known gaps and follow-ups
 
 - There is no local harness. Validating pipeline changes needs a development
-  cluster (`deploy/overlays/local` or `deploy/overlays/dev`).
+  cluster (for example `deploy/environments/dev`).
 - Without pod user namespaces, build pods use real host UIDs (10001 and the
   `100000:65536` subordinate range). Keep build pods on a dedicated node pool.
 - The Pipelines-as-Code v0.51 and Tekton Chains v0.28 minimum Kubernetes

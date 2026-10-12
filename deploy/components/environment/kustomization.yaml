@@ -1,0 +1,158 @@
+# Copies the environment manifest (ConfigMap factory-environment, the file
+# deploy/environments/<env>/manifest/environment.yaml) into every object that
+# varies between installations. deploy/base and deploy/chains hold no
+# environment values: each field filled here is either absent there (settings
+# keys) or the literal "from-environment".
+#
+# Every key of an environment manifest must have exactly one entry below, and
+# every entry must name a key the manifest defines; tests/unit/test_deploy_overlays.py
+# checks both. Targets that an environment removes (for example NetworkPolicies
+# under the local-cluster component) are skipped.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+replacements:
+  # Step environment: ConfigMap factory-settings (envFrom in every step).
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.INTERNAL_GIT_BASE_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.INTERNAL_GIT_BASE_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_GITLAB_API_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_GITLAB_API_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.SCM_BOT_AUTHOR_NAME}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.SCM_BOT_AUTHOR_NAME]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.SCM_BOT_AUTHOR_EMAIL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.SCM_BOT_AUTHOR_EMAIL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_PAC_CONTROLLER_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_PAC_CONTROLLER_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.ARTIFACTORY_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.ARTIFACTORY_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.ARTIFACTORY_REGISTRY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.ARTIFACTORY_REGISTRY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.ARTIFACTORY_USERNAME}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.ARTIFACTORY_USERNAME]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_SOURCE_REPOSITORY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_SOURCE_REPOSITORY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.UPSTREAM_OCI_REPOSITORY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.UPSTREAM_OCI_REPOSITORY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_BASE_QUARANTINE_REPOSITORY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_BASE_QUARANTINE_REPOSITORY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_APPLICATION_QUARANTINE_REPOSITORY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_APPLICATION_QUARANTINE_REPOSITORY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_RELEASE_REPOSITORY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_RELEASE_REPOSITORY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_CANARY_REPOSITORY}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_CANARY_REPOSITORY]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_UBI_MIRROR_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_UBI_MIRROR_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.CISA_KEV_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.CISA_KEV_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.ANTHROPIC_BASE_URL}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.ANTHROPIC_BASE_URL]
+        options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_GOV_APPROVER_PATTERN}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_GOV_APPROVER_PATTERN]
+        options: {create: true}
+  # Pipelines-as-Code Repository: the project, the provider, and runner images.
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.GIT_REPOSITORY_URL}
+    targets:
+      - select: {kind: Repository, name: image-hardening-factory}
+        fieldPaths: [spec.url]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.GIT_PROVIDER_URL}
+    targets:
+      - select: {kind: Repository, name: image-hardening-factory}
+        fieldPaths: [spec.git_provider.url]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.GIT_PROVIDER}
+    targets:
+      - select: {kind: Repository, name: image-hardening-factory}
+        fieldPaths: [spec.git_provider.type, "spec.params.[name=git_provider].value"]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.RUNNER_IMAGE}
+    targets:
+      - select: {kind: Repository, name: image-hardening-factory}
+        fieldPaths: ["spec.params.[name=runner_image].value"]
+      # The schedule CronJobs run the same runner image.
+      - select: {kind: CronJob}
+        fieldPaths: ["spec.jobTemplate.spec.template.spec.containers.[name=trigger].image"]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.INTAKE_RUNNER_IMAGE}
+    targets:
+      - select: {kind: Repository, name: image-hardening-factory}
+        fieldPaths: ["spec.params.[name=intake_runner_image].value"]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.AGENT_IMAGE}
+    targets:
+      - select: {kind: Repository, name: image-hardening-factory}
+        fieldPaths: ["spec.params.[name=agent_image].value"]
+  # Egress NetworkPolicies (deploy/base/network-policies.yaml).
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.GIT_HOST_CIDR}
+    targets:
+      - select: {kind: NetworkPolicy, name: git-host}
+        fieldPaths: [spec.egress.0.to.0.ipBlock.cidr]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.ARTIFACTORY_CIDR}
+    targets:
+      - select: {kind: NetworkPolicy, name: artifactory}
+        fieldPaths: [spec.egress.0.to.0.ipBlock.cidr]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.GIT_MIRRORS_CIDR}
+    targets:
+      - select: {kind: NetworkPolicy, name: internal-mirrors}
+        fieldPaths: [spec.egress.0.to.0.ipBlock.cidr]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.UPSTREAM_EGRESS_CIDR}
+    targets:
+      - select: {kind: NetworkPolicy, name: approved-upstreams}
+        fieldPaths: [spec.egress.0.to.0.ipBlock.cidr]
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.LLM_GATEWAY_CIDR}
+    targets:
+      - select: {kind: NetworkPolicy, name: llm-gateway}
+        fieldPaths: [spec.egress.0.to.0.ipBlock.cidr]
+  # Tekton Chains (deploy/chains/chains-config.yaml).
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.CHAINS_BUILDER_ID}
+    targets:
+      - select: {kind: ConfigMap, name: chains-config}
+        fieldPaths: ["data.[builder.id]"]

@@ -1,27 +1,22 @@
-# Local or single-node cluster overlay for running the full pipeline against the
+# Local or single-node cluster profile for running the full pipeline against the
 # real external GitLab and Artifactory. The cluster needs what production needs
 # (docs/configuration.md): Kubernetes 1.28 or later with Tekton, Pipelines-as-Code,
 # Chains, and ValidatingAdmissionPolicy enabled.
 #
-# Differences from deploy/base, and nothing else:
-#   - The NetworkPolicies are removed. They pin egress to placeholder CIDRs that
-#     a laptop cannot satisfy; the trust boundaries that matter locally
+# Differences from a production environment, and nothing else:
+#   - The NetworkPolicies are removed. A laptop usually cannot satisfy egress
+#     pinned to fixed CIDRs; the trust boundaries that matter locally
 #     (per-task ServiceAccounts, per-step secrets, the admission policy, sealed
 #     evidence) are unchanged.
 #   - Agents are switched off (Repository param enable_agents "false") because a
-#     laptop usually has no LLM gateway. Set it back to "true" to use one.
+#     laptop usually has no LLM gateway. Drop this patch to use one.
 #
-# Still required by hand: create the Secrets from deploy/secrets.example.yaml.
-# Apply with
-#   kubectl apply -k deploy/overlays/local
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-namespace: image-factory
-resources:
-  - ../../base
+# Include it from an environment's factory kustomization (see
+# deploy/environments/dev).
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
 patches:
-  # Index 4 is enable_agents in deploy/base/repository.yaml; a unit test
-  # (tests/unit/test_deploy_overlays.py) checks the built output.
+  # A unit test (tests/unit/test_deploy_overlays.py) checks the built output.
   - patch: |
       - op: replace
         path: /spec/params/4/value
