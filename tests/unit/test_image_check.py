@@ -138,6 +138,59 @@ class ImageCheckTests(unittest.TestCase):
             fs.apply_layer(tar)
         self.assertIn("/root/.bashrc", fs.entries)
 
+    def test_opaque_marker_after_same_layer_child_keeps_the_child(self):
+        # Tar member order carries no meaning: the opaque marker hides lower
+        # layers only, even when this layer lists a new child before it.
+        with TemporaryDirectory() as directory:
+            image = oci_fixture.build(
+                Path(directory) / "i.tar",
+                CONFIG,
+                [
+                    [("/opt/x/old", "file", 0o644, 0, 0, b"")],
+                    [("/opt/x/new", "file", 0o644, 0, 0, b""), ("/opt/x", "opaque", 0, 0, 0, "")],
+                    [
+                        ("/opt/y/new", "file", 0o644, 0, 0, b""),
+                        ("/opt/y/new", "whiteout", 0, 0, 0, ""),
+                    ],
+                ],
+            )
+            _config, fs = load_image(image)
+        self.assertIn("/opt/x/new", fs.entries)
+        self.assertNotIn("/opt/x/old", fs.entries)
+        self.assertIn("/opt/y/new", fs.entries)
+
+    def test_uncompressed_layers_are_read_as_streams(self):
+        with TemporaryDirectory() as directory:
+            image = oci_fixture.build(
+                Path(directory) / "i.tar",
+                CONFIG,
+                [[("/etc/passwd", "file", 0o644, 0, 0, b"jira:x:2001:2001::/h:/bin/sh\n")]],
+                compress=False,
+            )
+            _config, fs = load_image(image)
+        self.assertIn(b"jira:x:2001", fs.entries["/etc/passwd"].content)
+
+    def test_any_banned_git_version_in_the_sbom_fails(self):
+        # all-layers SBOMs can list one package several times; an allowed
+        # version must not mask a denied one, whatever the order.
+        for order in (["2.49.1-1.el10", "2.52.0-1.el10"], ["2.52.0-1.el10", "2.49.1-1.el10"]):
+            with self.subTest(order=order), TemporaryDirectory() as directory:
+                root = Path(directory)
+                image = oci_fixture.build(root / "i.tar", CONFIG, [BASE_LAYER])
+                sbom = root / "sbom.json"
+                sbom.write_text(
+                    json.dumps(
+                        {
+                            "components": [
+                                {"name": "git", "version": v, "purl": f"pkg:rpm/redhat/git@{v}"}
+                                for v in order
+                            ]
+                        }
+                    )
+                )
+                report = check_image(ROOT / "catalog/images/bitbucket-lts.yaml", image, sbom)
+                self.assertFalse(_results(report)["no-banned-rpm-git"].passed)
+
     def test_bitbucket_rejects_banned_distro_git(self):
         catalog = yaml.safe_load((ROOT / "catalog/images/bitbucket-lts.yaml").read_text())
         self.assertEqual(catalog["verify"]["profile"], "bitbucket")

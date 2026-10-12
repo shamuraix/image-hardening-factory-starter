@@ -1,5 +1,5 @@
 diff --git a/scripts/config/confluence.cfg.xml.j2 b/scripts/config/confluence.cfg.xml.j2
-index 9ba5d68..50eb4c9 100644
+index 9ba5d68..f74f52a 100644
 --- a/scripts/config/confluence.cfg.xml.j2
 +++ b/scripts/config/confluence.cfg.xml.j2
 @@ -24,12 +24,12 @@
@@ -7,13 +7,13 @@ index 9ba5d68..50eb4c9 100644
        <property name="confluence.database.choice">{{ atl_db_type }}</property>
  
 -      <property name="hibernate.connection.url">{{ atl_jdbc_url }}</property>
-+      <property name="hibernate.connection.url">{% if "&amp;" in (atl_jdbc_url | default('')) %}{{ atl_jdbc_url }}{% else %}{{ atl_jdbc_url | default('') | replace("&", "&amp;") }}{% endif %}</property>
++      <property name="hibernate.connection.url">{{ atl_jdbc_url | default('') | replace('&lt;', '<') | replace('&gt;', '>') | replace('&quot;', '"') | replace('&apos;', "'") | replace('&amp;', '&') | e }}</property>
        <property name="hibernate.connection.username">{{ atl_jdbc_user }}</property>
        {% if atl_jdbc_secret_class is defined %}
        <property name="jdbc.password.decrypter.classname">{{ atl_jdbc_secret_class }}</property>
        {% endif %}
 -      <property name="hibernate.connection.password">{{ atl_jdbc_password }}</property>
-+      <property name="hibernate.connection.password">{% if "&amp;" in (atl_jdbc_password | default('')) %}{{ atl_jdbc_password }}{% else %}{{ atl_jdbc_password | default('') | replace("&", "&amp;") }}{% endif %}</property>
++      <property name="hibernate.connection.password">{{ atl_jdbc_password | default('') | replace('&lt;', '<') | replace('&gt;', '>') | replace('&quot;', '"') | replace('&apos;', "'") | replace('&amp;', '&') | e }}</property>
        <property name="hibernate.connection.driver_class">{{ databases[atl_db_type][0] }}</property>
        <property name="hibernate.dialect">com.atlassian.confluence.impl.hibernate.dialect.{{ databases[atl_db_type][1] }}</property>
  

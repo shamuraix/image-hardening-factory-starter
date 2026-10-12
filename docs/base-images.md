@@ -71,16 +71,17 @@ limited to features the Iron Bank templates have.
 | entrypoint and helpers compile | required | — |
 | server.xml defaults (connector port equals the first `verify.ports`) and proxy parameters | required | Atlassian `test_server_xml_defaults`/`_params` |
 | Jira dbconfig per database type, schema names | required | Atlassian `test_dbconfig_xml_*` |
-| JDBC URL and password containing `&` (raw and pre-escaped) render valid XML | required | Atlassian `test_confluence_xml_postgres_ampersand*` |
+| JDBC URL and password containing `&`, `<`, `>` or quotes (raw, pre-escaped, or mixed) render valid XML with the intended value | required | Atlassian `test_confluence_xml_postgres_ampersand*`, extended |
 | Jira cluster.properties, seraph, S3 filestore; Confluence cfg, init properties, seraph | required | Atlassian `test_cluster_properties_*`, `test_seraph_*`, `test_filestore_*` |
-| `unset_secure_vars` keeps `AWS_WEB_IDENTITY_TOKEN_FILE` and the allowlist, removes secrets (only where the entrypoint requests cleanup) | required | Atlassian `test_*_secure_vars` |
+| `unset_secure_vars` keeps `AWS_WEB_IDENTITY_TOKEN_FILE`, exact allowlisted names, and the password-cipher prefix family; removes secrets, including longer names that merely start with an allowlisted one (only where the entrypoint requests cleanup) | required | Atlassian `test_*_secure_vars`, tightened |
 | Bitbucket git version not banned or unsupported (2.48, 2.51–2.54) | required | Atlassian `bin/git-versions.py` |
 | Jinja2 major.minor matches the base | advisory | — |
 
 ### image-check (after sbom)
 
 Reads `image.oci.tar` directly: the image config plus every layer's tar
-headers, merged with OCI whiteouts and opaque directories, following symlinks
+headers, streamed one layer at a time and merged with OCI whiteouts and opaque
+directories (which hide lower layers only, whatever the tar member order), following symlinks
 such as the RHEL alternatives chain.
 
 | Check | Severity |
@@ -104,8 +105,8 @@ advisory check to required is a catalog/code change reviewed like policy.
 
 | Patch | Fixes | Upstream source |
 |---|---|---|
-| `jira-lts/0004`, `confluence-lts/0005` `keep-irsa-token-env` | `unset_secure_vars` removed `AWS_WEB_IDENTITY_TOKEN_FILE`, breaking EKS IRSA for S3 and Secrets Manager | shared-components CLIP-1824 (2023) |
-| `jira-lts/0005`, `confluence-lts/0006` `escape-jdbc-ampersands` | a `&` in the JDBC URL or password produced invalid `dbconfig.xml` / `confluence.cfg.xml` (autoescape never matches `*.xml.j2`) | Confluence upstream template |
+| `jira-lts/0004`, `confluence-lts/0005` `keep-irsa-token-env` | `unset_secure_vars` removed `AWS_WEB_IDENTITY_TOKEN_FILE`, breaking EKS IRSA for S3 and Secrets Manager. Allowlist entries match exact names (upstream matches prefixes, so allowing `MY_TOKEN` also kept `MY_TOKEN_SECRET`); only the `com_atlassian_db_config_password_ciphers_algorithm_javax_crypto*` family is a prefix | shared-components CLIP-1824 (2023), tightened |
+| `jira-lts/0005`, `confluence-lts/0006` `escape-jdbc-ampersands` | a `&` or `<` in the JDBC URL or password produced invalid `dbconfig.xml` / `confluence.cfg.xml` (autoescape never matches `*.xml.j2`). The value has the five XML entities decoded (`&amp;` last) and is then escaped, so any value that rendered valid XML before parses to the same string; only numeric references such as `&#38;` change | Confluence upstream template, generalised |
 | `bitbucket-lts/0004` `ubi10-zlib-package-name` | `zlib-devel` is only a Provides on UBI 10 | — |
 | `ubi10-minimal/0002` `update-ca-trust-before-rpm-access` | private-mirror TLS before the first `microdnf` call | mirrors `ubi9-minimal/0002` |
 

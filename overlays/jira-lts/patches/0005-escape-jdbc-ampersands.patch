@@ -1,5 +1,5 @@
 diff --git a/config/dbconfig.xml.j2 b/config/dbconfig.xml.j2
-index c000052..8c8ffb9 100644
+index c000052..cc1082e 100644
 --- a/config/dbconfig.xml.j2
 +++ b/config/dbconfig.xml.j2
 @@ -14,12 +14,12 @@
@@ -7,13 +7,13 @@ index c000052..8c8ffb9 100644
    <database-type>{{ atl_db_type }}</database-type>
    <jdbc-datasource>
 -    <url>{{ atl_jdbc_url }}</url>
-+    <url>{% if "&amp;" in (atl_jdbc_url | default('')) %}{{ atl_jdbc_url }}{% else %}{{ atl_jdbc_url | default('') | replace("&", "&amp;") }}{% endif %}</url>
++    <url>{{ atl_jdbc_url | default('') | replace('&lt;', '<') | replace('&gt;', '>') | replace('&quot;', '"') | replace('&apos;', "'") | replace('&amp;', '&') | e }}</url>
      <username>{{ atl_jdbc_user }}</username>
       {% if atl_jdbc_secret_class is defined and atl_jdbc_secret_class != "" %}
          <atlassian-password-cipher-provider>{{ atl_jdbc_secret_class }}</atlassian-password-cipher-provider>
          {% endif -%}
 -    <password>{{ atl_jdbc_password }}</password>
-+    <password>{% if "&amp;" in (atl_jdbc_password | default('')) %}{{ atl_jdbc_password }}{% else %}{{ atl_jdbc_password | default('') | replace("&", "&amp;") }}{% endif %}</password>
++    <password>{{ atl_jdbc_password | default('') | replace('&lt;', '<') | replace('&gt;', '>') | replace('&quot;', '"') | replace('&apos;', "'") | replace('&amp;', '&') | e }}</password>
      <driver-class>{{ atl_db_driver }}</driver-class>
      {% if atl_db_type == 'postgres72' %}
        <connection-properties>tcpKeepAlive={{ atl_db_keepalive | default('true') }};socketTimeout={{ atl_db_sockettimeout | default('240') }}</connection-properties>

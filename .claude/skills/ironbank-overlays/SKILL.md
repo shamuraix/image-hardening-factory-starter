@@ -81,8 +81,9 @@ patch cannot sneak in network fetches.
 - `ubi10-minimal`: pin `FROM ${BASE_REF}`; run `update-ca-trust` before the
   first RPM access (as on UBI 9).
 - Jira `0004`/Confluence `0005`: keep `AWS_WEB_IDENTITY_TOKEN_FILE` and the
-  `ATL_ALLOWLIST_SENSITIVE_ENV_VARS` allowlist in `unset_secure_vars`; Jira
-  `0005`/Confluence `0006`: escape `&` in the JDBC URL and password. Keep both
+  `ATL_ALLOWLIST_SENSITIVE_ENV_VARS` allowlist (exact names) in
+  `unset_secure_vars`; Jira `0005`/Confluence `0006`: decode XML entities then
+  escape the JDBC URL and password. Keep both
   when rebasing; `context-check` fails without them.
 - Bitbucket `0004`: install and remove `zlib-ng-compat-devel` on UBI 10.
 - Atlassian images: `ARG BASE_MAJOR` selects behaviour per UBI major. The

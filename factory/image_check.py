@@ -24,7 +24,7 @@ import stat
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import yaml
 
@@ -59,20 +59,32 @@ class ImageFS:
     def __init__(self) -> None:
         self.entries: dict[str, Entry] = {"/": Entry("dir", 0o755, 0, 0)}
 
+    def _remove_lower(self, added: set[str], target: str, include_self: bool) -> None:
+        """Delete lower-layer entries at/under target; this layer's additions stay.
+
+        Whiteouts apply only to lower layers (OCI image-spec layer.md), and tar
+        member order is not significant, so an entry this layer already added
+        must survive a whiteout or opaque marker listed after it.
+        """
+        prefix = target.rstrip("/") + "/"
+        doomed = [
+            key
+            for key in self.entries
+            if key not in added and (key.startswith(prefix) or (include_self and key == target))
+        ]
+        for key in doomed:
+            del self.entries[key]
+
     def apply_layer(self, layer: tarfile.TarFile) -> None:
+        added: set[str] = set()
         for member in layer:
             path = _member_path(member.name)
             parent, name = posixpath.split(path)
             if name == ".wh..wh..opq":
-                prefix = parent.rstrip("/") + "/"
-                for key in [k for k in self.entries if k.startswith(prefix)]:
-                    del self.entries[key]
+                self._remove_lower(added, parent, include_self=False)
                 continue
             if name.startswith(".wh."):
-                target = posixpath.join(parent, name[4:])
-                prefix = target + "/"
-                for key in [k for k in self.entries if k == target or k.startswith(prefix)]:
-                    del self.entries[key]
+                self._remove_lower(added, posixpath.join(parent, name[4:]), include_self=True)
                 continue
             if member.isdir():
                 kind = "dir"
@@ -92,17 +104,20 @@ class ImageFS:
                 content = extracted.read() if extracted else b""
             # Replacing a directory with a non-directory removes its children.
             if kind != "dir" and path in self.entries and self.entries[path].kind == "dir":
-                prefix = path + "/"
-                for key in [k for k in self.entries if k.startswith(prefix)]:
-                    del self.entries[key]
+                self._remove_lower(added, path, include_self=False)
             self.entries[path] = Entry(
                 kind, member.mode & 0o7777, member.uid, member.gid, member.linkname, content
             )
+            added.add(path)
             # Extraction creates parent directories a layer does not list.
             ancestor = posixpath.dirname(path)
             while ancestor not in self.entries:
                 self.entries[ancestor] = Entry("dir", 0o755, 0, 0)
                 ancestor = posixpath.dirname(ancestor)
+
+    def apply_layer_stream(self, stream: IO[bytes]) -> None:
+        with tarfile.open(fileobj=stream, mode="r|") as layer:
+            self.apply_layer(layer)
 
     def resolve(self, path: str) -> tuple[str, Entry] | None:
         """Follow symlinks (absolute and relative) to the final entry."""
@@ -140,6 +155,25 @@ class ImageFS:
         return [path for path in self.entries if fnmatch.fnmatchcase(path, pattern)]
 
 
+def _blob_stream(archive: tarfile.TarFile, digest: str) -> IO[bytes]:
+    algorithm, value = digest.split(":", 1)
+    member = archive.extractfile(f"blobs/{algorithm}/{value}")
+    if member is None:
+        raise ValueError(f"blob {digest} missing from archive")
+    return member
+
+
+def _open_layer(archive: tarfile.TarFile, descriptor: dict[str, Any]) -> IO[bytes]:
+    """Layer as a decompressed stream; never holds a whole layer in memory."""
+    media = descriptor.get("mediaType", "")
+    if "zstd" in media:
+        raise ValueError("zstd-compressed layers are not supported by image-check")
+    raw = io.BufferedReader(_blob_stream(archive, descriptor["digest"]))
+    if "gzip" in media or raw.peek(2)[:2] == b"\x1f\x8b":
+        return gzip.GzipFile(fileobj=raw)
+    return raw
+
+
 def _open_blob(archive: tarfile.TarFile, digest: str) -> bytes:
     algorithm, value = digest.split(":", 1)
     member = archive.extractfile(f"blobs/{algorithm}/{value}")
@@ -159,13 +193,7 @@ def load_image(path: Path) -> tuple[dict[str, Any], ImageFS]:
         config = json.loads(_open_blob(archive, manifest["config"]["digest"]))
         fs = ImageFS()
         for layer in manifest["layers"]:
-            blob = _open_blob(archive, layer["digest"])
-            media = layer.get("mediaType", "")
-            if "zstd" in media:
-                raise ValueError("zstd-compressed layers are not supported by image-check")
-            data = gzip.decompress(blob) if blob[:2] == b"\x1f\x8b" else blob
-            with tarfile.open(fileobj=io.BytesIO(data)) as layer_tar:
-                fs.apply_layer(layer_tar)
+            fs.apply_layer_stream(_open_layer(archive, layer))
     return config, fs
 
 
@@ -306,13 +334,14 @@ def check_image(
     if verify["profile"] == "bitbucket" and sbom is not None:
         from factory.context_check import GIT_DENYLIST
 
-        rpm_git = sbom.get("git", "")
-        banned = rpm_git and ".".join(rpm_git.split(".")[:2]) in GIT_DENYLIST
+        git_versions = sorted(sbom.get("git", set()) | sbom.get("git-core", set()))
+        banned = [v for v in git_versions if ".".join(v.split(".")[:2]) in GIT_DENYLIST]
         report.add(
             "no-banned-rpm-git",
             REQUIRED,
             not banned,
-            f"git RPM {rpm_git or 'not installed'} (Atlassian denies {sorted(GIT_DENYLIST)})",
+            f"git RPM versions {git_versions or 'none'}; denied {banned or 'none'} "
+            f"(Atlassian denies {sorted(GIT_DENYLIST)})",
         )
 
     # --- advisory: Atlassian image parity --------------------------------
@@ -362,28 +391,34 @@ def check_image(
     )
     if context_result and context_result.exists():
         rendered_with = json.loads(context_result.read_text()).get("environment", {})
-        image_jinja = (sbom or {}).get("python3-jinja2", "")
-        same = (
-            bool(image_jinja)
-            and image_jinja.split(".")[:2] == rendered_with.get("jinja2", "").split(".")[:2]
-        )
+        image_jinja = sorted((sbom or {}).get("python3-jinja2", set()))
+        tested = rendered_with.get("jinja2", "").split(".")[:2]
+        # Every Jinja2 the SBOM saw must match; an older copy in a lower layer
+        # still counts, because all-layers scope cannot tell which one is live.
+        same = bool(image_jinja) and all(v.split(".")[:2] == tested for v in image_jinja)
         report.add(
             "parity:jinja2",
             ADVISORY,
             same,
-            f"templates tested with Jinja2 {rendered_with.get('jinja2')}; image has {image_jinja or 'unknown'}",
+            f"templates tested with Jinja2 {rendered_with.get('jinja2')}; "
+            f"image SBOM has {image_jinja or 'unknown'}",
         )
     return report
 
 
-def _sbom_packages(path: Path | None) -> dict[str, str] | None:
-    """name -> version for RPM components in a CycloneDX SBOM."""
+def _sbom_packages(path: Path | None) -> dict[str, set[str]] | None:
+    """name -> every version of that RPM in a CycloneDX SBOM.
+
+    The SBOM is generated with ``--scope all-layers``, so one name can appear
+    with several versions; keeping only one would let an allowed entry hide a
+    denied one.
+    """
     if not path or not path.exists():
         return None
     data = json.loads(path.read_text(encoding="utf-8"))
-    packages = {}
+    packages: dict[str, set[str]] = {}
     for component in data.get("components", []):
         if str(component.get("purl", "")).startswith("pkg:rpm/"):
             version = str(component.get("version", "")).split(":")[-1]
-            packages[component.get("name", "")] = version.split("-")[0]
+            packages.setdefault(component.get("name", ""), set()).add(version.split("-")[0])
     return packages

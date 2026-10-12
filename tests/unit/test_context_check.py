@@ -38,10 +38,24 @@ HELPER_FIXED = (
     HELPER_HEAD
     + """
 def unset_secure_vars():
-    allow = [v.strip() for v in os.environ.get('ATL_ALLOWLIST_SENSITIVE_ENV_VARS', '').split(',') if v.strip()]
-    pattern = '^(?:' + '|'.join(['AWS_WEB_IDENTITY_TOKEN_FILE'] + [re.escape(v) for v in allow]) + ')'
+    allow = {v.strip().upper() for v in os.environ.get('ATL_ALLOWLIST_SENSITIVE_ENV_VARS', '').split(',') if v.strip()}
+    allow.add('AWS_WEB_IDENTITY_TOKEN_FILE')
     for key in list(os.environ):
-        if any(kw in key.upper() for kw in ('PASS', 'SECRET', 'TOKEN')) and not re.match(pattern, key):
+        if (any(kw in key.upper() for kw in ('PASS', 'SECRET', 'TOKEN'))
+                and key.upper() not in allow
+                and not key.lower().startswith('com_atlassian_db_config_password_ciphers_algorithm_javax_crypto')):
+            del os.environ[key]
+"""
+)
+# Upstream's prefix match: an allowlisted name also protects longer names.
+HELPER_PREFIX = (
+    HELPER_HEAD
+    + """
+def unset_secure_vars():
+    allow = [v.strip() for v in os.environ.get('ATL_ALLOWLIST_SENSITIVE_ENV_VARS', '').split(',') if v.strip()]
+    pattern = '^(?:' + '|'.join(['AWS_WEB_IDENTITY_TOKEN_FILE', 'com_atlassian_db_config_password_ciphers_algorithm_javax_crypto'] + [re.escape(v) for v in allow]) + ')'
+    for key in list(os.environ):
+        if any(kw in key.upper() for kw in ('PASS', 'SECRET', 'TOKEN')) and not re.match(pattern, key, re.I):
             del os.environ[key]
 """
 )
@@ -88,6 +102,20 @@ class ContextCheckTests(unittest.TestCase):
             catalog, context = make_context(Path(directory), HELPER_FIXED)
             report = check_context(catalog, context)
         self.assertTrue(report.passed, report.to_dict())
+
+    def test_allowlist_is_exact_not_prefix(self):
+        with TemporaryDirectory() as directory:
+            catalog, context = make_context(Path(directory), HELPER_PREFIX)
+            detail = results(check_context(catalog, context))["unset-secure-vars"].detail
+        self.assertIn("MY_TOKEN_SECRET", detail)
+        self.assertIn("AWS_WEB_IDENTITY_TOKEN_FILE_SECRET", detail)
+
+    def test_helper_execution_leaves_no_bytecode_in_the_context(self):
+        with TemporaryDirectory() as directory:
+            catalog, context = make_context(Path(directory), HELPER_FIXED)
+            check_context(catalog, context)
+            self.assertEqual(list(context.rglob("__pycache__")), [])
+            self.assertEqual(list(context.rglob("*.pyc")), [])
 
     def test_irsa_check_only_applies_when_entrypoint_requests_cleanup(self):
         with TemporaryDirectory() as directory:

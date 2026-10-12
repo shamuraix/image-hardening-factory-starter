@@ -14,7 +14,7 @@ from pathlib import Path
 Item = tuple[str, str, int, int, int, "str | bytes"]
 
 
-def _layer(items: list[Item]) -> bytes:
+def _layer(items: list[Item], compress: bool = True) -> bytes:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w") as tar:
         for path, kind, mode, uid, gid, extra in items:
@@ -38,10 +38,10 @@ def _layer(items: list[Item]) -> bytes:
                 data = extra if isinstance(extra, bytes) else str(extra).encode()
                 info.size = len(data)
                 tar.addfile(info, io.BytesIO(data))
-    return gzip.compress(buffer.getvalue())
+    return gzip.compress(buffer.getvalue()) if compress else buffer.getvalue()
 
 
-def build(path: Path, config: dict, layers: list[list[Item]]) -> Path:
+def build(path: Path, config: dict, layers: list[list[Item]], compress: bool = True) -> Path:
     blobs: dict[str, bytes] = {}
 
     def add(data: bytes) -> str:
@@ -51,10 +51,11 @@ def build(path: Path, config: dict, layers: list[list[Item]]) -> Path:
 
     layer_descriptors = []
     for items in layers:
-        data = _layer(items)
+        data = _layer(items, compress)
         layer_descriptors.append(
             {
-                "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                "mediaType": "application/vnd.oci.image.layer.v1.tar"
+                + ("+gzip" if compress else ""),
                 "digest": add(data),
                 "size": len(data),
             }

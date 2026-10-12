@@ -49,6 +49,10 @@ GIT_DENYLIST = {"2.48", "2.51", "2.52", "2.53", "2.54"}
 # major.minor the image will use; see docs/configuration.md.
 BASE_JINJA2 = {"9": "2.11", "10": "3.1"}
 
+# Atlassian's DB password cipher settings: a family of variables sharing this
+# prefix (shared-components is_secured_var; upstream tests use a suffixed name).
+CIPHER_VAR = "com_atlassian_db_config_password_ciphers_algorithm_javax_crypto_foo_bar"
+
 REQUIRED = "required"
 ADVISORY = "advisory"
 
@@ -128,11 +132,13 @@ def dockerfile_env(dockerfile: str) -> dict[str, str]:
 
 def _run_python(script: str, args: list[str], stdin: str | None, env: dict[str, str]) -> str:
     result = subprocess.run(
-        [sys.executable, "-I", "-c", script, *args],
+        # -B: importing the product helper must not write __pycache__ into the
+        # sealed build context, which build reads in parallel.
+        [sys.executable, "-I", "-B", "-c", script, *args],
         input=stdin,
         capture_output=True,
         text=True,
-        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", **env},
+        env={"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8", "PYTHONDONTWRITEBYTECODE": "1", **env},
         timeout=60,
         check=False,
         cwd=tempfile.gettempdir(),
@@ -218,6 +224,20 @@ PROFILES: dict[str, list[tuple[str, str, dict[str, str], list[tuple]]]] = {
             ],
         ),
         (
+            "dbconfig-mixed-escaping-and-markup",
+            "dbconfig.xml.j2",
+            {
+                **JIRA_DB,
+                "atl_db_type": "postgres72",
+                "atl_jdbc_url": "jdbc:x://db/j?a=1&amp;b=2&c=3",
+                "atl_jdbc_password": "p<w>&amp;&\"'",
+            },
+            [
+                ("xml", "jdbc-datasource/url", None, "jdbc:x://db/j?a=1&b=2&c=3"),
+                ("xml", "jdbc-datasource/password", None, "p<w>&&\"'"),
+            ],
+        ),
+        (
             "dbconfig-ampersands-pre-escaped",
             "dbconfig.xml.j2",
             {**JIRA_DB, "atl_db_type": "postgres72", "atl_jdbc_url": "jdbc:x://db/j?a=1&amp;b=2"},
@@ -287,6 +307,25 @@ PROFILES: dict[str, list[tuple[str, str, dict[str, str], list[tuple]]]] = {
                 ),
                 ("xml", ".//property[@name='hibernate.connection.password']", None, "p&ss"),
                 ("xml", ".//property[@name='confluence.database.choice']", None, "postgresql"),
+            ],
+        ),
+        (
+            "confluence-cfg-mixed-escaping-and-markup",
+            "confluence.cfg.xml.j2",
+            {
+                "atl_db_type": "postgresql",
+                "atl_jdbc_url": "jdbc:x://db/c?a=1&amp;b=2&c=3",
+                "atl_jdbc_user": "confluence",
+                "atl_jdbc_password": "p<w>&amp;&",
+            },
+            [
+                (
+                    "xml",
+                    ".//property[@name='hibernate.connection.url']",
+                    None,
+                    "jdbc:x://db/c?a=1&b=2&c=3",
+                ),
+                ("xml", ".//property[@name='hibernate.connection.password']", None, "p<w>&&"),
             ],
         ),
         ("confluence-cfg-defaults", "confluence.cfg.xml.j2", {}, []),
@@ -396,6 +435,11 @@ def check_context(catalog_path: Path, context: Path) -> Report:
                             "ATL_JDBC_PASSWORD": "secret",
                             "MY_TOKEN": "keep-me",
                             "ATL_ALLOWLIST_SENSITIVE_ENV_VARS": "MY_TOKEN",
+                            # Allowlist entries are exact names, not prefixes.
+                            "MY_TOKEN_SECRET": "remove-me",
+                            "AWS_WEB_IDENTITY_TOKEN_FILE_SECRET": "remove-me",
+                            # Atlassian's cipher settings are a prefix family.
+                            CIPHER_VAR: "/path/to/file",
                         },
                     )
                 )
@@ -407,6 +451,11 @@ def check_context(catalog_path: Path, context: Path) -> Report:
                 problems.append("ignores ATL_ALLOWLIST_SENSITIVE_ENV_VARS")
             if "ATL_JDBC_PASSWORD" in remaining:
                 problems.append("keeps ATL_JDBC_PASSWORD")
+            for suffixed in ("MY_TOKEN_SECRET", "AWS_WEB_IDENTITY_TOKEN_FILE_SECRET"):
+                if suffixed in remaining:
+                    problems.append(f"keeps {suffixed} (allowlist matched as a prefix)")
+            if CIPHER_VAR not in remaining:
+                problems.append("removes the Atlassian password-cipher settings")
             report.add("unset-secure-vars", REQUIRED, not problems, "; ".join(problems) or "ok")
         except RuntimeError as error:
             report.add("unset-secure-vars", REQUIRED, False, str(error))
