@@ -38,10 +38,6 @@ class GateInputErrorTests(unittest.TestCase):
                 (evidence / "sbom.cdx.json").write_text(
                     json.dumps({"bomFormat": "CycloneDX", "specVersion": "1.6", "components": []})
                 )
-                (evidence / "compliance/result.json").parent.mkdir(parents=True, exist_ok=True)
-                (evidence / "compliance/result.json").write_text(json.dumps({"passed": True}))
-                (evidence / "tests/result.json").parent.mkdir(parents=True, exist_ok=True)
-                (evidence / "tests/result.json").write_text(json.dumps({"passed": True}))
                 (work / "image-metadata.json").write_text(
                     json.dumps({"digest": "sha256:" + "a" * 64})
                 )

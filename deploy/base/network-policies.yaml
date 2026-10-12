@@ -86,7 +86,7 @@ spec:
 ---
 # Connected intake, security-data refresh, and upstream reconnaissance: approved
 # upstreams only (repo1.dso.mil, vendor download hosts listed in hardening
-# manifests, scanner database and ClamAV mirrors, the CISA KEV feed).
+# manifests, scanner database mirrors, the CISA KEV feed).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

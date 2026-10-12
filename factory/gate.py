@@ -11,15 +11,11 @@ def gate_input(
     image_digest: str,
     sbom_path: str | Path,
     findings_path: str | Path,
-    compliance_path: str | Path,
-    tests_path: str | Path,
     database_status_path: str | Path,
     assessment_status_path: str | Path,
 ) -> dict[str, Any]:
     sbom = json.loads(Path(sbom_path).read_text(encoding="utf-8"))
     findings = json.loads(Path(findings_path).read_text(encoding="utf-8"))
-    compliance = json.loads(Path(compliance_path).read_text(encoding="utf-8"))
-    tests = json.loads(Path(tests_path).read_text(encoding="utf-8"))
     database = json.loads(Path(database_status_path).read_text(encoding="utf-8"))
     assessment = json.loads(Path(assessment_status_path).read_text(encoding="utf-8"))
     findings_list = findings if isinstance(findings, list) else findings.get("findings", [])
@@ -39,8 +35,6 @@ def gate_input(
         ),
         "findings": findings_list,
         "warnings": warnings,
-        "compliancePassed": compliance.get("passed") is True,
-        "testsPassed": tests.get("passed") is True,
         "database": database,
         "scannerBackend": assessment.get("backend", "delegated-scanners"),
         "assessment": assessment,

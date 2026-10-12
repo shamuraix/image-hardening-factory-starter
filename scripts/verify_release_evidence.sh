@@ -8,7 +8,7 @@ cosign verify --key "${COSIGN_PUBLIC_KEY}" --insecure-ignore-tlog "${subject}" >
 # each in-toto subject against the requested image digest.
 for type in https://slsa.dev/provenance/v1 https://cyclonedx.org/bom \
   https://spdx.dev/Document \
-  "${prefix}:compliance:v1" "${prefix}:test:v1" "${prefix}:resource-lock:v1"; do
+  "${prefix}:resource-lock:v1"; do
   cosign verify-attestation --key "${COSIGN_PUBLIC_KEY}" --insecure-ignore-tlog \
     --type "${type}" "${subject}" >/dev/null
 done

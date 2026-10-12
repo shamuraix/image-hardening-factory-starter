@@ -8,8 +8,7 @@
 #
 # Still required by hand: the runner image digests below (after pushing them),
 # FACTORY_PAC_CONTROLLER_URL (the address GitLab can reach the controller at),
-# the node label/taint for the compliance stage, and the Secrets from
-# deploy/secrets.example.yaml.
+# and the Secrets from deploy/secrets.example.yaml.
 # Apply with
 #   kubectl apply -k deploy/overlays/dev
 apiVersion: kustomize.config.k8s.io/v1beta1

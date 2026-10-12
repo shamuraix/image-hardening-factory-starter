@@ -46,8 +46,6 @@ def build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--image-digest", required=True)
     gate.add_argument("--sbom", required=True)
     gate.add_argument("--findings", required=True)
-    gate.add_argument("--compliance", required=True)
-    gate.add_argument("--tests", required=True)
     gate.add_argument("--database-status", required=True)
     gate.add_argument("--assessment-status", required=True)
     gate.add_argument("--output", required=True)
@@ -133,8 +131,6 @@ def main() -> int:
             args.image_digest,
             args.sbom,
             args.findings,
-            args.compliance,
-            args.tests,
             args.database_status,
             args.assessment_status,
         )

@@ -1,6 +1,6 @@
 ---
 name: release-readiness
-description: Summarizes a quarantined candidate's evidence for the humans approving its release request — gate warnings, exceptions in scope, compliance and test results, and changes since the previous release. Use when a release request is opened.
+description: Summarizes a quarantined candidate's evidence for the humans approving its release request — gate warnings, exceptions in scope, and changes since the previous release. Use when a release request is opened.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 maxTurns: 20
@@ -29,7 +29,9 @@ request. You are advisory: the merge is the approval of record.
    outside the application archive). These pass the gate but deserve attention.
 3. Exceptions: count entries in `exceptions.json` and call out any that match a
    component still present in `sbom-components.json`.
-4. Compliance and tests: state pass/fail and anything notable.
+4. Scope: the pipeline does not run compliance scans, malware scans, or runtime
+   tests (`docs/scope.md`). Say so in one line so approvers confirm the
+   consuming environment covers them; it is not a concern by itself.
 5. Compare with `previous-release-request.yaml` when present: product version,
    source revision, and whether this is a downgrade (a `blocking` concern).
 6. Recommend `ready`, `ready-with-warnings`, or `not-ready`, with reasons.

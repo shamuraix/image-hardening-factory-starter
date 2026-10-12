@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Malware-scan, upload, and sign one image's mirrored resources, then publish its
-# signed resource lock. Runs in the intake task after factory.cli intake.
+# Upload and sign one image's mirrored resources, then publish its signed
+# resource lock. Runs in the intake task after factory.cli intake. Every file is
+# already checksum-verified against the hardening manifest; malware scanning of
+# upstream resources is outside this pipeline's scope (docs/scope.md).
 set -euo pipefail
-clamav_db=${CLAMAV_DATABASE_DIR:?CLAMAV_DATABASE_DIR is required}
 
 image=${1:?image name is required}
 catalog="${FACTORY_CATALOG_DIR:-catalog/images}/${image}.yaml"
@@ -15,8 +16,6 @@ source_repository=${FACTORY_SOURCE_REPOSITORY:?FACTORY_SOURCE_REPOSITORY is requ
 
 while IFS=$'\t' read -r filename path digest; do
   [[ -n "${filename}" ]] || continue
-  clamscan --database="${clamav_db}" --infected "${work}/cache/${filename}" \
-    >"${work}/cache/${filename}.clamav.txt"
   curl --fail --silent --show-error --request PUT \
     --header "Authorization: Bearer ${ARTIFACTORY_WRITE_TOKEN}" \
     --header "X-Checksum-Sha256: ${digest#sha256:}" \

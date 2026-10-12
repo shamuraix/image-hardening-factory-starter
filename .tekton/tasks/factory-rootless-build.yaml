@@ -1,8 +1,14 @@
-# Rootless BuildKit build. The run step needs user namespaces (newuidmap and
-# newgidmap are setuid), so only that step relaxes allowPrivilegeEscalation and
-# the seccomp/AppArmor profiles. The verify and seal steps stay fully
-# restricted.
-# No privileged mode, host paths, host networking, or engine sockets.
+# Rootless BuildKit build. The run step creates its own user namespace through
+# newuidmap/newgidmap (file capabilities), so only that step relaxes
+# allowPrivilegeEscalation and the seccomp/AppArmor profiles. The verify and
+# seal steps stay fully restricted.
+# No privileged mode, host paths, host networking, engine sockets, pod user
+# namespace or unmasked /proc: BuildKit runs with --oci-worker-no-process-sandbox,
+# which works on Kubernetes 1.28 with containerd 1.7.
+# AppArmor is set to unconfined by the
+# container.apparmor.security.beta.kubernetes.io/step-run annotation that the
+# rendered PipelineRuns put on the build TaskRun (factory/tekton.py); the
+# securityContext.appArmorProfile field does not exist before Kubernetes 1.30.
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
@@ -97,22 +103,19 @@ spec:
         runAsUser: 10001
         runAsGroup: 10001
         privileged: false
-        # Rootless BuildKit/Podman map the factory user's subordinate IDs through
-        # the setuid newuidmap/newgidmap helpers. A setuid program receives only
-        # the capabilities in the caller's bounding set, so that set must keep
-        # CAP_SETUID and CAP_SETGID; the step process itself (uid 10001) still
-        # has no effective capabilities, and the libcap-aware helpers built in
-        # Containerfile.factory-runner keep exactly the one they need.
+        # Rootless BuildKit maps the factory user's subordinate IDs through
+        # newuidmap/newgidmap, which carry the file capabilities cap_setuid and
+        # cap_setgid. A file capability is granted only if it is in the caller's
+        # bounding set and no_new_privs is unset, so the bounding set keeps
+        # CAP_SETUID and CAP_SETGID and privilege escalation stays allowed; the
+        # step process itself (uid 10001) still has no effective capabilities.
         allowPrivilegeEscalation: true
         capabilities:
           drop: [ALL]
           add: [SETUID, SETGID]
-        # Nested containers mount their own /proc; needs the pod user namespace
-        # (hostUsers: false, set by the rendered taskRunSpecs podTemplate).
-        procMount: Unmasked
+        # The runtime default profile blocks the unshare/mount calls RootlessKit
+        # needs. A Localhost profile that allows them can replace Unconfined.
         seccompProfile:
-          type: Unconfined
-        appArmorProfile:
           type: Unconfined
       script: |
         #!/usr/bin/env bash

@@ -44,8 +44,6 @@ fi
 
 export HOME=/home/factory
 export XDG_RUNTIME_DIR=/tmp/factory-runtime
-export CONTAINERS_STORAGE_CONF=/home/factory/.config/containers/storage.conf
-export STORAGE_DRIVER=vfs
 
 mkdir -p "${FACTORY_WORK_DIR}/logs" "${XDG_RUNTIME_DIR}"
 chmod 0700 "${XDG_RUNTIME_DIR}"

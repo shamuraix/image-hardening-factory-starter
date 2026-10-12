@@ -176,43 +176,6 @@ spec:
         - *change
       workspaces: [*ws]
 
-    - name: compliance
-      taskRef: {name: factory-stage}
-      params:
-        - {name: pipelinerun, value: $(context.pipelineRun.name)}
-        - {name: stage, value: compliance}
-        - name: command
-          value: scripts/compliance_scan.sh "${FACTORY_CATALOG_FILE}" "${FACTORY_WORK_DIR}"
-        - name: outputs
-          value: ["work/$(params.image)/evidence/compliance/**"]
-        - name: inputs
-          value:
-            - "prepare=$(tasks.prepare.results.seal)"
-            - "security-data=$(tasks.prepare.results.security-data-seal)"
-            - "build=$(tasks.build.results.seal)"
-            - "sbom=$(tasks.sbom.results.seal)"
-        - *image
-        - *runner
-        - *commit
-        - *source
-        - *branch
-        - *change
-      workspaces: [*ws]
-
-    - name: test
-      taskRef: {name: factory-rootless-test}
-      params:
-        - {name: pipelinerun, value: $(context.pipelineRun.name)}
-        - name: inputs
-          value: ["build=$(tasks.build.results.seal)"]
-        - *image
-        - *runner
-        - *commit
-        - *source
-        - *branch
-        - *change
-      workspaces: [*ws]
-
     - name: gate
       taskRef: {name: factory-stage}
       params:
@@ -231,8 +194,6 @@ spec:
             - "sbom=$(tasks.sbom.results.seal)"
             - "scan=$(tasks.scan.results.seal)"
             - "assessment=$(tasks.assessment.results.seal)"
-            - "compliance=$(tasks.compliance.results.seal)"
-            - "test=$(tasks.test.results.seal)"
         - *image
         - *runner
         - *commit
@@ -254,8 +215,6 @@ spec:
             - "sbom=$(tasks.sbom.results.seal)"
             - "scan=$(tasks.scan.results.seal)"
             - "assessment=$(tasks.assessment.results.seal)"
-            - "compliance=$(tasks.compliance.results.seal)"
-            - "test=$(tasks.test.results.seal)"
             - "gate=$(tasks.gate.results.seal)"
         - *image
         - *runner
@@ -307,8 +266,6 @@ spec:
             - "sbom=$(tasks.sbom.status)"
             - "scan=$(tasks.scan.status)"
             - "assessment=$(tasks.assessment.status)"
-            - "compliance=$(tasks.compliance.status)"
-            - "test=$(tasks.test.status)"
             - "gate=$(tasks.gate.status)"
             - "quarantine=$(tasks.quarantine.status)"
         - {name: agent-image, value: $(params.agent-image)}

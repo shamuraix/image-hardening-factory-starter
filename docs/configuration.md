@@ -1,6 +1,6 @@
 # Configuration reference
 
-[Project overview](../README.md) · [Operations](operations.md) · [Agents](agents.md) · [Architecture](architecture.md)
+[Project overview](../README.md) · [Scope](scope.md) · [Operations](operations.md) · [Agents](agents.md) · [Architecture](architecture.md)
 
 Terms: **PaC** is [Pipelines-as-Code](https://pipelinesascode.com/docs/), which
 starts Tekton pipelines from Git events. A **Repository CR** is the Kubernetes
@@ -9,22 +9,21 @@ object that connects a Git repository to PaC.
 ## Quick setup checklist
 
 1. **Cluster prerequisites** (versions in `tools/versions.lock.yaml`)
-   - Kubernetes 1.33 or later. The build and test stages run in a pod
-     [user namespace](https://kubernetes.io/docs/concepts/workloads/pods/user-namespaces/)
-     (`hostUsers: false`) with an unmasked `/proc` on the run step
-     (`procMount: Unmasked`); the `UserNamespacesSupport` and `ProcMountType`
-     feature gates are on by default from 1.33
-     ([feature gates](https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/)).
-     On 1.30–1.32 enable both gates by hand. The ValidatingAdmissionPolicy in
-     `deploy/base/admission-policy.yaml` needs 1.30 or later. Build nodes need a
-     runtime that supports user namespaces (containerd 2.0+ or CRI-O 1.25+) and
-     kubelet `userNamespaces.idsPerPod` of at least 262144, so the runner's
-     `100000:65536` subordinate range fits.
+   - Kubernetes 1.28 or later with containerd 1.7 or later. No pod user
+     namespaces, `procMount`, or `appArmorProfile` field are used
+     ([BuildKit](#buildkit), [scope.md](scope.md)).
+   - ValidatingAdmissionPolicy enabled for `deploy/base/admission-policy.yaml`.
+     On 1.28 it is beta and off by default: start kube-apiserver with
+     `--feature-gates=ValidatingAdmissionPolicy=true` and
+     `--runtime-config=admissionregistration.k8s.io/v1beta1=true`. The manifest
+     uses `v1beta1`; on 1.30 or later change both objects to
+     `admissionregistration.k8s.io/v1`. Applying it to a cluster that does not
+     serve the API fails, so the deploy stops rather than running without it.
+   - Build nodes that allow unprivileged user namespaces, ideally a dedicated
+     tainted pool for build pods.
    - [Tekton Pipelines](https://tekton.dev/docs/pipelines/) v1.15,
      Pipelines-as-Code v0.51, [Tekton Chains](https://github.com/tektoncd/chains/blob/v0.28.0/docs/config.md) v0.28
    - A default StorageClass for the per-run `volumeClaimTemplate` workspaces
-   - Nodes for the compliance stage labelled `factory.dev/fips-node=true` and
-     tainted `factory.dev/fips-node=true:NoSchedule`
 2. **Build, sign, and publish the three runner images** and record their
    digests in the Repository CR params (see [Runner images](#runner-images)):
    - `runner_image` — `toolchain/Containerfile.factory-runner`
@@ -86,7 +85,6 @@ Every factory step receives these as environment variables (`envFrom`).
 | `FACTORY_GOV_APPROVER_PATTERN` | regular expression the merging approver must match for gov1/gov2 |
 | `FACTORY_POINTER_ENVIRONMENT` | environment whose base releases update the release pointer (`commercial`) |
 | `CISA_KEV_URL` | CISA KEV (Known Exploited Vulnerabilities) JSON feed, linked from the [KEV catalog page](https://www.cisa.gov/known-exploited-vulnerabilities-catalog); used when building the security-data bundle |
-| `COMPLIANCE_AS_CODE_DATASTREAM_DIR` | directory in the intake runner image that holds the [ComplianceAsCode](https://github.com/ComplianceAsCode/content) SCAP datastreams `ssg-rhel9-ds.xml` and `ssg-rhel10-ds.xml` |
 | `FACTORY_UPSTREAM_BRANCH` | Repo One branch followed by intake and upstream-sync |
 | `FACTORY_PAC_CONTROLLER_URL` / `FACTORY_PAC_REPOSITORY` | PaC incoming endpoint and Repository CR name |
 | `FACTORY_GITLAB_API_URL` | GitLab API for agent comments and merge requests; defaults to `https://<git host>/api/v4` (`FACTORY_GITHUB_API_URL` applies only when `git_provider` is `github`) |
@@ -229,9 +227,8 @@ directory that `make toolchain` assembles on a connected host:
 
 1. `toolchain/download-tools.py` fetches every pinned binary from GitHub
    releases (cosign, oras, BuildKit, RootlessKit, yq, OPA, Syft, Grype, Trivy,
-   OSV-Scanner, umoci), the ClamAV package, the shadow source archive (see
-   [User-namespace helpers](#user-namespace-helpers)), and the ComplianceAsCode
-   SCAP datastreams, checking each against the SHA-256 digest GitHub records
+   OSV-Scanner) and the shadow source archive (see
+   [User-namespace helpers](#user-namespace-helpers)), checking each against the SHA-256 digest GitHub records
    for the asset, and refusing any asset without one. With `--with-claude` it also
    fetches the Claude Code binary and checks it against the release manifest.
    Versions come only from `tools/versions.lock.yaml`.
@@ -242,12 +239,21 @@ Then:
 
 | Image | Containerfile | Base | Adds |
 |---|---|---|---|
-| `runner_image` | `Containerfile.factory-runner` | `BASE_REF`: the internal hardened UBI 9 minimal (the harness uses `registry.access.redhat.com/ubi9/ubi-minimal`) | UBI packages (Python 3.12, rootless Podman, Skopeo, OpenSCAP, git, jq, curl), the pinned tools, ClamAV, the factory package, the `factory` user with subordinate IDs, `newuidmap`/`newgidmap` compiled with libcap in a throwaway build stage (needs `gcc`, `make`, `libcap-devel`, `glibc-devel`, `libxcrypt-devel`, `xz` from the UBI AppStream/BaseOS mirror) |
-| `intake_runner_image` | `Containerfile.factory-intake-runner` | the runner image | SCAP datastreams at `COMPLIANCE_AS_CODE_DATASTREAM_DIR`, `freshclam.conf` |
+| `runner_image` | `Containerfile.factory-runner` | `BASE_REF`: the internal hardened UBI 9 minimal (or `registry.access.redhat.com/ubi9/ubi-minimal` for a connected development build) | UBI packages (Python 3.12, Skopeo, git, jq, curl, libcap), the pinned tools, the factory package, the `factory` user with subordinate IDs, `newuidmap`/`newgidmap` compiled with libcap in a throwaway build stage (needs `gcc`, `make`, `libcap-devel`, `glibc-devel`, `libxcrypt-devel`, `xz` from the UBI AppStream/BaseOS mirror) and installed with file capabilities. No container engine. |
+| `intake_runner_image` | `Containerfile.factory-intake-runner` | the runner image | nothing beyond a tool check; a separate digest for the connected trust class |
 | `agent_image` | `Containerfile.factory-agent` | the runner image | the pinned Claude Code binary |
 
-Because every tool is in the runner, no stage downloads anything at run time,
-and the harness builds the identical runner image for local use.
+Because every tool is in the runner, no stage downloads anything at run time.
+
+Behind a TLS-inspecting proxy (Zscaler and similar), export the proxy root as
+PEM and set `FACTORY_CA_BUNDLE` before `make toolchain`, for example on macOS:
+
+```bash
+security find-certificate -a -c "Zscaler Root CA" -p /Library/Keychains/System.keychain >~/zscaler-root.pem
+openssl x509 -in ~/zscaler-root.pem -noout -subject      # sanity check
+export FACTORY_CA_BUNDLE=~/zscaler-root.pem
+make toolchain
+```
 
 `FACTORY_CA_BUNDLE` (optional, for `make toolchain` and as a setting): a PEM
 bundle of extra CA certificates. The runner image trusts it, and
@@ -264,58 +270,75 @@ declared resources arrive through the hardening manifest instead. Needed when
 builds reach the network through a TLS-inspecting proxy or a mirror with an
 internal CA; unnecessary when the internal hardened base already trusts them.
 
-## BuildKit and Podman
+## BuildKit
 
-The build and test run steps start a short-lived rootless `buildkitd` or
-rootless Podman inside the step container. There is no shared daemon, host
-socket, or privileged sidecar. These two steps need
-`allowPrivilegeEscalation: true`, Unconfined seccomp/AppArmor, and
-`capabilities: {drop: [ALL], add: [SETUID, SETGID]}` because
-`newuidmap`/`newgidmap` are setuid programs (next section). Every other step
-uses `RuntimeDefault` seccomp with all capabilities dropped. For that reason the
-namespace's [Pod Security](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
+The build run step starts a short-lived rootless `buildkitd` inside the step
+container (`scripts/run_buildkit.sh`) with `--oci-worker-no-process-sandbox`.
+There is no shared daemon, host socket, privileged sidecar, or other container
+engine; nothing in the pipeline runs the candidate image ([scope.md](scope.md)).
+
+The run step needs, and is the only container that has:
+
+- `allowPrivilegeEscalation: true` and
+  `capabilities: {drop: [ALL], add: [SETUID, SETGID]}`, for the mapping helpers
+  (next section);
+- `seccompProfile: Unconfined`, because the runtime default profile blocks the
+  `unshare` and `mount` calls RootlessKit makes. A `Localhost` profile that
+  allows them can replace it;
+- AppArmor `unconfined`, set by the annotation
+  `container.apparmor.security.beta.kubernetes.io/step-run` that
+  `factory/tekton.py` renders onto the build TaskRun
+  (`taskRunSpecs[].metadata.annotations`; Tekton copies TaskRun annotations to
+  the pod). The `securityContext.appArmorProfile` field only exists from
+  Kubernetes 1.30; on 1.30 or later the annotation still works and the field
+  can replace it.
+
+It does not use pod user namespaces (`hostUsers: false`) or
+`procMount: Unmasked`: both are unavailable on Kubernetes 1.28 with
+containerd 1.7, and the no-process-sandbox mode does not need them. Every other
+step uses `RuntimeDefault` seccomp with all capabilities dropped. For that
+reason the namespace's
+[Pod Security](https://kubernetes.io/docs/concepts/security/pod-security-admission/)
 level is `privileged`, with `restricted` warnings and audit.
+
+Nodes must allow unprivileged user namespaces
+(`/proc/sys/user/max_user_namespaces` above zero; on Ubuntu 23.10 and later,
+`kernel.apparmor_restrict_unprivileged_userns=0` or an AppArmor profile that
+permits them). `scripts/runtime_preflight.sh` records these facts in
+`evidence/runtime/runtime.txt` before every build.
 
 ### User-namespace helpers
 
-Rootless BuildKit and Podman map the `factory` user's subordinate range
-(`100000:65536`) into a child user namespace by running `newuidmap` and
-`newgidmap`, which write `/proc/<pid>/uid_map` and `gid_map`. Three kernel
-rules decide whether that works inside a pod:
+RootlessKit maps the `factory` user's subordinate range (`100000:65536`) into a
+child user namespace by running `newuidmap` and `newgidmap`, which write
+`/proc/<pid>/uid_map` and `gid_map`.
 
-- Inside a pod user namespace (`hostUsers: false`) the kernel ignores file
-  capabilities written outside that namespace, so the helpers must be setuid
-  root; the runner image sets that bit.
-- A setuid program receives only the capabilities in the caller's *bounding
-  set* ([capabilities(7)](https://man7.org/linux/man-pages/man7/capabilities.7.html),
-  "Capabilities and execution of programs by root"). With `drop: [ALL]` alone
-  the helper is root with no capabilities and fails with
-  `open of uid_map failed: Permission denied`. The run steps therefore keep
-  `CAP_SETUID` and `CAP_SETGID` in the bounding set. The step process itself
-  runs as uid 10001 with no effective capabilities; they only materialise
-  inside the two helpers.
-- Writing a map needs `CAP_SETUID`/`CAP_SETGID` in the parent namespace, and
-  the opener must be the namespace owner or hold `CAP_SYS_ADMIN` over it
-  (`kernel/user_namespace.c`, `map_write`). The UBI `shadow-utils` helpers are
-  built without libcap, stay uid 0, and so would need `CAP_SYS_ADMIN` and
-  `CAP_DAC_OVERRIDE` as well. The runner instead compiles the helpers from the
-  pinned [shadow](https://github.com/shadow-maint/shadow) release with
-  `libcap-devel` present: that build drops back to the caller's uid before
-  opening the map and keeps only the one capability it needs
-  (`lib/idmapping.c`, `write_mapping`). The image build fails if the installed
-  helpers are not that build, and `scripts/runtime_preflight.sh` checks both
-  the bounding set and the helpers before every build.
+- The helpers carry file capabilities, as RHEL ships them: `newuidmap` has
+  `cap_setuid=ep` and `newgidmap` has `cap_setgid=ep`. Neither is setuid, so
+  nothing in the image runs with euid 0.
+- A file capability is granted only if it is in the caller's *bounding set* and
+  `no_new_privs` is unset
+  ([capabilities(7)](https://man7.org/linux/man-pages/man7/capabilities.7.html)).
+  The run step therefore keeps `CAP_SETUID` and `CAP_SETGID` in the bounding
+  set and allows privilege escalation. The step process itself runs as uid
+  10001 with no effective capabilities; they only materialise inside the two
+  helpers.
+- The runner compiles the helpers from the pinned
+  [shadow](https://github.com/shadow-maint/shadow) release with `libcap-devel`
+  present: that build raises only the one capability it needs while writing
+  the map and drops the rest (`lib/idmapping.c`, `write_mapping`).
+- The runner image must be built by a builder that preserves
+  `security.capability` extended attributes in layers (BuildKit does).
+  `scripts/runtime_preflight.sh` checks the bounding set, `no_new_privs`, and
+  the helpers' file capabilities before every build and names whichever is
+  missing.
+
+Because pods share the host user namespace, the build pod's UID and its
+subordinate range are real host UIDs on the node. Run build pods on a
+dedicated, tainted node pool ([scope.md](scope.md#security-trade-off-accepted-with-this-scope)).
 
 `FACTORY_BUILD_NETWORK` accepts `default` (production), `none`, or `host`
 (explicit only).
-
-Containers the product tests start get no network namespace of their own: a
-step container has no `/dev/net/tun`, so rootless Podman's `pasta` and
-`slirp4netns` cannot create one. `toolchain/containers.conf` sets
-`netns = "none"` as the default, one-shot checks pass `--network none`, and the
-Atlassian integration run passes `--network host`, which inside a pod is the
-pod's own namespace (never the node's) and lets the runner poll the product on
-loopback at its fixed port. A unit test keeps every `podman run` explicit.
 
 ## Tekton Chains
 
@@ -342,8 +365,7 @@ gate release.
 ## Vulnerability exceptions
 
 `policies/exceptions/approved.json` affects vulnerability-threshold denials
-only. It never affects evidence identity, data freshness, compliance, tests, or
-signatures. Humans add exceptions; the `exception-steward` agent may only
+only. It never affects evidence identity, data freshness, or signatures. Humans add exceptions; the `exception-steward` agent may only
 propose removals.
 
 ## Cosign storage and promotion

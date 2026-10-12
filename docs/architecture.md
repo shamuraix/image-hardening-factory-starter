@@ -1,6 +1,6 @@
 # Architecture
 
-[Project overview](../README.md) · [Agents](agents.md) · [Configuration](configuration.md) · [Operations](operations.md) · [Evidence model](evidence-model.md)
+[Project overview](../README.md) · [Scope](scope.md) · [Agents](agents.md) · [Configuration](configuration.md) · [Operations](operations.md) · [Evidence model](evidence-model.md)
 
 ## What this system does
 
@@ -22,7 +22,7 @@ Terms used below:
 - **Candidate** — one built image, identified by its OCI (Open Container
   Initiative) image digest (`sha256:...`).
 - **Evidence** — files that describe a candidate: SBOMs (software bills of
-  materials), scanner reports, compliance and test results, and the gate result.
+  materials), scanner reports, and the gate result.
 - **Gate** — the OPA policy check that allows or denies release of a candidate.
 
 ## Triggers
@@ -37,7 +37,7 @@ the event name `pull_request` for every provider.)
 
 | PipelineRun | Started by | Pipeline | Publishes |
 |---|---|---|---|
-| `<image>-on-pull-request` | PR touching that image's catalog entry, overlays, test profile, or shared build code | `factory-image-build` | no |
+| `<image>-on-pull-request` | PR touching that image's catalog entry, overlays, or shared build code | `factory-image-build` | no |
 | `<image>-on-push` | the same paths merged to `main` | `factory-image-build` | quarantine + release request |
 | `<image>-on-schedule` | nightly CronJob | `factory-image-build` | no (re-gate only; a deny hands off to the remediation agent) |
 | `<image>-on-base-release` | release pipeline, after the image's base was promoted (application images only) | `factory-image-build` | quarantine + release request |
@@ -64,11 +64,7 @@ for the times.
 flowchart TD
     checkout --> validate --> prepare --> build
     build --> sbom --> scan --> assessment
-    build --> test
-    sbom --> compliance
     assessment --> gate
-    compliance --> gate
-    test --> gate
     gate -->|publish=true| quarantine --> release-request
     gate -. deny, default branch .-> remediation[remediation agent<br/>finally]
     any[any failure] -.-> triage[triage agent<br/>finally]
@@ -80,10 +76,8 @@ flowchart TD
 | prepare | applies overlay patches to the Iron Bank source, checks the signed resource lock, and downloads and verifies the [security-data bundle](#offline-security-data) |
 | build | rootless BuildKit build of the OCI archive |
 | sbom | Syft CycloneDX and SPDX SBOMs, plus `sbom.identity.json` (the digest they describe and their hashes) |
-| scan | Grype, Trivy, OSV-Scanner, and ClamAV; writes normalized findings and the assessment status (see [evidence-model.md](evidence-model.md#how-the-scan-stage-works)) |
+| scan | Grype, Trivy, and OSV-Scanner; writes normalized findings and the assessment status (see [evidence-model.md](evidence-model.md#how-the-scan-stage-works)) |
 | assessment | fails unless the scan stage wrote an assessment status file |
-| compliance | OpenSCAP STIG scan on FIPS-labelled nodes |
-| test | product tests and RPM integrity checks in rootless Podman |
 | gate | builds the gate input and evaluates the OPA release policy |
 | quarantine | imports the candidate into the quarantine repository and attaches its evidence (`publish=true` only) |
 | release-request | opens the release request change with the `release-readiness` agent's briefing |
@@ -91,7 +85,9 @@ flowchart TD
 The scan stage may fail without failing its Tekton task (`allow-failure: "true"`).
 This keeps its evidence for the agents. The assessment stage then fails when no
 assessment was written, so a broken scan still stops the run. The gate fails the
-PipelineRun on deny. The build pipeline never signs or promotes.
+PipelineRun on deny. The build pipeline never signs or promotes, never runs the candidate image, and
+does not perform compliance scanning, malware scanning, or runtime product
+tests; those belong to the consuming environment ([scope.md](scope.md)).
 
 Two agents run in the pipeline's `finally` section, which
 [Tekton runs after all other tasks, whether they passed or failed](https://github.com/tektoncd/pipeline/blob/v1.15.0/docs/pipelines.md#adding-finally-to-the-pipeline):
@@ -100,10 +96,9 @@ failed on a default-branch or scheduled run.
 
 ## Offline security data
 
-Scan and compliance stages have no internet access. They read a signed bundle
-of scanner databases, the CISA (Cybersecurity and Infrastructure Security
-Agency) KEV (Known Exploited Vulnerabilities) catalog, ClamAV signatures, and
-SCAP (Security Content Automation Protocol) content.
+The scan stage has no internet access. It reads a signed bundle of scanner
+databases and the CISA (Cybersecurity and Infrastructure Security Agency) KEV
+(Known Exploited Vulnerabilities) catalog.
 
 ```mermaid
 flowchart LR
@@ -112,7 +107,6 @@ flowchart LR
     task --> art[(Artifactory<br/>security-data/current.json)]
     art --> prepare[prepare stage<br/>fetch + verify + seal]
     prepare --> scan[scan]
-    prepare --> compliance[compliance]
 ```
 
 1. The `factory-security-data` Task runs in the intake permission group. Its
@@ -126,7 +120,7 @@ flowchart LR
    `work/<image>/security-data/`, and checks every file against the bundle's
    own manifest.
 3. Prepare seals the unpacked bundle separately, under the name `security-data`.
-   Scan and compliance verify that seal before they read any data.
+   Scan verifies that seal before it reads any data.
 
 The bundle contents and freshness rules are in
 [security-data/README.md](../security-data/README.md).
@@ -165,9 +159,9 @@ is mounted only into the one step that uses it.
 
 | Class | Pipeline tasks | Secrets | Egress |
 |---|---|---|---|
-| offline | checkout, validate, sbom, scan, assessment, compliance, gate, dependents | none, except the PaC incoming secret in the dependents step | git host (checkout); PaC controller (dependents) |
+| offline | checkout, validate, sbom, scan, assessment, gate, dependents | none, except the PaC incoming secret in the dependents step | git host (checkout); PaC controller (dependents) |
 | internal-read | prepare, resolve, evidence-context | Artifactory read, intake public key | Artifactory, mirrors |
-| buildkit / test | build / test | Artifactory read (build) | Artifactory |
+| buildkit | build | Artifactory read | Artifactory |
 | import | quarantine | quarantine write | Artifactory |
 | signing | attest | environment cosign key, referrer write | Artifactory |
 | promotion | promote | release write, pointer write | Artifactory |
@@ -198,13 +192,13 @@ rewrite an earlier task's evidence. Sealing makes that detectable:
 
 Stages seal their outputs even when they fail, so the agents can read them.
 The prepare stage writes two seals: `prepare` (build context and lock) and
-`security-data` (the verified bundle, checked only by scan and compliance).
+`security-data` (the verified bundle, checked only by scan).
 
 ## Signatures and provenance
 
 - **Factory attestations** (`factory-attest`, `scripts/sign_and_attest.sh`): a
   cosign signature plus signed statements (attestations) for the resource lock,
-  both SBOMs, build provenance, findings, compliance, tests, the gate result, the
+  both SBOMs, build provenance, findings, the gate result, the
   scanner decision, the raw Grype, Trivy, and OSV reports, and the approval. They
   use the per-environment key.
 - **Tekton Chains**: `factory-quarantine` and `factory-promote` emit
@@ -221,21 +215,22 @@ The prepare stage writes two seals: `prepare` (build context and lock) and
 
 - BuildKit runs rootless in each build step, using the `native` snapshotter
   ([BuildKit rootless mode](https://github.com/moby/buildkit/blob/v0.33.0/docs/rootless.md)).
-  Podman runs rootless with VFS storage for scans and tests. The build and test
-  pods run in their own user namespace (`hostUsers: false`, set by the
-  generated `taskRunSpecs`), and only those two run steps relax
-  `allowPrivilegeEscalation`, seccomp/AppArmor, and `procMount` and keep
-  `CAP_SETUID`/`CAP_SETGID` in their capability bounding set, because
-  `newuidmap`/`newgidmap` are setuid programs (a setuid program gets only the
-  caller's bounding set) and nested containers mount their own `/proc`. The
+  BuildKit runs with `--oci-worker-no-process-sandbox`, so it needs neither a
+  pod user namespace nor an unmasked `/proc`, which keeps it within
+  Kubernetes 1.28 and containerd 1.7. Only the build run step relaxes
+  `allowPrivilegeEscalation` and seccomp/AppArmor (AppArmor through the
+  `container.apparmor.security.beta.kubernetes.io/step-run` annotation on the
+  build TaskRun) and keeps `CAP_SETUID`/`CAP_SETGID` in its capability bounding
+  set, because `newuidmap`/`newgidmap` carry those file capabilities. The
   helpers are compiled with libcap in the runner image so they need nothing
   more (docs/configuration.md, "User-namespace helpers").
   `scripts/runtime_preflight.sh` checks these conditions before the build. No
-  step is privileged or uses host namespaces or host paths.
+  step is privileged or uses host namespaces or host paths, and no stage runs a
+  container engine.
 - BuildKit builds with a source policy that denies remote image, HTTP, and Git
   sources. Every input is a digest-verified local OCI layout or a locked file.
-- Scanner and compliance stages unpack the image with `umoci` under
-  `podman unshare`, which keeps file ownership.
+- Scanners read the OCI archive directly (Syft and Trivy on the archive, Grype
+  on the Syft SBOM); nothing unpacks the image filesystem.
 
 ## Image dependency model
 

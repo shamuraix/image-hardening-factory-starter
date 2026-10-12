@@ -1,6 +1,6 @@
 ---
 name: evidence-model
-description: Where factory evidence lives, what each file contains, and how the OPA release gate decides. Use when reading scan, compliance, test, or gate results, or reasoning about why a candidate was denied.
+description: Where factory evidence lives, what each file contains, and how the OPA release gate decides. Use when reading scan or gate results, or reasoning about why a candidate was denied.
 ---
 
 # Factory evidence and the release gate
@@ -17,8 +17,6 @@ All evidence for an image is under `work/<image>/` on the PipelineRun workspace.
 | `evidence/findings.json` | `factory.findings` | normalized, de-duplicated findings |
 | `evidence/scans/delegated/status.json` | scan stage | `assessmentPassed`, `digest`, `scanner` |
 | `evidence/database-status.json` | scan stage | `generatedAt` (earlier of bundle time and Grype DB build time), scanner versions |
-| `evidence/compliance/result.json` | OpenSCAP | `passed`, rule counts |
-| `evidence/tests/result.json` | product tests | `passed`, `exitCode` |
 | `evidence/gate-input.json` / `gate-result.json` | OPA | `allow`, `deny[]`, `warn[]` |
 | `import-result.json`, `evidence-bundle.json` | quarantine | quarantine ref/digest, evidence referrer digest |
 
@@ -32,7 +30,7 @@ with no signed baseline every finding is new).
 
 ## Gate decision (`policies/rego/factory/release/release.rego`)
 
-Deny when any of: invalid SBOM; compliance failed; tests failed; invalid digest;
+Deny when any of: invalid SBOM; invalid digest;
 assessment not passed or for a different digest; scanner DB older than
 `policy.maximumDatabaseAgeHours` (72h); or a finding is blocked and not excepted:
 
@@ -44,14 +42,19 @@ A fixable HIGH/CRITICAL **outside** the application archive becomes a **warning*
 instead of a deny. An approved exception (`policies/exceptions/approved.json`)
 suppresses a blocking finding only when `id`, `component`, and
 `installedVersion` all match **and** a fix exists. Exceptions never bypass
-evidence identity, freshness, compliance, tests, or signatures.
+evidence identity, freshness, or signatures.
+
+The pipeline produces no compliance (OpenSCAP), malware, or runtime test
+evidence and the gate does not consider them; those checks belong to the
+consuming environment (`docs/scope.md`). Never propose adding them back as a
+remediation.
 
 ## Scan-stage order
 
 Grype runs first (`scripts/grype_scan_image.sh`) and `factory/grype.py` validates
 its database, report shape, SBOM identity (`evidence/sbom.identity.json`), KEV
 freshness, and any baseline signature. A validation failure exits the scan
-before Trivy, OSV-Scanner, and ClamAV run, so no assessment is written and the
+before Trivy and OSV-Scanner run, so no assessment is written and the
 gate denies.
 
 ## Integrity

@@ -13,46 +13,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class EvidenceRegressionTests(unittest.TestCase):
-    def oscap_result(self, xml, status=0):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            if xml is not None:
-                (root / "arf.xml").write_text(xml)
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts/parse_oscap.py"),
-                    str(root / "arf.xml"),
-                    str(root / "result.json"),
-                    str(status),
-                ],
-                check=True,
-            )
-            return json.loads((root / "result.json").read_text())
-
-    def test_missing_empty_and_inapplicable_oscap_reports_deny(self):
-        for xml in (
-            None,
-            "<root/>",
-            "<root><rule-result><result>notapplicable</result></rule-result></root>",
-        ):
-            with self.subTest(xml=xml):
-                self.assertFalse(self.oscap_result(xml)["passed"])
-
-    def test_oscap_requires_successful_exit_and_evaluated_pass(self):
-        xml = '<root><rule-result idref="rule"><result>pass</result></rule-result></root>'
-        self.assertTrue(self.oscap_result(xml)["passed"])
-        self.assertFalse(self.oscap_result(xml, 2)["passed"])
-        self.assertFalse(self.oscap_result(xml.replace("pass", "notchecked"))["passed"])
-
     def test_truthy_failure_strings_and_empty_sbom_do_not_pass(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             values = [
                 {"bomFormat": "CycloneDX"},
                 [],
-                {"passed": "false"},
-                {"passed": "true"},
                 {},
                 {},
             ]
@@ -63,8 +29,8 @@ class EvidenceRegressionTests(unittest.TestCase):
                 paths.append(path)
             result = gate_input("test", "sha256:" + "a" * 64, *paths)
             self.assertFalse(result["sbomValid"])
-            self.assertFalse(result["compliancePassed"])
-            self.assertFalse(result["testsPassed"])
+            self.assertNotIn("compliancePassed", result)
+            self.assertNotIn("testsPassed", result)
             self.assertEqual(result["findings"], [])
 
     def test_schema_enforces_oneof_siblings_and_maxitems(self):

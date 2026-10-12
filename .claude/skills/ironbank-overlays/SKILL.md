@@ -67,8 +67,8 @@ patch cannot sneak in network fetches.
 
 - Editing `hardening_manifest.yaml` resource checksums by hand — intake must
   re-lock; an agent cannot download artefacts.
-- Removing `rpm -e` or cleanup lines to silence `rpm-verify` — adjust the
-  profile's `rpm-verify.allow` only with a reason.
+- Removing `rpm -e` or cleanup lines from upstream to make an image "cleaner"
+  — keep upstream's hardening intent unless the change is reviewed.
 - Pointing `FROM` at anything other than `${BASE_REF}`.
 
 ## What the current overlays do (so you keep their intent when rebasing)
@@ -77,7 +77,7 @@ patch cannot sneak in network fetches.
   the first RPM access (`check` is not a supported `update-ca-trust` command on
   these UBI releases); reinstall `tzdata`, `gnupg2`, `libpeas`, and `rpm` to
   restore package payloads the upstream minimal image prunes, so `rpm -V`
-  passes.
+  passes wherever the consuming environment runs it.
 - `ubi10-minimal`: pin `FROM ${BASE_REF}` only.
 - Atlassian images: `ARG BASE_MAJOR` selects behaviour per UBI major. The
   upstream forced removals (`rpm -e --nodeps avahi-libs cups-libs`) stay on UBI
@@ -87,13 +87,9 @@ patch cannot sneak in network fetches.
   source; Confluence restores the RPM-owned `/opt` to `root:root` after
   setting application file ownership.
 
-## RPM integrity (`scripts/assert_rpm_integrity.sh`)
+## RPM integrity
 
-`rpm -V` runs in the test stage. It ignores timestamp-only changes (reproducible
-layer timestamps) and RPM ghost entries (no payload; includes host-mounted
-`/proc` and `/sys`). Everything else — contents, permissions, dependencies —
-is an error unless the path is in the profile's `rpm-verify.allow`
-(`rpm-verify.ubi10.allow` adds the reviewed UBI 10 deviations). Application
-profiles combine their own allow list with the base one. Allow-list entries
-cover the login banner, shell umasks, crypto-policy changes, and omitted
-systemd presets; add an entry only with a stated reason.
+The pipeline does not run `rpm -V`: it never runs the candidate image
+([docs/scope.md](../../../docs/scope.md)). The consuming environment owns that
+check. Keep the overlays that restore pruned package payloads so the check can
+pass there, and call out any overlay change that alters RPM-owned files.

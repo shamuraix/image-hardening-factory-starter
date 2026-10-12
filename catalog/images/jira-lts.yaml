@@ -24,12 +24,10 @@ build:
     image: ubi9-minimal
   rpm:
     source: private-mirror
-  testProfile: jira
   buildArgs:
     JIRA_VERSION: 11.3.11
     JSM_VERSION: 11.3.11
 policy:
-  profile: atlassian-rhel9-container
   maximumDatabaseAgeHours: 72
   block:
     knownExploited: true

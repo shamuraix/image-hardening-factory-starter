@@ -28,10 +28,6 @@ tools:
     project: https://github.com/anthropics/claude-code
     license: Proprietary (Anthropic Commercial Terms); validate entitlement before packaging
     version: 2.1.294
-  kind:
-    project: https://github.com/kubernetes-sigs/kind
-    license: Apache-2.0
-    version: v0.33.0
   yq:
     project: https://github.com/mikefarah/yq
     license: MIT
@@ -40,10 +36,6 @@ tools:
     project: https://github.com/containers/skopeo
     license: Apache-2.0
     version: 1.20.0
-  umoci:
-    project: https://github.com/opencontainers/umoci
-    license: Apache-2.0
-    version: 0.6.0
   oras:
     project: https://github.com/oras-project/oras
     license: Apache-2.0
@@ -73,24 +65,11 @@ tools:
     project: https://github.com/open-policy-agent/opa
     license: Apache-2.0
     version: 1.7.1
-  clamav:
-    project: https://github.com/Cisco-Talos/clamav
-    license: GPL-2.0
-    version: 1.4.6
-  openscap:
-    project: https://github.com/OpenSCAP/openscap
-    license: LGPL-2.1-or-later
-    version: 1.4.2
-  compliance-as-code:
-    project: https://github.com/ComplianceAsCode/content
-    license: BSD-3-Clause
-    version: 0.1.77
   shadow:
     project: https://github.com/shadow-maint/shadow
     license: BSD-3-Clause
-    # Source for newuidmap/newgidmap, built with libcap inside the runner image.
-    # The UBI shadow-utils build lacks libcap, so as setuid programs those
-    # copies keep uid 0 and need CAP_SYS_ADMIN and CAP_DAC_OVERRIDE; this build
-    # drops to the caller and keeps only CAP_SETUID/CAP_SETGID
+    # Source for newuidmap/newgidmap, built with libcap inside the runner image
+    # and installed with file capabilities (cap_setuid / cap_setgid, never
+    # setuid); it raises only the capability it needs and drops the rest
     # (toolchain/Containerfile.factory-runner).
     version: 4.20.2

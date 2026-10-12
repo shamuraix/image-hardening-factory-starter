@@ -24,11 +24,9 @@ build:
     image: ubi9-minimal
   rpm:
     source: private-mirror
-  testProfile: confluence
   buildArgs:
     CONFLUENCE_VERSION: 10.2.18
 policy:
-  profile: atlassian-rhel9-container
   maximumDatabaseAgeHours: 72
   block:
     knownExploited: true

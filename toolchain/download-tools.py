@@ -7,10 +7,8 @@ binary is checked against its release manifest. Nothing is fetched at image run
 time. Output layout (``dist/`` by default):
 
   tools/   static binaries copied to /usr/local/bin
-  rpms/    packages installed with rpm (ClamAV)
   src/     source archives compiled inside the runner image (shadow, for the
            libcap-aware newuidmap/newgidmap)
-  scap/    ComplianceAsCode datastreams for the intake runner
   claude/  the Claude Code binary for the agent runner
 """
 
@@ -23,7 +21,6 @@ import shutil
 import tarfile
 import tempfile
 import urllib.request
-import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -36,7 +33,6 @@ CLAUDE_RELEASES = (
     "/claude-code-releases"
 )
 MACHINE = {"amd64": "x86_64", "arm64": "aarch64"}
-DATASTREAMS = ("ssg-rhel9-ds.xml", "ssg-rhel10-ds.xml")
 
 
 @dataclass(frozen=True)
@@ -46,7 +42,7 @@ class Asset:
     repo: str
     tag: str
     asset: str
-    kind: str  # binary | tar | rpm | source | scap-zip
+    kind: str  # binary | tar | source
     names: tuple[str, ...] = field(default_factory=tuple)
 
     @property
@@ -58,17 +54,13 @@ class Asset:
         return {
             "binary": "tools",
             "tar": "tools",
-            "rpm": "rpms",
             "source": "src",
-            "scap-zip": "scap",
         }[self.kind]
 
     @property
     def outputs(self) -> tuple[str, ...]:
-        if self.kind in ("rpm", "source"):
+        if self.kind == "source":
             return (self.asset,)
-        if self.kind == "scap-zip":
-            return DATASTREAMS
         return self.names
 
 
@@ -137,25 +129,6 @@ def specifications(arch: str, versions: dict[str, str] | None = None) -> list[As
             "binary",
             ("osv-scanner",),
         ),
-        Asset(
-            "opencontainers/umoci",
-            f"v{v['umoci']}",
-            f"umoci.linux.{arch}",
-            "binary",
-            ("umoci",),
-        ),
-        Asset(
-            "Cisco-Talos/clamav",
-            f"clamav-{v['clamav']}",
-            f"clamav-{v['clamav']}.linux.{machine}.rpm",
-            "rpm",
-        ),
-        Asset(
-            "ComplianceAsCode/content",
-            f"v{v['compliance-as-code']}",
-            f"scap-security-guide-{v['compliance-as-code']}.zip",
-            "scap-zip",
-        ),
         # Architecture-independent; compiled by Containerfile.factory-runner.
         Asset("shadow-maint/shadow", v["shadow"], f"shadow-{v['shadow']}.tar.xz", "source"),
     ]
@@ -181,7 +154,7 @@ def _extract(asset: Asset, archive: Path, destination: Path) -> None:
     """Write the asset's outputs next to their final names, with a temporary suffix."""
     if asset.kind == "binary":
         shutil.copyfile(archive, destination / f".{asset.names[0]}.download")
-    elif asset.kind in ("rpm", "source"):
+    elif asset.kind == "source":
         shutil.copyfile(archive, destination / f".{asset.asset}.download")
     elif asset.kind == "tar":
         # Extract only the named regular files; never follow archive paths or links.
@@ -190,15 +163,6 @@ def _extract(asset: Asset, archive: Path, destination: Path) -> None:
                 member = next(m for m in bundle if m.isfile() and Path(m.name).name == name)
                 with (
                     bundle.extractfile(member) as source,
-                    (destination / f".{name}.download").open("wb") as dest,
-                ):
-                    shutil.copyfileobj(source, dest)
-    elif asset.kind == "scap-zip":
-        with zipfile.ZipFile(archive) as bundle:
-            for name in DATASTREAMS:
-                member = next(n for n in bundle.namelist() if Path(n).name == name)
-                with (
-                    bundle.open(member) as source,
                     (destination / f".{name}.download").open("wb") as dest,
                 ):
                     shutil.copyfileobj(source, dest)

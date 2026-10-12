@@ -63,8 +63,6 @@ BUILD_SERVICE_ACCOUNTS = {
     "sbom": "factory-offline",
     "scan": "factory-offline",
     "assessment": "factory-offline",
-    "compliance": "factory-offline",
-    "test": "factory-test",
     "gate": "factory-offline",
     "quarantine": "factory-importer",
     "release-request": "factory-agent",
@@ -85,7 +83,11 @@ MAINTENANCE_SERVICE_ACCOUNTS = {
     "evidence-context": "factory-reader",
     "agent": "factory-agent",
 }
-FIPS_NODE_SELECTOR = {"factory.dev/fips-node": "true"}
+# Kubernetes 1.28 has no securityContext.appArmorProfile field (added in 1.30),
+# so the build step's AppArmor profile is set with the legacy per-container
+# annotation. Tekton copies TaskRun annotations onto the pod, and the step
+# container is named "step-<step name>".
+BUILD_APPARMOR_ANNOTATION = "container.apparmor.security.beta.kubernetes.io/step-run"
 
 
 class _Dumper(yaml.SafeDumper):
@@ -129,10 +131,6 @@ def image_paths(image: ImageDefinition, repo_root: Path | None = None) -> list[s
     overlay = data["source"].get("overlay")
     if overlay:
         paths.append(f"{overlay.rstrip('/')}/**")
-    profile = data["build"]["testProfile"]
-    paths.append(f"tests/profiles/{profile}/**")
-    if profile != "base":
-        paths.append("tests/profiles/base/**")
     paths.extend(SHARED_BUILD_PATHS)
     return paths
 
@@ -172,22 +170,10 @@ def _task_run_specs(accounts: dict[str, str]) -> list[dict[str, Any]]:
     specs = []
     for task, account in accounts.items():
         spec: dict[str, Any] = {"pipelineTaskName": task, "serviceAccountName": account}
-        if task in ("build", "test"):
-            # Rootless BuildKit/Podman need a pod user namespace (hostUsers: false)
-            # so the run step can create nested namespaces and an unmasked /proc.
-            spec["podTemplate"] = {"hostUsers": False}
-        if task == "compliance":
-            spec["podTemplate"] = {
-                "nodeSelector": dict(FIPS_NODE_SELECTOR),
-                "tolerations": [
-                    {
-                        "key": "factory.dev/fips-node",
-                        "operator": "Equal",
-                        "value": "true",
-                        "effect": "NoSchedule",
-                    }
-                ],
-            }
+        if task == "build":
+            # Rootless BuildKit's run step creates its own user namespace, which
+            # the container runtime's default AppArmor profile denies.
+            spec["metadata"] = {"annotations": {BUILD_APPARMOR_ANNOTATION: "unconfined"}}
         specs.append(spec)
     return specs
 

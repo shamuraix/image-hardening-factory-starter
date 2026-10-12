@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Probe the build step's runtime before the expensive build: non-root user,
+# capability bounding set, the file-capability mapping helpers, a RootlessKit
+# user namespace with subordinate mappings, and a network-free BuildKit build.
+# Diagnostics land in <output>/runtime.txt for triage either way.
 set -euo pipefail
 output=${1:?diagnostic output directory is required}
 mkdir -p "${output}"
@@ -19,57 +23,37 @@ printf '{"passed":false}\n' >"${output}/result.json"
   cat /etc/subuid /etc/subgid
   printf '\nMapping helper modes and file capabilities\n'
   ls -l /usr/bin/newuidmap /usr/bin/newgidmap
-  python3 - <<'PYTHON'
-import os
-for name in ("/usr/bin/newuidmap", "/usr/bin/newgidmap"):
-    try:
-        print(name, "security.capability=" + os.getxattr(name, "security.capability").hex())
-    except OSError as error:
-        print(name, "capability xattr unavailable:", error)
-PYTHON
+  getcap /usr/bin/newuidmap /usr/bin/newgidmap
   printf '\nSecurity restrictions\n'
   sed -n '/^Cap/p;/^NoNewPrivs/p;/^Seccomp/p' /proc/self/status
   cat /proc/self/attr/current 2>/dev/null || true
-  for tool in rootlesskit buildkitd buildctl podman; do
+  for tool in rootlesskit buildkitd buildctl; do
     "${tool}" --version
   done
 } >"${output}/runtime.txt" 2>&1
 [[ $(id -u) != 0 ]] || { echo 'Factory runner must be non-root' >&2; exit 1; }
-# The setuid mapping helpers receive only the capabilities in this process's
-# bounding set (bit 6 CAP_SETGID, bit 7 CAP_SETUID). Explain that before
-# RootlessKit reports a bare "Permission denied" from the kernel.
+# File capabilities are granted only within this process's bounding set
+# (bit 6 CAP_SETGID, bit 7 CAP_SETUID) and only without no_new_privs. Explain
+# that before RootlessKit reports a bare "Permission denied" from the kernel.
 bounding=$(sed -n 's/^CapBnd:[[:space:]]*//p' /proc/self/status)
 if (( (0x${bounding} & 0xc0) != 0xc0 )); then
-  echo "capability bounding set ${bounding} lacks CAP_SETUID/CAP_SETGID; the setuid newuidmap/newgidmap helpers cannot map subordinate IDs. The build and test run steps must keep capabilities.add: [SETUID, SETGID] (docs/configuration.md)." >&2
+  echo "capability bounding set ${bounding} lacks CAP_SETUID/CAP_SETGID; the newuidmap/newgidmap file capabilities cannot take effect. The build run step must keep capabilities.add: [SETUID, SETGID] (docs/configuration.md)." >&2
   exit 1
 fi
-for helper in /usr/bin/newuidmap /usr/bin/newgidmap; do
-  [[ -u ${helper} ]] || { echo "${helper} is not setuid; file capabilities are ignored inside a pod user namespace (toolchain/Containerfile.factory-runner)" >&2; exit 1; }
-  grep -aq 'Could not set caps' "${helper}" || {
-    echo "${helper} was built without libcap, so as a setuid program it would need CAP_SYS_ADMIN and CAP_DAC_OVERRIDE; the runner image must install the libcap-aware build (toolchain/Containerfile.factory-runner)" >&2
-    exit 1
-  }
-done
+if [[ $(sed -n 's/^NoNewPrivs:[[:space:]]*//p' /proc/self/status) != 0 ]]; then
+  echo 'no_new_privs is set, which disables the mapping helpers'"'"' file capabilities; the build run step needs allowPrivilegeEscalation: true (docs/configuration.md).' >&2
+  exit 1
+fi
+getcap /usr/bin/newuidmap | grep -q 'cap_setuid=ep' && getcap /usr/bin/newgidmap | grep -q 'cap_setgid=ep' || {
+  echo 'newuidmap/newgidmap lack their cap_setuid/cap_setgid file capabilities; rebuild the runner image (toolchain/Containerfile.factory-runner) with a builder that preserves security.capability xattrs.' >&2
+  exit 1
+}
 # Exercise the same mapping helpers used by the real BuildKit launcher. A
 # successful unshare -Ur alone is insufficient to prove subordinate mappings.
 if ! timeout 20 rootlesskit --net=host --copy-up=/etc --copy-up=/run \
   sh -c 'cat /proc/self/uid_map /proc/self/gid_map' >"${output}/rootlesskit.log" 2>&1; then
   cat "${output}/rootlesskit.log" >&2
-  echo 'RootlessKit namespace/mapping probe failed. Inspect mapping-helper file capabilities, outer UID/GID ranges and node security policy in runtime.txt. See docs/local-kubernetes-testing.md; keep the factory pod non-root.' >&2
-  exit 1
-fi
-if ! timeout 20 podman unshare cat /proc/self/uid_map >"${output}/podman.log" 2>&1; then
-  cat "${output}/podman.log" >&2
-  echo 'Podman user namespace probe failed; inspect runtime.txt and podman.log.' >&2
-  exit 1
-fi
-# BuildKit's no-process-sandbox mode does not exercise the private proc mount
-# required by Podman image tests. Probe that boundary before the expensive build.
-if ! timeout 20 rootlesskit --net=host --copy-up=/etc --copy-up=/run \
-  unshare --mount --pid --fork --mount-proc sh -ec 'test -r /proc/1/status; cat /proc/self/uid_map' \
-  >"${output}/proc-mount.log" 2>&1; then
-  cat "${output}/proc-mount.log" >&2
-  echo 'Nested /proc mount failed. Kubernetes runners require hostUsers: false and procMount: Unmasked, with adequate node and pod UID/GID ranges. See docs/local-kubernetes-testing.md.' >&2
+  echo 'RootlessKit namespace/mapping probe failed. Inspect mapping-helper file capabilities, the node user-namespace policy, and the AppArmor/seccomp profiles in runtime.txt (docs/configuration.md); keep the factory pod non-root.' >&2
   exit 1
 fi
 # A network-free scratch build exercises daemon startup and snapshot/export.

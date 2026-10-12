@@ -175,8 +175,8 @@ class BuildkitRunnerTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertFalse(self.log.exists())
 
-    def test_kubernetes_build_and_test_tasks_avoid_host_privileges(self) -> None:
-        for task_file in ("factory-rootless-build.yaml", "factory-rootless-test.yaml"):
+    def test_kubernetes_build_task_avoids_host_privileges(self) -> None:
+        for task_file in ("factory-rootless-build.yaml",):
             with self.subTest(task=task_file):
                 task = yaml.safe_load((ROOT / ".tekton/tasks" / task_file).read_text())
                 spec = task["spec"]
@@ -185,11 +185,10 @@ class BuildkitRunnerTests(unittest.TestCase):
                 run = steps["run"]["securityContext"]
                 self.assertFalse(run["privileged"])
                 self.assertTrue(run["runAsNonRoot"])
-                # The setuid newuidmap/newgidmap helpers receive only the
-                # capabilities in the caller's bounding set, so the run step
-                # keeps exactly CAP_SETUID and CAP_SETGID there and nothing else
-                # (never SYS_ADMIN or DAC_OVERRIDE, which the UBI shadow-utils
-                # build would need; the runner compiles libcap-aware helpers).
+                # The newuidmap/newgidmap file capabilities take effect only
+                # within the caller's bounding set, so the run step keeps exactly
+                # CAP_SETUID and CAP_SETGID there and nothing else (never
+                # SYS_ADMIN or DAC_OVERRIDE).
                 self.assertTrue(run["allowPrivilegeEscalation"])
                 self.assertEqual(
                     run["capabilities"], {"drop": ["ALL"], "add": ["SETUID", "SETGID"]}

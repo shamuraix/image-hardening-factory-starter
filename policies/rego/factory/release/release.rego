@@ -16,9 +16,9 @@ decision := {
 	"imageDigest": input.imageDigest,
 }
 
+# Compliance scanning (OpenSCAP), malware scanning and runtime product tests are
+# outside this pipeline's scope and are not gated here; see docs/scope.md.
 deny contains "SBOM validation failed" if not input.sbomValid == true
-deny contains "compliance evaluation failed" if not input.compliancePassed == true
-deny contains "product integration tests failed" if not input.testsPassed == true
 deny contains "candidate digest is invalid" if not regex.match("^sha256:[0-9a-f]{64}$", input.imageDigest)
 
 deny contains "unknown scanner backend" if not backend == "delegated-scanners"

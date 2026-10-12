@@ -11,11 +11,17 @@
 # (GitLab, see pkg/provider/gitlab/parse_payload.go in Pipelines-as-Code),
 # "pull_request_labeled", comment-driven retests, and pods with no marker at all.
 #
-# Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy GA). Tekton propagates
+# Kubernetes 1.28 serves ValidatingAdmissionPolicy only as v1beta1, and only
+# when the cluster enables it: kube-apiserver needs
+#   --feature-gates=ValidatingAdmissionPolicy=true
+#   --runtime-config=admissionregistration.k8s.io/v1beta1=true
+# Without that, applying this file fails (no such resource), so the deploy
+# stops instead of running without the guard. On 1.30 or later change both
+# apiVersions to admissionregistration.k8s.io/v1. Tekton propagates
 # PipelineRun labels/annotations (including Pipelines-as-Code's event-type) to
 # TaskRuns and their pods; confirm with
 #   kubectl get pod -l tekton.dev/pipelineRun -o jsonpath='{.items[0].metadata}'
-apiVersion: admissionregistration.k8s.io/v1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingAdmissionPolicy
 metadata:
   name: image-factory-pr-secret-isolation
@@ -71,7 +77,7 @@ spec:
         !object.spec.volumes.exists(v, has(v.secret) && v.secret.secretName in variables.protected)
       message: only push or incoming runs may mount protected secrets
 ---
-apiVersion: admissionregistration.k8s.io/v1
+apiVersion: admissionregistration.k8s.io/v1beta1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
   name: image-factory-pr-secret-isolation

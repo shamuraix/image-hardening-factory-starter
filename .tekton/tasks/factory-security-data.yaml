@@ -1,5 +1,5 @@
 # Connected refresh of the offline security-data bundle (scanner databases, CISA
-# KEV, ClamAV signatures, SCAP content). Builds and signs the bundle with the
+# KEV). Builds and signs the bundle with the
 # intake key, uploads it, then moves security-data/current.json to it. Every
 # image build's prepare stage downloads and verifies the bundle that pointer names
 # (scripts/fetch_security_bundle.sh).

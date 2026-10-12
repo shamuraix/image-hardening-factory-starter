@@ -52,8 +52,6 @@ declare -A predicates=(
   ["${evidence}/sbom.spdx.json"]="https://spdx.dev/Document"
   ["${evidence}/provenance.json"]="https://slsa.dev/provenance/v1"
   ["${evidence}/findings.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:vulnerability:v1"
-  ["${evidence}/compliance/result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:compliance:v1"
-  ["${evidence}/tests/result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:test:v1"
   ["${evidence}/gate-result.json"]="${FACTORY_PREDICATE_TYPE_PREFIX:-urn:image-hardening-factory:predicate}:gate:v1"
 )
 backend=$(jq -er '.scannerBackend // "delegated-scanners"' "${evidence}/gate-result.json")

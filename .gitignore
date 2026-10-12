@@ -15,5 +15,4 @@ generated-plan.json
 resource-lock.json
 *.oci.tar
 *.egg-info/
-.local-factory/
 image-hardening-factory.tar.gz
