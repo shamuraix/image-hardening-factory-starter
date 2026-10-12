@@ -44,7 +44,9 @@ A local or single-node cluster can run the whole factory against the real
 GitLab instance and Artifactory; only the cluster is local. It needs what
 production needs ([configuration.md](configuration.md#quick-setup-checklist)):
 Kubernetes 1.28 or later, ValidatingAdmissionPolicy enabled, and a node that
-allows unprivileged user namespaces. Then:
+allows unprivileged user namespaces. For Rancher Desktop specifics (k3s
+apiserver flags, Zscaler, reaching the controller from GitLab), see
+[local-rancher-desktop.md](local-rancher-desktop.md). Then:
 
 1. Build, sign, and push the three runner images to Artifactory (`make
    toolchain`, the Containerfiles in `toolchain/`) and put their digests in
