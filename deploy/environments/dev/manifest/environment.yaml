@@ -1,0 +1,76 @@
+# Environment manifest for dev: a single-node cluster (local-cluster
+# component: no NetworkPolicies, agents off) pointed at the dev GitLab and
+# Artifactory. Artifactory serves OCI images with the repository-path method,
+# so every image reference is <registry>/<repository key>/<path>; the factory's
+# logical repositories are path prefixes inside the one docker repository, and
+# the per-stage write scopes are Artifactory permission targets on those
+# prefixes (docs/configuration.md, "Artifactory layout").
+#
+# Still required by hand: the runner image digests (after pushing them),
+# FACTORY_PAC_CONTROLLER_URL (the address GitLab can reach the controller at),
+# and the Secrets from deploy/secrets.example.yaml. Keys are documented in
+# deploy/environments/example/manifest/environment.yaml.
+#
+# Kustomize reads this ConfigMap but does not apply it (local-config).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-environment
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  # --- Git provider ---------------------------------------------------------
+  GIT_PROVIDER: gitlab
+  GIT_PROVIDER_URL: https://gitlab.cicd.dc
+  GIT_REPOSITORY_URL: https://gitlab.cicd.dc/techops-cicd/cicd-federal/govcloud-image-hardening-factory
+  FACTORY_GITLAB_API_URL: https://gitlab.cicd.dc/api/v4
+  INTERNAL_GIT_BASE_URL: https://gitlab.cicd.dc/techops-cicd/cicd-federal/mirrors
+  SCM_BOT_AUTHOR_NAME: image-factory-bot
+  SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
+
+  # --- Pipelines-as-Code ----------------------------------------------------
+  FACTORY_PAC_CONTROLLER_URL: https://pac-controller.internal.example
+
+  # --- Artifactory ----------------------------------------------------------
+  ARTIFACTORY_URL: https://artifactory.cicd.dc
+  ARTIFACTORY_REGISTRY: artifactory.cicd.dc
+  ARTIFACTORY_USERNAME: techops-cicd-esd-hip-dev-bot
+  # Generic repository: locks/, intake resources, releases/, security-data/
+  FACTORY_SOURCE_REPOSITORY: techops-cicd-esd-hip-generic-dev-local/factory
+  # Docker repository, one prefix per trust boundary
+  UPSTREAM_OCI_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/upstream
+  FACTORY_BASE_QUARANTINE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/quarantine/bases
+  FACTORY_APPLICATION_QUARANTINE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/quarantine/apps
+  FACTORY_RELEASE_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/release
+  FACTORY_CANARY_REPOSITORY: techops-cicd-esd-hip-docker-dev-local/canary
+  # RPM content: ext-redhat-ubi-remote is a remote repository in front of
+  # https://cdn-ubi.redhat.com, so the CDN layout continues below this root.
+  # techops-cicd-esd-hip-rpm-dev-local is not used: a local rpm repository
+  # cannot mirror the CDN.
+  FACTORY_UBI_MIRROR_URL: https://artifactory.cicd.dc/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist
+
+  # --- Runner images --------------------------------------------------------
+  # Runner images live under factory/ in the docker repository.
+  RUNNER_IMAGE: artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory/factory-runner@sha256:REPLACE
+  INTAKE_RUNNER_IMAGE: artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory/factory-intake-runner@sha256:REPLACE
+  AGENT_IMAGE: artifactory.cicd.dc/techops-cicd-esd-hip-docker-dev-local/factory/factory-agent@sha256:REPLACE
+
+  # --- External feeds -------------------------------------------------------
+  CISA_KEV_URL: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+
+  # --- Claude Code agents ---------------------------------------------------
+  ANTHROPIC_BASE_URL: https://llm-gateway.internal.example
+
+  # --- Release governance ---------------------------------------------------
+  FACTORY_GOV_APPROVER_PATTERN: "^(alice|bob)$"
+
+  # --- Egress (deploy/base/network-policies.yaml) ----------------------------
+  # Unused while the local-cluster component removes the NetworkPolicies.
+  GIT_HOST_CIDR: 198.51.100.10/32
+  ARTIFACTORY_CIDR: 198.51.100.20/32
+  GIT_MIRRORS_CIDR: 198.51.100.30/32
+  UPSTREAM_EGRESS_CIDR: 203.0.113.0/24
+  LLM_GATEWAY_CIDR: 198.51.100.40/32
+
+  # --- Tekton Chains (deploy/chains) -----------------------------------------
+  CHAINS_BUILDER_ID: https://image-factory.internal.example/tekton-chains

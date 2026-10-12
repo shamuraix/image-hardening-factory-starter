@@ -2,9 +2,10 @@
 # tekton.dev/pipelineTask (the pipeline task name), which survives Pipelines-as-
 # Code embedding the Pipeline spec, so policies select on that label.
 #
-# Replace the documentation CIDRs below (198.51.100.0/24, 203.0.113.0/24) with
-# your endpoints, or switch to namespaceSelector/podSelector rules for in-cluster
-# services. Every pod also needs DNS (allow-dns).
+# The egress CIDRs come from the environment manifest
+# (deploy/environments/<env>/manifest/environment.yaml, keys *_CIDR); for
+# in-cluster services switch to namespaceSelector/podSelector rules instead. Every pod
+# also needs DNS (allow-dns).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -44,7 +45,7 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - ipBlock: {cidr: 198.51.100.10/32}   # git host (and its API)
+        - ipBlock: {cidr: from-environment}   # GIT_HOST_CIDR: git host (and its API)
       ports:
         - {protocol: TCP, port: 443}
 ---
@@ -62,7 +63,7 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - ipBlock: {cidr: 198.51.100.20/32}   # Artifactory
+        - ipBlock: {cidr: from-environment}   # ARTIFACTORY_CIDR: Artifactory
       ports:
         - {protocol: TCP, port: 443}
 ---
@@ -80,7 +81,7 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - ipBlock: {cidr: 198.51.100.30/32}   # internal git mirrors
+        - ipBlock: {cidr: from-environment}   # GIT_MIRRORS_CIDR: internal git mirrors
       ports:
         - {protocol: TCP, port: 443}
 ---
@@ -100,7 +101,7 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - ipBlock: {cidr: 203.0.113.0/24}     # egress proxy / allowlisted upstreams
+        - ipBlock: {cidr: from-environment}   # UPSTREAM_EGRESS_CIDR: egress proxy / allowlisted upstreams
       ports:
         - {protocol: TCP, port: 443}
 ---
@@ -119,7 +120,7 @@ spec:
   policyTypes: [Egress]
   egress:
     - to:
-        - ipBlock: {cidr: 198.51.100.40/32}   # LLM gateway
+        - ipBlock: {cidr: from-environment}   # LLM_GATEWAY_CIDR: LLM gateway
       ports:
         - {protocol: TCP, port: 443}
 ---

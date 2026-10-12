@@ -11,14 +11,14 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
 
 1. On a connected host run `make toolchain`, then build and sign the runner,
    intake-runner, and agent images from `toolchain/` and record their digests
-   in `deploy/base/repository.yaml` (see
-   [configuration.md](configuration.md#runner-images)).
+   in the environment manifest, `deploy/environments/<env>/manifest/environment.yaml`
+   (see [configuration.md](configuration.md#environment-manifest)).
 2. Install Tekton Pipelines, Pipelines-as-Code, and Tekton Chains; apply
-   `deploy/chains/chains-config.yaml`.
+   `kubectl apply -k deploy/environments/<env>/chains`.
 3. Create Artifactory repositories for source, upstream OCI, quarantine,
    release, and canary content, with the write separation in the table below.
-4. Create the Secrets (`deploy/secrets.example.yaml`), edit settings and network
-   CIDRs, then run `kubectl apply -k deploy/base`. Allow the `approved-upstreams`
+4. Create the Secrets (`deploy/secrets.example.yaml`), fill in the environment
+   manifest, then run `kubectl apply -k deploy/environments/<env>`. Allow the `approved-upstreams`
    NetworkPolicy to reach the Grype, Trivy, and OSV database mirrors and
    the CISA KEV feed.
 5. Build the first security-data bundle:
@@ -45,20 +45,22 @@ allows unprivileged user namespaces. Then:
 
 1. Build, sign, and push the three runner images to Artifactory (`make
    toolchain`, the Containerfiles in `toolchain/`) and put their digests in
-   `deploy/base/repository.yaml`.
+   your environment manifest (`RUNNER_IMAGE`, `INTAKE_RUNNER_IMAGE`,
+   `AGENT_IMAGE` in `deploy/environments/<env>/manifest/environment.yaml`).
 2. Install Tekton Pipelines, Pipelines-as-Code, and Tekton Chains at the
    pinned versions (`tools/versions.lock.yaml`), and apply
-   `deploy/chains/chains-config.yaml`.
+   `kubectl apply -k deploy/environments/<env>/chains`.
 3. Create the Secrets from `deploy/secrets.example.yaml` with real values:
    Artifactory tokens scoped per repository, the RPM mirror credential, cosign
    keys, the GitLab token and webhook secret, the SCM bot token, and the
-   incoming-webhook secret. Agents are off in this overlay, so
+   incoming-webhook secret. Agents are off on a local cluster, so
    `factory-ai-gateway` is optional.
-4. Apply the local overlay: `kubectl apply -k deploy/overlays/local` (or `deploy/overlays/dev`, which adds the dev Artifactory layout; see docs/configuration.md, "Artifactory layout"). It is
-   `deploy/base` without the NetworkPolicies (their CIDRs are placeholders a
-   laptop cannot satisfy) and with agents switched off; ServiceAccounts, the
-   admission policy, schedules, and the Repository CR are identical to
-   production.
+4. Apply an environment that includes the `deploy/components/local-cluster`
+   component, for example `kubectl apply -k deploy/environments/dev` (see
+   docs/configuration.md, "Artifactory layout"). It is `deploy/base` without
+   the NetworkPolicies (a laptop usually cannot satisfy fixed egress CIDRs) and
+   with agents switched off; ServiceAccounts, the admission policy, schedules,
+   and the Repository CR are identical to production.
 5. Make the PaC controller reachable from GitLab. The internal GitLab must
    reach the controller's URL; on a laptop that is a routable address on your
    network or VPN, or a relay. Pipelines-as-Code's `tkn pac bootstrap` can
@@ -166,6 +168,6 @@ history). Re-check policy with current data before redeploying.
 There is no host-side build and no laptop harness. Images are built only by the
 Tekton Task. To iterate on an overlay, open a merge request: the PR PipelineRun
 builds, scans, and gates the candidate without publishing it, or run the
-pipeline on a development cluster with `deploy/overlays/local`. `make ci`
+pipeline on a development cluster with `deploy/environments/dev`. `make ci`
 covers everything that does not need a cluster. Runtime testing of a candidate
 happens outside the pipeline ([scope.md](scope.md)).

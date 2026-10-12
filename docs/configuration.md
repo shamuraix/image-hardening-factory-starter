@@ -25,17 +25,18 @@ object that connects a Git repository to PaC.
      Pipelines-as-Code v0.51, [Tekton Chains](https://github.com/tektoncd/chains/blob/v0.28.0/docs/config.md) v0.28
    - A default StorageClass for the per-run `volumeClaimTemplate` workspaces
 2. **Build, sign, and publish the three runner images** and record their
-   digests in the Repository CR params (see [Runner images](#runner-images)):
-   - `runner_image` — `toolchain/Containerfile.factory-runner`
-   - `intake_runner_image` — `toolchain/Containerfile.factory-intake-runner`
-   - `agent_image` — `toolchain/Containerfile.factory-agent`
-3. **Apply the factory objects**: edit `deploy/base/settings.yaml`,
-   `deploy/base/repository.yaml`, and the CIDRs in `deploy/base/network-policies.yaml`,
-   then run `kubectl apply -k deploy/base`.
+   digests in the environment manifest (see [Runner images](#runner-images)):
+   - `RUNNER_IMAGE` (Repository param `runner_image`) — `toolchain/Containerfile.factory-runner`
+   - `INTAKE_RUNNER_IMAGE` (`intake_runner_image`) — `toolchain/Containerfile.factory-intake-runner`
+   - `AGENT_IMAGE` (`agent_image`) — `toolchain/Containerfile.factory-agent`
+3. **Describe the environment**: copy `deploy/environments/example` to
+   `deploy/environments/<env>` and fill in `manifest/environment.yaml`
+   ([Environment manifest](#environment-manifest)). Then apply the factory
+   objects with `kubectl apply -k deploy/environments/<env>`.
 4. **Create the Secrets** listed in `deploy/secrets.example.yaml` with your
    secret manager.
-5. **Configure Chains** with `deploy/chains/chains-config.yaml` and a signing key
-   (KMS recommended).
+5. **Configure Chains** with `kubectl apply -k deploy/environments/<env>/chains`
+   and a signing key (KMS recommended).
 6. **Connect GitLab.** Create a project (or group) access token with the `api`
    scope and a webhook secret, store them in Secret `factory-gitlab-webhook`,
    and add a project webhook to the PaC controller URL for **Merge request,
@@ -55,42 +56,90 @@ object that connects a Git repository to PaC.
    use the event name `pull_request` for both GitLab and GitHub.
 7. Confirm contributors can run `make ci` locally.
 
+## Environment manifest
+
+Everything that differs between installations — server names, the git
+provider and project, source-mirror group, Artifactory host and repositories,
+the UBI mirror, the PaC controller URL, the LLM gateway, runner image digests,
+release approvers, egress CIDRs, and the Chains builder ID — lives in one file
+per environment, `deploy/environments/<env>/manifest/environment.yaml`.
+`deploy/base`, `deploy/chains`, the Tasks, and the scripts hold no environment
+values; fields that need one say `from-environment`.
+
+```
+deploy/
+  base/                         environment-neutral factory objects
+  chains/                       environment-neutral Chains config
+  components/
+    environment/                copies manifest keys into the objects that use them
+    local-cluster/              single-node profile: no NetworkPolicies, agents off
+  environments/
+    example/                    placeholders, production-shaped
+      manifest/environment.yaml   the environment manifest (documents every key)
+      kustomization.yaml          factory objects: kubectl apply -k deploy/environments/example
+      chains/                     Chains config:   kubectl apply -k deploy/environments/example/chains
+    dev/                        dev GitLab and Artifactory on a single-node cluster
+```
+
+The manifest is a ConfigMap named `factory-environment` marked
+`config.kubernetes.io/local-config`, so Kustomize reads it but never applies
+it. `deploy/components/environment` maps each key to its targets with
+Kustomize `replacements`:
+
+| Manifest keys | Filled into |
+|---|---|
+| settings keys (`ARTIFACTORY_*`, `FACTORY_*_REPOSITORY`, `INTERNAL_GIT_BASE_URL`, `FACTORY_UBI_MIRROR_URL`, `FACTORY_PAC_CONTROLLER_URL`, `FACTORY_GITLAB_API_URL`, `SCM_BOT_AUTHOR_*`, `ANTHROPIC_BASE_URL`, `CISA_KEV_URL`, `FACTORY_GOV_APPROVER_PATTERN`) | ConfigMap `factory-settings`, under the same name |
+| `GIT_PROVIDER`, `GIT_PROVIDER_URL`, `GIT_REPOSITORY_URL` | Repository CR `spec.git_provider.type`, `.url`, `spec.url`, and the `git_provider` param |
+| `RUNNER_IMAGE`, `INTAKE_RUNNER_IMAGE`, `AGENT_IMAGE` | Repository CR image params; `RUNNER_IMAGE` also runs the schedule CronJobs |
+| `*_CIDR` | the egress NetworkPolicies |
+| `CHAINS_BUILDER_ID` | `chains-config` `builder.id` |
+
+To add an environment, copy `deploy/environments/example` and edit only its
+manifest; add `../../components/local-cluster` to its `components` for a
+single-node cluster. Secrets never go in the manifest
+(`deploy/secrets.example.yaml`). `tests/unit/test_deploy_overlays.py` fails if
+a manifest key is missing or unused, if a build leaves a `from-environment`
+placeholder, or if a value unique to one environment appears in any tracked
+file outside that environment's directory.
+
 ## Pipelines-as-Code Repository (`deploy/base/repository.yaml`)
 
 | Field | Value | Why |
 |---|---|---|
-| `url` | the GitLab project URL | which project's webhooks this namespace serves |
-| `git_provider.type` / `url` / `secret` / `webhook_secret` | `gitlab`, the instance URL, Secret `factory-gitlab-webhook` keys `provider.token` and `webhook.secret` | API access and webhook validation for a self-hosted instance ([PaC GitLab setup](https://pipelinesascode.com/docs/install/gitlab/)) |
+| `url` | the GitLab project URL (`GIT_REPOSITORY_URL`) | which project's webhooks this namespace serves |
+| `git_provider.type` / `url` / `secret` / `webhook_secret` | `GIT_PROVIDER`, `GIT_PROVIDER_URL`, Secret `factory-gitlab-webhook` keys `provider.token` and `webhook.secret` | API access and webhook validation for a self-hosted instance ([PaC GitLab setup](https://pipelinesascode.com/docs/install/gitlab/)) |
 | `settings.pipelinerun_provenance` | `default_branch` | merge-request runs use PipelineRun definitions from `main`, never from the merge request ([PaC docs](https://pipelinesascode.com/docs/guides/repository-crd/)) |
 | `concurrency_limit` | `3` | at most three PipelineRuns at once; each holds a volume and up to 8 CPUs ([PaC docs](https://pipelinesascode.com/docs/guides/repository-crd/concurrency/)) |
 | `params` | `runner_image`, `intake_runner_image`, `agent_image`, `git_provider`, `enable_agents` | digest-pinned images, the provider, and the cluster-wide agent switch, filled into the generated PipelineRuns |
 | `incoming` | `webhook-url`, Secret `factory-pac-incoming`, target `main` | lets CronJobs and the release pipeline start runs ([PaC docs](https://pipelinesascode.com/docs/advanced/incoming-webhooks/)) |
 
-## Settings (`deploy/base/settings.yaml`, ConfigMap `factory-settings`)
+## Settings (ConfigMap `factory-settings`)
 
-Every factory step receives these as environment variables (`envFrom`).
+Every factory step receives these as environment variables (`envFrom`). Keys
+marked *env* come from the environment manifest; the rest are shared defaults
+in `deploy/base/settings.yaml`.
 
 | Key | Purpose |
 |---|---|
-| `INTERNAL_GIT_BASE_URL` | internal SCM namespace that holds the source mirrors |
-| `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` | Artifactory API base URL and OCI registry host |
-| `ARTIFACTORY_USERNAME` | registry login name paired with the `factory-artifactory-*` tokens (the user the tokens were issued to, for example the bot account); REST calls send the token as a bearer and need no name |
-| `FACTORY_SOURCE_REPOSITORY` | generic repository for locks, intake files, release pointers, and the security-data bundle |
-| `UPSTREAM_OCI_REPOSITORY` | digest-pinned upstream base images |
-| `FACTORY_{BASE,APPLICATION}_QUARANTINE_REPOSITORY` | protected candidate repositories; the catalog `publication.quarantineRepository` field expands these names |
-| `FACTORY_RELEASE_REPOSITORY` / `FACTORY_CANARY_REPOSITORY` | release and canary repositories; expanded from the catalog `publication.releaseRepository` field |
+| `INTERNAL_GIT_BASE_URL` (*env*) | internal SCM namespace that holds the source mirrors |
+| `ARTIFACTORY_URL` / `ARTIFACTORY_REGISTRY` (*env*) | Artifactory API base URL and OCI registry host |
+| `ARTIFACTORY_USERNAME` (*env*) | registry login name paired with the `factory-artifactory-*` tokens (the user the tokens were issued to, for example the bot account); REST calls send the token as a bearer and need no name |
+| `FACTORY_SOURCE_REPOSITORY` (*env*) | generic repository for locks, intake files, release pointers, and the security-data bundle |
+| `UPSTREAM_OCI_REPOSITORY` (*env*) | digest-pinned upstream base images |
+| `FACTORY_{BASE,APPLICATION}_QUARANTINE_REPOSITORY` (*env*) | protected candidate repositories; the catalog `publication.quarantineRepository` field expands these names |
+| `FACTORY_RELEASE_REPOSITORY` / `FACTORY_CANARY_REPOSITORY` (*env*) | release and canary repositories; expanded from the catalog `publication.releaseRepository` field |
 | `FACTORY_CATALOG_DIR` | catalog directory (`catalog/images`) |
-| `FACTORY_UBI_MIRROR_URL` | internal mirror of the public UBI RPM content (`https://cdn-ubi.redhat.com/content/public/ubi/dist`, same layout). Builds read `ubi<major>/<major>/<arch>/{baseos,appstream}/os` under it with Secret `factory-rpm-mirror` |
+| `FACTORY_UBI_MIRROR_URL` (*env*) | internal mirror of the public UBI RPM content (`https://cdn-ubi.redhat.com/content/public/ubi/dist`, same layout). Builds read `ubi<major>/<major>/<arch>/{baseos,appstream}/os` under it with Secret `factory-rpm-mirror` |
 | `FACTORY_DEFAULT_BRANCH` | branch that scheduled runs and agent change requests target |
-| `FACTORY_GOV_APPROVER_PATTERN` | regular expression the merging approver must match for gov1/gov2 |
+| `FACTORY_GOV_APPROVER_PATTERN` (*env*) | regular expression the merging approver must match for gov1/gov2 |
 | `FACTORY_POINTER_ENVIRONMENT` | environment whose base releases update the release pointer (`commercial`) |
-| `CISA_KEV_URL` | CISA KEV (Known Exploited Vulnerabilities) JSON feed, linked from the [KEV catalog page](https://www.cisa.gov/known-exploited-vulnerabilities-catalog); used when building the security-data bundle |
+| `CISA_KEV_URL` (*env*) | CISA KEV (Known Exploited Vulnerabilities) JSON feed, linked from the [KEV catalog page](https://www.cisa.gov/known-exploited-vulnerabilities-catalog); used when building the security-data bundle |
 | `FACTORY_UPSTREAM_BRANCH` | Repo One branch followed by intake and upstream-sync |
-| `FACTORY_PAC_CONTROLLER_URL` / `FACTORY_PAC_REPOSITORY` | PaC incoming endpoint and Repository CR name |
-| `FACTORY_GITLAB_API_URL` | GitLab API for agent comments and merge requests; defaults to `https://<git host>/api/v4` (`FACTORY_GITHUB_API_URL` applies only when `git_provider` is `github`) |
-| `SCM_BOT_AUTHOR_NAME` / `SCM_BOT_AUTHOR_EMAIL` | commit identity for agent proposals and release requests |
-| `ANTHROPIC_BASE_URL` | Anthropic-format [LLM gateway](https://code.claude.com/docs/en/llm-gateway) for Claude Code |
-| `ANTHROPIC_DEFAULT_SONNET_MODEL` / `_OPUS_MODEL` | optional gateway model names for the `sonnet`/`opus` aliases ([model configuration](https://code.claude.com/docs/en/model-config)) |
+| `FACTORY_PAC_CONTROLLER_URL` (*env*) / `FACTORY_PAC_REPOSITORY` | PaC incoming endpoint and Repository CR name |
+| `FACTORY_GITLAB_API_URL` (*env*) | GitLab API for agent comments and merge requests; defaults to `https://<git host>/api/v4` (`FACTORY_GITHUB_API_URL` applies only when `git_provider` is `github`) |
+| `SCM_BOT_AUTHOR_NAME` / `SCM_BOT_AUTHOR_EMAIL` (*env*) | commit identity for agent proposals and release requests |
+| `ANTHROPIC_BASE_URL` (*env*) | Anthropic-format [LLM gateway](https://code.claude.com/docs/en/llm-gateway) for Claude Code |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL` / `_OPUS_MODEL` | optional gateway model names for the `sonnet`/`opus` aliases ([model configuration](https://code.claude.com/docs/en/model-config)); to use them, add the key to the environment manifests and a matching entry to `deploy/components/environment` |
 | `FACTORY_AGENT_TIMEOUT` | wall-clock limit per agent run |
 
 ## Artifactory layout
@@ -107,27 +156,27 @@ works as long as these two hold:
 
 The factory's logical repositories are therefore path prefixes, and the trust
 boundaries between them are enforced with Artifactory permission targets
-(include patterns on the prefix) and one access token per target. The
-`deploy/overlays/dev` overlay is a worked example on one docker and one
-generic repository (`artifactory.cicd.dc`); the base manifests use neutral
-placeholder names.
+(include patterns on the prefix) and one access token per target. The dev
+environment (`deploy/environments/dev/manifest/environment.yaml`) is a worked
+example on one docker and one generic repository; the example environment uses
+neutral placeholder names. The prefixes below are the dev layout.
 
-| Factory setting | Dev value (prefix) | Holds | Token (Secret) and scope |
+| Factory setting | Dev prefix | Holds | Token (Secret) and scope |
 |---|---|---|---|
-| runner images (Repository CR params) | `…docker-dev-local/factory/` | the three runner images, by digest | pushed by an operator; read by the kubelet |
-| `UPSTREAM_OCI_REPOSITORY` | `…docker-dev-local/upstream` | Iron Bank bases imported by intake | `factory-artifactory-intake` write; `-read` read |
-| `FACTORY_BASE_QUARANTINE_REPOSITORY` | `…docker-dev-local/quarantine/bases` | gated base candidates and their evidence referrers | `factory-artifactory-quarantine` write |
-| `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | `…docker-dev-local/quarantine/apps` | gated application candidates | same |
-| `FACTORY_RELEASE_REPOSITORY` | `…docker-dev-local/release` | promoted images, cosign signatures and attestations | `factory-artifactory-release` write; `-sign` for signatures |
-| `FACTORY_CANARY_REPOSITORY` | `…docker-dev-local/canary` | UBI 10 canary | release |
-| `FACTORY_SOURCE_REPOSITORY` | `…generic-dev-local/factory` | `locks/` (signed resource locks), intake resources, `releases/<image>/current.json` (pointers), `security-data/` (signed scanner bundle) | `-intake` writes locks, resources, and the bundle; `-pointer` writes pointers; `-read` reads |
-| `FACTORY_UBI_MIRROR_URL` | `https://<host>/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist` | remote repository in front of the UBI CDN, same layout | `factory-rpm-mirror` (bot account + token) read |
+| runner images (`*_IMAGE` manifest keys) | `<docker repository>/factory/` | the three runner images, by digest | pushed by an operator; read by the kubelet |
+| `UPSTREAM_OCI_REPOSITORY` (*env*) | `<docker repository>/upstream` | Iron Bank bases imported by intake | `factory-artifactory-intake` write; `-read` read |
+| `FACTORY_BASE_QUARANTINE_REPOSITORY` | `<docker repository>/quarantine/bases` | gated base candidates and their evidence referrers | `factory-artifactory-quarantine` write |
+| `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | `<docker repository>/quarantine/apps` | gated application candidates | same |
+| `FACTORY_RELEASE_REPOSITORY` | `<docker repository>/release` | promoted images, cosign signatures and attestations | `factory-artifactory-release` write; `-sign` for signatures |
+| `FACTORY_CANARY_REPOSITORY` | `<docker repository>/canary` | UBI 10 canary | release |
+| `FACTORY_SOURCE_REPOSITORY` (*env*) | `<generic repository>/factory` | `locks/` (signed resource locks), intake resources, `releases/<image>/current.json` (pointers), `security-data/` (signed scanner bundle) | `-intake` writes locks, resources, and the bundle; `-pointer` writes pointers; `-read` reads |
+| `FACTORY_UBI_MIRROR_URL` (*env*) | `https://<host>/artifactory/<UBI remote repository>/content/public/ubi/dist` | remote repository in front of the UBI CDN, same layout | `factory-rpm-mirror` (bot account + token) read |
 
-Permission targets for the dev overlay (repository, include pattern, who):
+Permission targets for the dev environment (repository, include pattern, who):
 
 | Target | Repository | Include pattern | Permission | Used by |
 |---|---|---|---|---|
-| factory-read | docker, generic, ext-redhat-ubi-remote | `**` | read | `factory-artifactory-read`, `factory-rpm-mirror` |
+| factory-read | docker, generic, UBI remote | `**` | read | `factory-artifactory-read`, `factory-rpm-mirror` |
 | factory-intake | docker | `upstream/**` | read, deploy | `factory-artifactory-intake` |
 | factory-intake | generic | `factory/locks/**`, `factory/resources/**`, `factory/security-data/**` | read, deploy | `factory-artifactory-intake` |
 | factory-quarantine | docker | `quarantine/**` | read, deploy | `factory-artifactory-quarantine` |
@@ -155,13 +204,13 @@ What the given repositories cannot provide:
 - **RPM content** does not come from the local rpm repository: a *local*
   repository serves only what is uploaded to it, and the build expects the UBI
   CDN layout (`ubi9/9/x86_64/baseos/os/…`) under `FACTORY_UBI_MIRROR_URL`. The
-  dev instance already has a *remote* repository, `ext-redhat-ubi-remote`, in
-  front of `https://cdn-ubi.redhat.com`, so the overlay points at
-  `…/artifactory/ext-redhat-ubi-remote/content/public/ubi/dist` and the
-  catalog's `build.rpm.source: private-mirror` applies. `factory-rpm-mirror`
+  dev instance already has a *remote* repository in front of
+  `https://cdn-ubi.redhat.com`, so the dev manifest points
+  `FACTORY_UBI_MIRROR_URL` at `…/artifactory/<remote>/content/public/ubi/dist`
+  and the catalog's `build.rpm.source: private-mirror` applies. `factory-rpm-mirror`
   holds the bot account and its token (Artifactory accepts a token as the
   basic-auth password). Without such a remote repository, set
-  `FACTORY_RPM_SOURCE_MODE: public-upstream` to install from the CDN directly;
+  `FACTORY_RPM_SOURCE_MODE: public-upstream` (in `factory-settings`) to install from the CDN directly;
   `image-metadata.json` records `rpmSource` either way.
 - **Environment separation.** One `dev` repository per type is fine for
   development. The `commercial`/`gov1`/`gov2` release environments and the
@@ -342,7 +391,9 @@ dedicated, tainted node pool ([scope.md](scope.md#security-trade-off-accepted-wi
 
 ## Tekton Chains
 
-`deploy/chains/chains-config.yaml` sets the `slsa/v2alpha3` provenance format
+`deploy/chains/chains-config.yaml` (applied per environment with
+`deploy/environments/<env>/chains`, which fills `builder.id` from
+`CHAINS_BUILDER_ID`) sets the `slsa/v2alpha3` provenance format
 for TaskRuns and PipelineRuns, OCI storage, and no public transparency log.
 In Chains v0.28, `slsa/v2alpha3` produces SLSA v1.0 provenance from Tekton `v1`
 objects; the similarly named `slsa/v1` is an alias of `in-toto` and produces the
