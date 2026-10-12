@@ -6,8 +6,9 @@ This applies [Running the full pipeline on a local cluster](operations.md#runnin
 to Rancher Desktop on a work laptop. Only the cluster is local: the runs use the
 dev GitLab project and dev Artifactory repositories
 (`deploy/environments/dev`), with the `local-cluster` component (no
-NetworkPolicies, agents off). This is not a laptop harness: there is no
-`make` target for it, and nothing here changes what production runs.
+NetworkPolicies, agents off). Nothing here changes what production runs. To
+build a single image without GitLab, Artifactory, or credentials, use the
+[local harness](local-harness.md) on the same cluster after steps 1 and 3.
 
 The Rancher Desktop settings below come from its documentation and have not
 been run as a whole by this change. Steps marked **Check** confirm each one

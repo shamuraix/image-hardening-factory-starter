@@ -14,9 +14,12 @@ not a deployment platform.
 Scope (`docs/scope.md`): every stage is a Kubernetes pod running daemonless
 tools on **Kubernetes 1.28+** (containerd 1.7). No container engine, no running
 the candidate image, no pod user namespaces, `procMount`, or `appArmorProfile`
-field. Compliance scanning (OpenSCAP), malware scanning (ClamAV), runtime
-product tests, and a local kind harness are out of scope: never add them back
-or propose them as a fix.
+field. Compliance scanning (OpenSCAP), malware scanning (ClamAV), and runtime
+product tests are out of scope: never add them back or propose them as a fix.
+The local harness (`tests/integration/local`, `docs/local-harness.md`) is a
+developer tool that runs the production Tasks on a 1.28+ cluster; it must
+never gain settings production does not have (pod user namespaces, a test
+stage, its own runtime class).
 
 Pipelines are **Tekton** triggered by **Pipelines-as-Code** (PaC). Operational
 upkeep is assisted by **Claude Code agents** that can only propose changes.
@@ -71,8 +74,9 @@ make agents         # list agent personas, their modes and purpose
 make toolchain      # download pinned tools + build the wheel into dist/ (needs network)
 ```
 
-There is no host-side build and no local harness: images are built only by the
-Tekton Task, in a cluster.
+There is no host-side build: images are built only by the Tekton Task, in a
+cluster. `make harness-up` / `make harness-run IMAGE=<catalog image>` run the
+production Tasks on a local 1.28+ cluster (`docs/local-harness.md`).
 
 ## Iron Bank overlay rules (summary — see `.claude/skills/ironbank-overlays`)
 

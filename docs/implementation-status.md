@@ -47,8 +47,10 @@ has not yet run in a cluster.
 
 ## Known gaps and follow-ups
 
-- There is no local harness. Validating pipeline changes needs a development
-  cluster (for example `deploy/environments/dev`).
+- The local harness (`docs/local-harness.md`) builds base and application
+  images with the production Tasks on a 1.28+ cluster, but not scan, gate, or
+  release; those still need a development cluster (`deploy/environments/dev`).
+  Its first run is also the first run of the 1.28 build path.
 - Without pod user namespaces, build pods use real host UIDs (10001 and the
   `100000:65536` subordinate range). Keep build pods on a dedicated node pool.
 - The Pipelines-as-Code v0.51 and Tekton Chains v0.28 minimum Kubernetes
