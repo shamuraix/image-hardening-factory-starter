@@ -6,7 +6,6 @@
 # Inputs, produced by `make toolchain` (toolchain/download-tools.py and a wheel
 # of this repository), are copied in; nothing is downloaded while building:
 #   dist/tools/         pinned static binaries (tools/versions.lock.yaml)
-#   dist/rpms/          the ClamAV package (not in the UBI repositories)
 #   dist/src/           the shadow source archive (newuidmap/newgidmap, below)
 #   dist/factory-wheel/ this repository and its Python dependencies
 #   dist/ca-trust/      optional extra CA certificates (*.crt, PEM) to trust,
@@ -14,23 +13,20 @@
 #                       FACTORY_CA_BUNDLE in toolchain/build-dist.sh
 #
 # BASE_REF is the UBI 9 minimal image: the internal hardened base in production,
-# registry.access.redhat.com/ubi9/ubi-minimal in the kind harness.
+# or registry.access.redhat.com/ubi9/ubi-minimal for a connected development
+# build.
 ARG BASE_REF
 
 # ---------------------------------------------------------------------------
 # Stage 1: newuidmap/newgidmap built with libcap. Nothing from this stage but
 # the two binaries reaches the runner.
 #
-# Rootless BuildKit and Podman map the factory user's subordinate ID range into
-# a child user namespace through these setuid helpers. The kernel gives a
-# setuid-root program only the capabilities in the caller's bounding set, and
-# the build and test steps keep that set to CAP_SETUID and CAP_SETGID. The UBI
-# shadow-utils build has no libcap support: as a setuid program it stays uid 0,
-# so opening the child's /proc/<pid>/uid_map needs CAP_DAC_OVERRIDE and the
-# kernel's map_write() check needs CAP_SYS_ADMIN over the target namespace. A
-# libcap-aware build instead drops back to the caller's uid before opening the
-# map and keeps only CAP_SETUID (or CAP_SETGID), which is exactly what the
-# steps grant (shadow lib/idmapping.c, write_mapping).
+# Rootless BuildKit maps the factory user's subordinate ID range into a child
+# user namespace through these helpers, which run with a file capability (stage
+# 2). The libcap-aware build raises only the one capability it needs
+# (CAP_SETUID or CAP_SETGID) for the moment it writes the map and drops every
+# other capability, so it works within the build step's bounding set of exactly
+# CAP_SETUID and CAP_SETGID (shadow lib/idmapping.c, write_mapping).
 # ---------------------------------------------------------------------------
 FROM ${BASE_REF} AS idmap-build
 COPY dist/ca-trust/ /tmp/ca-trust/
@@ -60,7 +56,6 @@ FROM ${BASE_REF}
 ARG FACTORY_UID=10001
 ARG FACTORY_GID=10001
 COPY dist/tools/ /usr/local/bin/
-COPY dist/rpms/ /tmp/rpms/
 COPY dist/factory-wheel/ /tmp/wheels/
 COPY dist/ca-trust/ /tmp/ca-trust/
 
@@ -75,19 +70,19 @@ RUN if ls /tmp/ca-trust/*.crt >/dev/null 2>&1; then \
     && rm -rf /tmp/ca-trust
 RUN if ! curl -fsS -o /dev/null https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi9/9/x86_64/baseos/os/repodata/repomd.xml; then \
       echo "cannot reach cdn-ubi.redhat.com over TLS from inside the build." >&2; \
-      echo "Behind a TLS-inspecting proxy, export its root certificate and set FACTORY_CA_BUNDLE (docs/local-kubernetes-testing.md)." >&2; \
+      echo "Behind a TLS-inspecting proxy, export its root certificate and set FACTORY_CA_BUNDLE (docs/configuration.md)." >&2; \
       curl -sS -o /dev/null https://cdn-ubi.redhat.com/ >&2 || true; \
       exit 1; \
     fi
 
 # UBI 9 AppStream/BaseOS packages: Python 3.12 (the system python3 is 3.9),
-# rootless Podman with its user-namespace libraries (shadow-utils-subid reads
-# /etc/subuid for Podman; shadow-utils' own newuidmap/newgidmap are replaced
-# below), Skopeo, OpenSCAP, git, jq. curl is already present as curl-minimal
-# (installing "curl" conflicts).
+# Skopeo, git, jq, and libcap for setcap (below). shadow-utils' own
+# newuidmap/newgidmap are replaced below. curl is already present as
+# curl-minimal (installing "curl" conflicts). No container engine is installed:
+# BuildKit is the only builder and nothing runs the candidate image.
 RUN microdnf install -y --setopt=install_weak_deps=0 \
       python3.12 python3.12-pip git-core jq tar gzip \
-      podman skopeo shadow-utils shadow-utils-subid slirp4netns fuse-overlayfs openscap-scanner \
+      skopeo shadow-utils libcap \
     && microdnf clean all && rm -rf /var/cache/dnf
 # The libcap-aware mapping helpers from stage 1 replace the shadow-utils copies.
 COPY --from=idmap-build /out/newuidmap /out/newgidmap /usr/bin/
@@ -99,28 +94,25 @@ RUN ln -sf /usr/bin/python3.12 /usr/local/bin/python3 \
     && python3 -c 'import factory.cli' \
     && rm -rf /tmp/wheels
 
-# ClamAV from the official package (not in the UBI repositories).
-RUN rpm -i /tmp/rpms/clamav-*.rpm && rm -rf /tmp/rpms
-
 # Every tool the stage scripts call must be present; name the missing one.
 RUN chmod 0555 /usr/local/bin/* \
-    && for tool in buildctl buildkitd buildkit-runc rootlesskit umoci cosign oras \
-         syft grype trivy osv-scanner yq opa clamscan freshclam; do \
+    && for tool in buildctl buildkitd buildkit-runc rootlesskit cosign oras \
+         syft grype trivy osv-scanner yq opa; do \
          test -x "/usr/local/bin/${tool}" || { echo "missing tool: ${tool}" >&2; exit 1; }; \
        done \
-    && for tool in podman skopeo oscap git jq curl; do \
+    && for tool in skopeo git jq curl setcap getcap; do \
          command -v "${tool}" >/dev/null || { echo "missing package tool: ${tool}" >&2; exit 1; }; \
        done
 
 # The unprivileged factory user with the subordinate ID range rootless BuildKit
-# and Podman map into, and the helpers that make that mapping possible.
-# RHEL 9 ships newuidmap/newgidmap with file capabilities (cap_setuid /
-# cap_setgid) instead of the setuid bit. Inside a pod user namespace
-# (hostUsers: false) the kernel ignores capability xattrs written outside that
-# namespace, so the helpers would not work there; the setuid bit does, because
-# the image's root maps to the pod's root. Set it explicitly, on the libcap-aware
-# build from stage 1 (verified by its lockdown message), and list every setuid
-# file in the image for the build log.
+# maps into, and the helpers that make that mapping possible.
+# Build pods run in the host user namespace (Kubernetes 1.28 has no usable pod
+# user namespaces), so the helpers carry file capabilities, as RHEL 9 ships
+# them: newuidmap gets only cap_setuid and newgidmap only cap_setgid, and
+# neither is setuid, so nothing in the image ever runs with euid 0. The step
+# must keep CAP_SETUID/CAP_SETGID in its bounding set and allow privilege
+# escalation, because no_new_privs also disables file capabilities. List every
+# setuid file and every file capability in the image for the build log.
 RUN printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
     && printf 'factory:x:%s:%s:Image Factory:/home/factory:/bin/bash\n' \
       "${FACTORY_UID}" "${FACTORY_GID}" >>/etc/passwd \
@@ -130,21 +122,19 @@ RUN printf 'factory:x:%s:\n' "${FACTORY_GID}" >>/etc/group \
          test -x "${helper}" || { echo "${helper} is missing" >&2; exit 1; }; \
          grep -aq 'Could not set caps' "${helper}" \
            || { echo "${helper} is not the libcap-aware build from stage 1" >&2; exit 1; }; \
-         chown root:root "${helper}" && chmod 4755 "${helper}"; \
-         test -u "${helper}" || { echo "could not make ${helper} setuid" >&2; ls -l "${helper}" >&2; exit 1; }; \
+         chown root:root "${helper}" && chmod 0755 "${helper}"; \
        done \
+    && setcap cap_setuid=ep /usr/bin/newuidmap \
+    && setcap cap_setgid=ep /usr/bin/newgidmap \
+    && getcap /usr/bin/newuidmap | grep -q 'cap_setuid=ep' \
+    && getcap /usr/bin/newgidmap | grep -q 'cap_setgid=ep' \
     && echo "setuid files in the runner:" && find / -xdev -type f -perm -4000 -exec ls -l {} + \
-    && { test -x /usr/bin/slirp4netns || { echo "slirp4netns is missing" >&2; exit 1; }; } \
+    && echo "file capabilities in the runner:" && getcap -r / 2>/dev/null \
     && install -d -m 0700 -o "${FACTORY_UID}" -g "${FACTORY_GID}" \
-      /home/factory /home/factory/.config /home/factory/.config/containers \
-      /home/factory/.local/share/containers /tmp/factory-runtime
-
-COPY --chown=${FACTORY_UID}:${FACTORY_GID} toolchain/storage.conf toolchain/containers.conf /home/factory/.config/containers/
+      /home/factory /tmp/factory-runtime
 
 ENV HOME=/home/factory \
-    XDG_RUNTIME_DIR=/tmp/factory-runtime \
-    CONTAINERS_STORAGE_CONF=/home/factory/.config/containers/storage.conf \
-    STORAGE_DRIVER=vfs
+    XDG_RUNTIME_DIR=/tmp/factory-runtime
 USER ${FACTORY_UID}
 ENTRYPOINT []
 CMD ["/bin/bash"]

@@ -65,16 +65,6 @@ fi
 python3 -m factory.cli normalize-findings "${normalize_args[@]}"
 digest=$(skopeo inspect --format '{{.Digest}}' "oci-archive:${work_dir}/image.oci.tar")
 
-malware_bundle="${work_dir}/malware-rootfs"
-malware_rootfs=$(scripts/unpack_image.sh "${work_dir}/image.oci.tar" "${malware_bundle}")
-cleanup_malware() {
-  podman unshare rm -rf "${malware_bundle}" >/dev/null 2>&1 || true
-}
-trap cleanup_malware EXIT
-podman unshare clamscan \
-  --database="${data}/clamav" --recursive --infected "${malware_rootfs}" \
-  >"${scans}/clamav.txt"
-
 # Vulnerability data is as old as its oldest part: the gate's freshness check
 # uses the earlier of the security-data bundle time and the Grype database
 # build time.

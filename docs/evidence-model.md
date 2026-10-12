@@ -1,6 +1,6 @@
 # Evidence model
 
-[Project overview](../README.md) · [Architecture](architecture.md) · [Operations](operations.md)
+[Project overview](../README.md) · [Scope](scope.md) · [Architecture](architecture.md) · [Operations](operations.md)
 
 **Evidence** is the set of files that describe one built image (the
 **candidate**). Every piece of evidence names the candidate's image digest
@@ -11,11 +11,14 @@
 - a signed resource lock (the exact upstream inputs)
 - SBOMs (software bills of materials) in CycloneDX and SPDX format
 - a scanner assessment and normalized vulnerability findings
-- a compliance result
-- a test result
 - a gate result (the release policy decision)
 - build provenance
 - an approval (the merge of the release request)
+
+Compliance scan results (OpenSCAP), malware scan results, and runtime test
+results are not part of this pipeline's evidence and are not required for a
+release from it ([scope.md](scope.md)). A consuming environment that produces
+them can attest them to the same digest with its own key.
 
 ## Signed attestations
 
@@ -32,8 +35,6 @@ item below as a signed attestation (a signed statement about the digest).
 | Scanner decision (`delegated-scanners-decision`) | scan stage | backend, scanner identity, digest, `assessmentPassed`, Grype validation details |
 | Raw scanner reports | scan stage | Grype, Trivy, and OSV-Scanner JSON; Syft version |
 | Vulnerability findings | scan stage (`factory.cli normalize-findings`) | normalized findings from all scanners, with fix and KEV flags |
-| Compliance result | compliance stage (OpenSCAP) | pass/fail and rule counts |
-| Test result | test stage | pass/fail and exit code |
 | Gate decision | gate stage (OPA, Open Policy Agent) | `allow`, `deny[]`, `warn[]`, scanner backend, digest |
 | Approval | release pipeline | approver (who merged the release request), environment, digest, time |
 
@@ -58,8 +59,7 @@ verified and sealed.
 3. **Normalize.** `factory.cli normalize-findings` merges the three reports into
    `evidence/findings.json` and marks KEV (CISA Known Exploited Vulnerabilities)
    entries.
-4. **Malware.** ClamAV scans the unpacked image.
-5. **Status.** It writes `evidence/database-status.json` and
+4. **Status.** It writes `evidence/database-status.json` and
    `evidence/scans/delegated/status.json` (the assessment).
 
 ### What makes Grype validation fail
@@ -79,8 +79,8 @@ Grype validation fails closed: any problem stops the scan stage. The checks are:
 
 ### Effect on the run and on other scanners
 
-- When Grype validation fails, `scan_image.sh` exits before Trivy, OSV-Scanner,
-  and ClamAV run, and no assessment status is written.
+- When Grype validation fails, `scan_image.sh` exits before Trivy and
+  OSV-Scanner run, and no assessment status is written.
 - The scan stage is allowed to fail, so its partial evidence is kept. The
   assessment stage then fails because the assessment status is missing. Tekton
   marks the PipelineRun failed and the gate never runs, so the candidate cannot
@@ -130,7 +130,7 @@ scanner backend.
 The gate (`policies/rego/factory/release/release.rego`) denies when any of
 these is true:
 
-- the SBOM is invalid, compliance failed, or tests failed;
+- the SBOM is invalid;
 - the candidate digest is invalid;
 - the assessment did not pass, has the wrong scanner identity, or names a
   different digest;
@@ -139,8 +139,8 @@ these is true:
   [`evidence-model` skill](../.claude/skills/evidence-model/SKILL.md)).
 
 Warnings never cancel a deny. Exceptions in `policies/exceptions/approved.json`
-apply only to vulnerability findings; they never bypass identity, freshness,
-compliance, tests, or signatures.
+apply only to vulnerability findings; they never bypass identity, freshness, or
+signatures.
 
 ## Moving evidence between stages and pipelines
 

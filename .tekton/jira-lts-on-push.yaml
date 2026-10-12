@@ -10,8 +10,6 @@ metadata:
       event == "push" && target_branch == "main" && (
           "catalog/images/jira-lts.yaml".pathChanged() ||
           "overlays/jira-lts/patches/**".pathChanged() ||
-          "tests/profiles/jira/**".pathChanged() ||
-          "tests/profiles/base/**".pathChanged() ||
           "scripts/**".pathChanged() ||
           "factory/**".pathChanged() ||
           "policies/**".pathChanged() ||
@@ -72,28 +70,15 @@ spec:
     serviceAccountName: factory-reader
   - pipelineTaskName: build
     serviceAccountName: factory-buildkit
-    podTemplate:
-      hostUsers: false
+    metadata:
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/step-run: unconfined
   - pipelineTaskName: sbom
     serviceAccountName: factory-offline
   - pipelineTaskName: scan
     serviceAccountName: factory-offline
   - pipelineTaskName: assessment
     serviceAccountName: factory-offline
-  - pipelineTaskName: compliance
-    serviceAccountName: factory-offline
-    podTemplate:
-      nodeSelector:
-        factory.dev/fips-node: 'true'
-      tolerations:
-      - key: factory.dev/fips-node
-        operator: Equal
-        value: 'true'
-        effect: NoSchedule
-  - pipelineTaskName: test
-    serviceAccountName: factory-test
-    podTemplate:
-      hostUsers: false
   - pipelineTaskName: gate
     serviceAccountName: factory-offline
   - pipelineTaskName: quarantine

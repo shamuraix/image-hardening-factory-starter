@@ -1,6 +1,6 @@
 # Resolves the signed resource lock, applies overlays, and assembles the build
 # context, then downloads and verifies the signed security-data bundle used by
-# scan and compliance. Trust class: internal read (Artifactory read token,
+# the scan stage. Trust class: internal read (Artifactory read token,
 # intake public key).
 apiVersion: tekton.dev/v1
 kind: Task
@@ -34,7 +34,7 @@ spec:
   results:
     - name: seal
     - name: security-data-seal
-      description: Seal of the verified security-data bundle (scan and compliance only).
+      description: Seal of the verified security-data bundle (scan stage only).
     - name: status
   volumes:
     - name: intake-public-key

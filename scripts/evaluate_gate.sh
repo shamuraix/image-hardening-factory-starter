@@ -22,8 +22,6 @@ python3 -m factory.cli gate-input \
   --image-digest "$(jq -er '.digest' "${work_dir}/image-metadata.json")" \
   --sbom "${evidence}/sbom.cdx.json" \
   --findings "${evidence}/findings.json" \
-  --compliance "${evidence}/compliance/result.json" \
-  --tests "${evidence}/tests/result.json" \
   --database-status "${evidence}/database-status.json" \
   --assessment-status "${status}" \
   --output "${evidence}/gate-input.json"

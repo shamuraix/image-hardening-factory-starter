@@ -4,9 +4,9 @@
 
 1. Intake and signed resource locks
 2. Rootless OCI builds with internal RPM source control
-3. SBOM + delegated scanner evidence + compliance/test evidence
+3. SBOM + delegated scanner evidence
 4. Policy-gated import, signing, and digest-preserving promotion
-5. Signed offline security data for scanners and compliance
+5. Signed offline security data for scanners
 6. Tekton + Pipelines-as-Code orchestration with a Claude Code operations layer
 
 Current status per capability is in [docs/implementation-status.md](docs/implementation-status.md).
@@ -62,7 +62,9 @@ Deliver:
 - Syft CycloneDX/SPDX SBOMs
 - Scanner evidence (Grype/Trivy/OSV + normalized findings)
 - Delegated assessment status artifact
-- Compliance and product-test evidence
+
+Out of scope ([docs/scope.md](docs/scope.md)): compliance scanning, malware
+scanning, and runtime product tests.
 
 Done when:
 
@@ -87,16 +89,16 @@ Done when:
 
 Deliver:
 
-- Daily connected job that downloads scanner databases, the CISA KEV catalog,
-  ClamAV signatures, and SCAP content, signs the bundle, and publishes it
-- Fetch-and-verify step in every build, with the bundle sealed for scan and
-  compliance
+- Daily connected job that downloads scanner databases and the CISA KEV
+  catalog, signs the bundle, and publishes it
+- Fetch-and-verify step in every build, with the bundle sealed for the scan
+  stage
 - Grype validation that fails closed on invalid data, mismatched SBOMs, or stale
   KEV data
 
 Done when:
 
-- Scan and compliance stages read only data whose signature and manifest verified
+- The scan stage reads only data whose signature and manifest verified
 - A stale or tampered bundle makes the gate deny rather than pass silently
 
 ### Milestone 7 — UBI canary evolution
@@ -133,5 +135,5 @@ Done when:
 - Every consumer verifies upstream seals before reading evidence
 - Agent output can only reach `main` as a reviewed change request that passed
   the authoritative write-policy check
-- A real-cluster run builds, gates, quarantines, requests, signs, and promotes
-  all three Atlassian images
+- A real-cluster run on Kubernetes 1.28 builds, gates, quarantines, requests,
+  signs, and promotes all three Atlassian images

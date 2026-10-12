@@ -1,5 +1,5 @@
 .PHONY: validate test lint plan ci tekton-render tekton-check release-requests agents \
-	update-pins package policy-test toolchain harness-up harness-run harness-down
+	update-pins package policy-test toolchain
 
 PY := PYTHONPATH=. python3
 
@@ -39,18 +39,6 @@ update-pins:
 
 toolchain:
 	toolchain/build-dist.sh dist
-
-harness-up:
-	tests/integration/kind/up.sh
-
-# harness-run first redeploys the source snapshot, Tasks, and Pipelines, so a
-# pulled fix is what the next run executes (idempotent, a few seconds).
-harness-run:
-	KUBECONFIG="$${FACTORY_HARNESS_STATE:-.local-factory/kind-review}/kubeconfig" tests/integration/kind/deploy.sh
-	python3 tests/integration/kind/tekton.py --state "$${FACTORY_HARNESS_STATE:-.local-factory/kind-review}" run --image "$${IMAGE:-ubi9-minimal}"
-
-harness-down:
-	tests/integration/kind/down.sh
 
 package:
 	git archive --format=tar.gz --output=image-hardening-factory.tar.gz HEAD

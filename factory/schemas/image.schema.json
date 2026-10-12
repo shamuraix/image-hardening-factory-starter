@@ -108,8 +108,7 @@
       "required": [
         "platforms",
         "network",
-        "base",
-        "testProfile"
+        "base"
       ],
       "properties": {
         "platforms": {
@@ -164,10 +163,6 @@
             }
           ]
         },
-        "testProfile": {
-          "type": "string",
-          "pattern": "^[a-z0-9][a-z0-9-]+$"
-        },
         "rpm": {
           "type": "object",
           "additionalProperties": false,
@@ -195,14 +190,10 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "profile",
         "maximumDatabaseAgeHours",
         "block"
       ],
       "properties": {
-        "profile": {
-          "type": "string"
-        },
         "maximumDatabaseAgeHours": {
           "type": "integer",
           "minimum": 1

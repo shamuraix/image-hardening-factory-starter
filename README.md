@@ -6,7 +6,7 @@ internal hardened UBI 9 base and produces, for every candidate:
 
 - a digest-pinned OCI image built rootless from signed, locked inputs
 - CycloneDX and SPDX SBOMs
-- vulnerability, malware, OpenSCAP compliance, and product-test evidence
+- vulnerability scan evidence (Grype, Trivy, OSV-Scanner) with CISA KEV flags
 - an OPA release decision bound to the candidate digest
 - Cosign signatures and in-toto attestations, plus Tekton Chains SLSA provenance
 
@@ -16,7 +16,11 @@ upkeep — failure triage, CVE remediation, Iron Bank upstream tracking, release
 briefings, exception hygiene, and pipeline reviews — is assisted by **Claude Code
 agents** that can only *propose* changes for human review.
 
-It is a build-and-evidence system, not a deployment platform.
+It is a build-and-evidence system, not a deployment platform. Every stage is a
+plain Kubernetes pod running daemonless tools on **Kubernetes 1.28+**; nothing
+runs a container engine or the candidate image. Compliance scanning (OpenSCAP),
+malware scanning, and runtime product tests are out of scope and belong to the
+consuming environment — see [docs/scope.md](docs/scope.md).
 
 ```mermaid
 flowchart LR
@@ -33,10 +37,9 @@ flowchart LR
 ## New here? Start in 10 minutes
 
 Day-one needs Python 3.11+, git, and the GNU `sha256sum` and `sort` the seal
-scripts use (`brew install coreutils` on macOS). The only other host software
-is for the optional local cluster: a container runtime (Podman or Docker),
-`kind`, and `kubectl`. There is no host-side build toolchain to install;
-builds run inside the same runner image and Tekton Task the pipeline uses.
+scripts use (`brew install coreutils` on macOS). That is all: there is no
+host-side build toolchain, container runtime, or local cluster harness. Images
+are built only by the Tekton Task, in a cluster.
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
@@ -45,18 +48,9 @@ make ci          # validate, tekton-check, release-requests, lint, test (+ opa i
 make agents      # list the agent personas
 ```
 
-To build an image for real on a disposable local cluster (about 15 minutes the
-first time; needs `kind` at the version in `tools/versions.lock.yaml`):
-
-```bash
-make harness-up                  # kind cluster, runner image, Tekton, factory objects
-make harness-run IMAGE=ubi9-minimal   # rootless build, SBOM, tests, seal checks
-make harness-down
-```
-
-Harness builds use Red Hat's public UBI content and an unsigned lock, so they
-can never be imported, signed, or promoted. See
-[docs/local-kubernetes-testing.md](docs/local-kubernetes-testing.md).
+To build an image for real, open a merge request (the PR pipeline builds,
+scans, and gates without publishing) or run the pipeline on a development
+cluster with `deploy/overlays/local` ([docs/operations.md](docs/operations.md#running-the-full-pipeline-on-a-local-cluster)).
 
 ### Work with the agents interactively
 
@@ -70,7 +64,7 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 1. **Merge request** (GitLab; PaC calls the event `pull_request`) — PaC runs
    `factory-checks` and, for each image whose inputs changed,
    `<image>-on-pull-request`: validate → prepare → rootless build → SBOM →
-   scan/assessment → compliance (FIPS nodes) + tests → gate. Nothing is published.
+   scan/assessment → gate. Nothing is published.
    Failures get a triage comment from the `failure-triage` agent.
 2. **Merge to `main`** — `<image>-on-push` repeats the build, imports the passing
    candidate into quarantine, attaches its evidence bundle as an OCI referrer, and
@@ -99,17 +93,17 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 | `factory/` | Python: catalog, planning, findings, gate input, Tekton rendering, agents, release requests |
 | `scripts/` | Stage scripts; `scripts/tekton/` runtime helpers; `scripts/agents/` agent plumbing |
 | `policies/` | OPA release policy and approved exceptions |
-| `tests/` | Unit tests, product test profiles, and the kind Tekton harness |
+| `tests/` | Unit tests |
 
 ## Documentation
 
+- [Scope](docs/scope.md) — what the pipeline does, what it leaves to others, platform floor
 - [Architecture](docs/architecture.md) — triggers, pipelines, trust classes, sealing, release flow
 - [AI agents](docs/agents.md) — personas, isolation model, guardrails, operations
 - [Configuration](docs/configuration.md) — cluster install, settings, secrets, Repository CR
 - [Operations](docs/operations.md) — bootstrap, release process, day-2 cadence, runbooks
 - [Evidence model](docs/evidence-model.md) — what is produced, signed, and verified
 - [Migration from Jenkins](docs/migration-from-jenkins.md) — concept mapping
-- [Local cluster harness](docs/local-kubernetes-testing.md) — build an image end to end on kind
 - [Implementation status](docs/implementation-status.md)
 
 ## Notes and expectations

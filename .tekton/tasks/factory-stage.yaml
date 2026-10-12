@@ -1,5 +1,5 @@
-# Generic internal-only factory stage (validate, sbom, scan, assessment,
-# compliance, gate). Three steps:
+# Generic internal-only factory stage (validate, sbom, scan, assessment, gate).
+# Three steps:
 #   verify -> check the source commit and the seals of every input stage
 #   run    -> the stage command (onError: continue so evidence is kept)
 #   seal   -> seal this stage's outputs, then fail unless the stage may fail

@@ -45,13 +45,22 @@ class PipelineTests(unittest.TestCase):
     def test_gate_requires_build_evidence_and_selects_assessment(self) -> None:
         self.assertEqual(
             seal_inputs("factory-image-build", "gate"),
-            {"build", "sbom", "scan", "assessment", "compliance", "test"},
+            {"build", "sbom", "scan", "assessment"},
         )
         self.assertEqual(seal_inputs("factory-image-build", "assessment"), {"scan"})
 
     def test_retired_placeholder_stages_are_gone(self) -> None:
         names = {entry["name"] for entry in pipeline("factory-image-build")["spec"]["tasks"]}
         self.assertFalse({"helmper", "copacetic", "hummingbird"} & names)
+
+    def test_out_of_scope_stages_are_not_in_the_pipeline(self) -> None:
+        # Runtime product tests and OpenSCAP compliance run outside the pipeline
+        # (docs/scope.md); neither a stage nor a gate input may come back.
+        names = {entry["name"] for entry in pipeline("factory-image-build")["spec"]["tasks"]}
+        self.assertFalse({"test", "compliance"} & names)
+        policy = (ROOT / "policies/rego/factory/release/release.rego").read_text(encoding="utf-8")
+        self.assertNotIn("compliancePassed", policy)
+        self.assertNotIn("testsPassed", policy)
 
     def test_scan_stage_emits_delegated_scanner_assessment(self) -> None:
         script = (ROOT / "scripts/scan_image.sh").read_text(encoding="utf-8")
@@ -87,7 +96,7 @@ class PipelineTests(unittest.TestCase):
     def test_quarantine_verifies_every_signed_evidence_seal(self) -> None:
         self.assertEqual(
             seal_inputs("factory-image-build", "quarantine"),
-            {"prepare", "build", "sbom", "scan", "assessment", "compliance", "test", "gate"},
+            {"prepare", "build", "sbom", "scan", "assessment", "gate"},
         )
         guard = pipeline_task("factory-image-build", "quarantine")["when"][0]
         self.assertEqual(guard["input"], "$(params.publish)")

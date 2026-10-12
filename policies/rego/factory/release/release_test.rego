@@ -6,8 +6,6 @@ passing_input := {
 	"image": "jira-lts",
 	"imageDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	"sbomValid": true,
-	"compliancePassed": true,
-	"testsPassed": true,
 	"findings": [],
 	"database": {"generatedAt": "2026-09-15T00:00:00Z"},
 	"assessment": {

@@ -12,18 +12,9 @@ case "${tool}" in
       echo "required command is missing: buildctl" >&2
       exit 2
     }
-    rootless=true
-    ;;
-  podman)
-    rootless=$(podman info --format '{{.Host.Security.Rootless}}')
     ;;
   *)
     echo "unsupported container tool: ${tool}" >&2
     exit 2
     ;;
 esac
-
-[[ "${rootless}" == true ]] || {
-  echo "${tool} must run rootless" >&2
-  exit 1
-}

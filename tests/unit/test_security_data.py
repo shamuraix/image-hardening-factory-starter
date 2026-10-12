@@ -13,9 +13,9 @@ def _inputs(name: str) -> list[str]:
 
 
 class SecurityDataTests(unittest.TestCase):
-    def test_scan_and_compliance_verify_the_security_data_seal(self) -> None:
+    def test_scan_verifies_the_security_data_seal(self) -> None:
         seal = "security-data=$(tasks.prepare.results.security-data-seal)"
-        for stage in ("scan", "compliance"):
+        for stage in ("scan",):
             with self.subTest(stage=stage):
                 self.assertIn(seal, _inputs(stage))
         prepare = task("factory-prepare")

@@ -94,14 +94,13 @@ class GeneratedPipelineRunTests(unittest.TestCase):
             for suffix in ("on-pull-request", "on-push", "on-schedule", "on-base-release"):
                 self.assertIn(f"{image}-{suffix}", runs)
 
-    def test_image_path_filters_cover_overlay_catalog_and_profile(self) -> None:
+    def test_image_path_filters_cover_overlay_and_catalog(self) -> None:
         cel = pipeline_runs()["confluence-lts-on-pull-request"]["metadata"]["annotations"][
             "pipelinesascode.tekton.dev/on-cel-expression"
         ]
         for path in (
             "catalog/images/confluence-lts.yaml",
             "overlays/confluence-lts/patches/**",
-            "tests/profiles/confluence/**",
             ".tekton/tasks/**",
         ):
             self.assertIn(f'"{path}".pathChanged()', cel)
@@ -127,8 +126,8 @@ class ReferenceTests(unittest.TestCase):
 
     def test_pipelinerun_context_reaches_tasks_only_through_a_param(self) -> None:
         # Tekton substitutes $(context.pipelineRun.*) inside a Pipeline only; a
-        # Task using it directly gets the literal text (seen as an image tag
-        # "--context.pipelineRun.name--" in the harness).
+        # Task using it directly gets the literal text (for example an image tag
+        # "--context.pipelineRun.name--").
         tasks = documents("Task")
         for name, definition in tasks.items():
             self.assertNotIn("$(context.pipelineRun", yaml.safe_dump(definition), name)
@@ -288,26 +287,30 @@ class TaskHygieneTests(unittest.TestCase):
         for name, document in documents("Task").items():
             for item in document["spec"]["steps"]:
                 context = item.get("securityContext", {})
-                relaxed = context.get("allowPrivilegeEscalation") or "procMount" in context
-                if relaxed:
-                    self.assertIn(name, {"factory-rootless-build", "factory-rootless-test"})
+                if context.get("allowPrivilegeEscalation"):
+                    self.assertEqual(name, "factory-rootless-build")
                     self.assertEqual(item["name"], "run")
-                    self.assertEqual(context.get("procMount"), "Unmasked")
                 self.assertFalse(context.get("privileged", False), f"{name}/{item['name']}")
+                # Kubernetes 1.28: no unmasked /proc (needs pod user namespaces)
+                # and no appArmorProfile field (added in 1.30).
+                self.assertNotIn("procMount", context, f"{name}/{item['name']}")
+                self.assertNotIn("appArmorProfile", context, f"{name}/{item['name']}")
 
-    def test_rootless_stages_run_in_a_pod_user_namespace(self) -> None:
+    def test_build_pods_fit_kubernetes_1_28(self) -> None:
+        # No pod user namespaces (alpha on 1.28, unsupported by containerd 1.7);
+        # AppArmor comes from the legacy annotation on the build TaskRun only.
+        annotation = "container.apparmor.security.beta.kubernetes.io/step-run"
         for run_name, run in pipeline_runs().items():
-            if run["spec"]["pipelineRef"]["name"] != "factory-image-build":
-                continue
-            templates = {
-                spec["pipelineTaskName"]: spec.get("podTemplate", {})
-                for spec in run["spec"]["taskRunSpecs"]
-            }
-            for stage in ("build", "test"):
-                self.assertIs(templates[stage].get("hostUsers"), False, f"{run_name}/{stage}")
-            for stage, template in templates.items():
-                if stage not in ("build", "test"):
-                    self.assertNotIn("hostUsers", template, f"{run_name}/{stage}")
+            for spec in run["spec"]["taskRunSpecs"]:
+                stage = spec["pipelineTaskName"]
+                self.assertNotIn("hostUsers", spec.get("podTemplate", {}), f"{run_name}/{stage}")
+                annotations = spec.get("metadata", {}).get("annotations", {})
+                if run["spec"]["pipelineRef"]["name"] == "factory-image-build" and stage == "build":
+                    self.assertEqual(annotations.get(annotation), "unconfined", run_name)
+                else:
+                    self.assertNotIn(annotation, annotations, f"{run_name}/{stage}")
+        policy = (ROOT / "deploy/base/admission-policy.yaml").read_text(encoding="utf-8")
+        self.assertEqual(policy.count("apiVersion: admissionregistration.k8s.io/v1beta1"), 2)
 
     def test_quarantine_emits_chains_type_hints(self) -> None:
         results = {item["name"] for item in task("factory-quarantine")["spec"]["results"]}

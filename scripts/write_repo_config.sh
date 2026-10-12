@@ -67,8 +67,8 @@ CFG
     printf 'private-mirror:ubi%s:%s\n' "${rpm_major}" "${rpm_arch}"
     ;;
   public-upstream)
-    # Red Hat's public UBI content, no subscription needed. Used by the kind
-    # harness; production images pin build.rpm.source: private-mirror.
+    # Red Hat's public UBI content, no subscription needed. For connected
+    # development only; production images pin build.rpm.source: private-mirror.
     upstream_root="https://cdn-ubi.redhat.com/content/public/ubi/dist/ubi${rpm_major}/${rpm_major}/${rpm_arch}"
     cat >"${output}" <<CFG
 [factory-ubi-upstream-baseos]

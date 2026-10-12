@@ -16,8 +16,6 @@ class GateInputTests(unittest.TestCase):
                     "findings": [{"id": "legacy-critical", "severity": "Critical"}],
                     "warnings": ["example"],
                 },
-                "compliance.json": {"passed": True},
-                "tests.json": {"passed": True},
                 "database.json": {"generatedAt": "2026-09-15T00:00:00Z"},
                 "assessment.json": {
                     "backend": "delegated-scanners",
@@ -34,8 +32,6 @@ class GateInputTests(unittest.TestCase):
                 "sha256:abc",
                 root / "sbom.json",
                 root / "findings.json",
-                root / "compliance.json",
-                root / "tests.json",
                 root / "database.json",
                 root / "assessment.json",
             )

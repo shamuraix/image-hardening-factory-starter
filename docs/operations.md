@@ -1,6 +1,6 @@
 # Operations guide
 
-[Project overview](../README.md) · [Configuration](configuration.md) · [Architecture](architecture.md) · [Agents](agents.md) · [Evidence model](evidence-model.md)
+[Project overview](../README.md) · [Scope](scope.md) · [Configuration](configuration.md) · [Architecture](architecture.md) · [Agents](agents.md) · [Evidence model](evidence-model.md)
 
 Terms: **PaC** is Pipelines-as-Code, which starts the Tekton pipelines. The
 **gate** is the OPA (Open Policy Agent) release policy. A **seal** is a list of
@@ -19,7 +19,7 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
    release, and canary content, with the write separation in the table below.
 4. Create the Secrets (`deploy/secrets.example.yaml`), edit settings and network
    CIDRs, then run `kubectl apply -k deploy/base`. Allow the `approved-upstreams`
-   NetworkPolicy to reach the Grype, Trivy, OSV, and ClamAV database mirrors and
+   NetworkPolicy to reach the Grype, Trivy, and OSV database mirrors and
    the CISA KEV feed.
 5. Build the first security-data bundle:
    `scripts/tekton/trigger_incoming.sh security-data-on-schedule`. Confirm that
@@ -37,11 +37,11 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
 
 ## Running the full pipeline on a local cluster
 
-A local cluster (Rancher Desktop or kind) can run the whole factory against
-the real GitLab instance and Artifactory; only the cluster is local. Prepare
-the cluster as in
-[local-kubernetes-testing.md](local-kubernetes-testing.md#using-a-cluster-you-already-run-rancher-desktop),
-then:
+A local or single-node cluster can run the whole factory against the real
+GitLab instance and Artifactory; only the cluster is local. It needs what
+production needs ([configuration.md](configuration.md#quick-setup-checklist)):
+Kubernetes 1.28 or later, ValidatingAdmissionPolicy enabled, and a node that
+allows unprivileged user namespaces. Then:
 
 1. Build, sign, and push the three runner images to Artifactory (`make
    toolchain`, the Containerfiles in `toolchain/`) and put their digests in
@@ -58,9 +58,7 @@ then:
    `deploy/base` without the NetworkPolicies (their CIDRs are placeholders a
    laptop cannot satisfy) and with agents switched off; ServiceAccounts, the
    admission policy, schedules, and the Repository CR are identical to
-   production. Label and taint the node for the compliance stage:
-   `kubectl label node <node> factory.dev/fips-node=true` and
-   `kubectl taint node <node> factory.dev/fips-node=true:NoSchedule`.
+   production.
 5. Make the PaC controller reachable from GitLab. The internal GitLab must
    reach the controller's URL; on a laptop that is a routable address on your
    network or VPN, or a relay. Pipelines-as-Code's `tkn pac bootstrap` can
@@ -78,8 +76,7 @@ then:
 What a local run proves: the trust boundaries (per-task ServiceAccounts,
 per-step secrets, the admission policy, sealing), digest continuity through
 quarantine, signing, and promotion, and the release-request flow. What it does
-not prove: network isolation (the policies are removed), FIPS (the node is
-only labelled), and production scale.
+not prove: network isolation (the policies are removed) and production scale.
 
 ## Releasing an image
 
@@ -166,8 +163,9 @@ history). Re-check policy with current data before redeploying.
 
 ## Local development
 
-There is no host-side build. To iterate on an overlay, run the kind harness
-(`make harness-up`, `make harness-run`), which builds the image with the same
-Tekton Task the pipeline uses. Harness builds carry a `localDevelopment` lock
-and can never be imported, signed, or promoted. See
-[local-kubernetes-testing.md](local-kubernetes-testing.md).
+There is no host-side build and no laptop harness. Images are built only by the
+Tekton Task. To iterate on an overlay, open a merge request: the PR PipelineRun
+builds, scans, and gates the candidate without publishing it, or run the
+pipeline on a development cluster with `deploy/overlays/local`. `make ci`
+covers everything that does not need a cluster. Runtime testing of a candidate
+happens outside the pipeline ([scope.md](scope.md)).

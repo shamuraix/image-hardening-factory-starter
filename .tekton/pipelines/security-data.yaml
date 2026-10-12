@@ -1,5 +1,5 @@
-# Daily refresh of the signed offline security-data bundle that the scan and
-# compliance stages use. Triggered by the daily-security-data CronJob through
+# Daily refresh of the signed offline security-data bundle that the scan stage
+# uses. Triggered by the daily-security-data CronJob through
 # the security-data-on-schedule PipelineRun.
 apiVersion: tekton.dev/v1
 kind: Pipeline

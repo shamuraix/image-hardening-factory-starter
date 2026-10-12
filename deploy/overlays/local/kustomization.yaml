@@ -1,5 +1,7 @@
-# Local cluster overlay (Rancher Desktop, kind, or any single-node cluster) for
-# running the full pipeline against the real external GitLab and Artifactory.
+# Local or single-node cluster overlay for running the full pipeline against the
+# real external GitLab and Artifactory. The cluster needs what production needs
+# (docs/configuration.md): Kubernetes 1.28 or later with Tekton, Pipelines-as-Code,
+# Chains, and ValidatingAdmissionPolicy enabled.
 #
 # Differences from deploy/base, and nothing else:
 #   - The NetworkPolicies are removed. They pin egress to placeholder CIDRs that
@@ -9,10 +11,8 @@
 #   - Agents are switched off (Repository param enable_agents "false") because a
 #     laptop usually has no LLM gateway. Set it back to "true" to use one.
 #
-# Still required by hand: label and taint the node for the compliance stage,
-#   kubectl label node <node> factory.dev/fips-node=true
-#   kubectl taint node <node> factory.dev/fips-node=true:NoSchedule
-# and create the Secrets from deploy/secrets.example.yaml. Apply with
+# Still required by hand: create the Secrets from deploy/secrets.example.yaml.
+# Apply with
 #   kubectl apply -k deploy/overlays/local
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

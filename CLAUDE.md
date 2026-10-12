@@ -7,9 +7,16 @@ CI agent run (bare mode loads it explicitly). Keep it short and factual.
 
 A build-and-evidence factory that rebuilds Iron Bank (Repo One) sources for
 **Bitbucket, Jira, and Confluence Data Center LTS** on an internal hardened
-**UBI 9 minimal** base, then produces OCI archives, SBOMs, scanner/compliance/test
+**UBI 9 minimal** base, then produces OCI archives, SBOMs, vulnerability scan
 evidence, an OPA release decision, and signed, digest-preserving releases. It is
 not a deployment platform.
+
+Scope (`docs/scope.md`): every stage is a Kubernetes pod running daemonless
+tools on **Kubernetes 1.28+** (containerd 1.7). No container engine, no running
+the candidate image, no pod user namespaces, `procMount`, or `appArmorProfile`
+field. Compliance scanning (OpenSCAP), malware scanning (ClamAV), runtime
+product tests, and a local kind harness are out of scope: never add them back
+or propose them as a fix.
 
 Pipelines are **Tekton** triggered by **Pipelines-as-Code** (PaC). Operational
 upkeep is assisted by **Claude Code agents** that can only propose changes.
@@ -37,14 +44,12 @@ upkeep is assisted by **Claude Code agents** that can only propose changes.
 |---|---|
 | `catalog/images/*.yaml` | What to build (schema: `factory/schemas/image.schema.json`) |
 | `overlays/<image>/patches/*.patch` | Factory changes applied in sorted order on top of the Iron Bank source |
-| `tests/profiles/<profile>/` | Product tests and `rpm-verify.allow` lists |
 | `factory/` | Python: catalog, planning, findings, gate input, agents, release requests, Tekton rendering |
 | `scripts/` | Stage scripts called by Tekton steps; `scripts/tekton/` runtime helpers; `scripts/agents/` agent plumbing |
 | `.tekton/tasks/`, `.tekton/pipelines/` | Hand-written Tekton Tasks and Pipelines |
 | `.tekton/*-on-*.yaml` | **Generated** PaC PipelineRuns — edit `factory/tekton.py`, run `make tekton-render` |
 | `deploy/` | Kustomize: namespace, ServiceAccounts, NetworkPolicies, Repository CR, Chains config, schedules, admission policy |
 | `toolchain/` | Runner, intake-runner, and agent Containerfiles; `download-tools.py` reads `tools/versions.lock.yaml` |
-| `tests/integration/kind/` | Disposable kind cluster that runs the real build, SBOM, and test Tasks (`make harness-up`, `make harness-run`) |
 | `.claude/agents/` | Agent personas (usable interactively and in CI) |
 | `.claude/skills/` | Reusable procedures the personas load |
 | `agents/` | CI agent settings and structured-output schemas |
@@ -64,12 +69,10 @@ make tekton-check   # fail if generated PipelineRuns drifted
 make policy-test    # OPA tests (needs opa)
 make agents         # list agent personas, their modes and purpose
 make toolchain      # download pinned tools + build the wheel into dist/ (needs network)
-make harness-up     # kind cluster with the real runner image and Tekton
-make harness-run    # build, SBOM, and test a base image on that cluster
 ```
 
-There is no host-side build: images are built only by the Tekton Task, in the
-pipeline or in the harness.
+There is no host-side build and no local harness: images are built only by the
+Tekton Task, in a cluster.
 
 ## Iron Bank overlay rules (summary — see `.claude/skills/ironbank-overlays`)
 
@@ -84,7 +87,7 @@ pipeline or in the harness.
 
 ## Scanner data (summary — see `security-data/README.md`)
 
-- Scan and compliance read only the signed bundle the prepare stage fetched and
+- Scan reads only the signed bundle the prepare stage fetched and
   verified. Grype runs first and validates the data, SBOM identity, and CISA KEV
   freshness; any failure stops the scan and the gate denies.
 - Unsigned baselines are ignored, so every finding counts as new unless a signed

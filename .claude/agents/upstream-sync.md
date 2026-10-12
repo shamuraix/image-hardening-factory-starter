@@ -16,7 +16,6 @@ x-factory:
     - overlays/
     - catalog/images/
     - vendir/config.yml
-    - tests/profiles/
   allowDeletes:
     - overlays/
   bashAllow:
@@ -67,8 +66,9 @@ images, `upstream/<image>/` holds:
 5. Check the result: with all regenerated patches applied to a clean copy of the
    new head, `python3 scripts/validate_context.py catalog/images/<image>.yaml <dir>`
    must pass, and `python3 -m factory.cli validate --catalog catalog/images` too.
-6. If a product version changed, read the test profile expectations and adjust
-   only if upstream legitimately changed them (user, UID, ports, paths).
+6. If upstream changed runtime facts (user, UID, ports, paths), list them in the
+   report so the consuming environment can update its tests; the pipeline does
+   not run the image.
 
 ## Rules
 

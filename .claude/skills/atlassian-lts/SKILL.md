@@ -1,19 +1,18 @@
 ---
 name: atlassian-lts
-description: Facts about the Bitbucket, Jira (with JSM), and Confluence Data Center LTS images this factory hardens — catalog fields, build args, test expectations, and how vulnerabilities in bundled libraries are remediated. Use when upgrading a product version or interpreting findings in /opt.
+description: Facts about the Bitbucket, Jira (with JSM), and Confluence Data Center LTS images this factory hardens — catalog fields, build args, and how vulnerabilities in bundled libraries are remediated. Use when upgrading a product version or interpreting findings in /opt.
 ---
 
 # Atlassian Data Center LTS images
 
-| Image | Iron Bank repository | Build args | Test profile |
-|---|---|---|---|
-| `bitbucket-lts` | `dsop/atlassian/bitbucket-data-center/bitbucket-lts` | `BITBUCKET_VERSION` | `tests/profiles/bitbucket` |
-| `jira-lts` | `dsop/atlassian/jira-data-center/jira-lts` | `JIRA_VERSION`, `JSM_VERSION` (kept equal) | `tests/profiles/jira` |
-| `confluence-lts` | `dsop/atlassian/confluence-data-center/confluence-lts` | `CONFLUENCE_VERSION` | `tests/profiles/confluence` |
+| Image | Iron Bank repository | Build args |
+|---|---|---|
+| `bitbucket-lts` | `dsop/atlassian/bitbucket-data-center/bitbucket-lts` | `BITBUCKET_VERSION` |
+| `jira-lts` | `dsop/atlassian/jira-data-center/jira-lts` | `JIRA_VERSION`, `JSM_VERSION` (kept equal) |
+| `confluence-lts` | `dsop/atlassian/confluence-data-center/confluence-lts` | `CONFLUENCE_VERSION` |
 
 All three build on the catalog base `ubi9-minimal` (`build.base.kind: catalog`),
-publish under `atlassian/<image>`, and use policy profile
-`atlassian-rhel9-container` (STIG datastream for RHEL 9).
+publish under `atlassian/<image>`.
 
 ## Version changes
 
@@ -23,17 +22,16 @@ A product upgrade touches, together:
 2. The Dockerfile `ARG <PRODUCT>_VERSION=` lines (via the overlay or upstream).
 3. `hardening_manifest.yaml` — `tags[0]` and the product tarball resource
    (`url`, `filename`, checksum). New tarballs need intake to re-lock.
-4. Possibly the test profile, if ports, users, UIDs, or install paths changed.
 
 Stay on an Atlassian **LTS** line unless a human explicitly decides otherwise.
 Never downgrade.
 
-## Test profile expectations (examples from `tests/profiles/jira/test.sh`)
+## Runtime behaviour
 
-- Runs as user `jira`, UID 2001; exposes `8080/tcp` and `40001/tcp`.
-- `/usr/bin/tini` and `/entrypoint.py` exist; Java runs.
-- JSM `.obr` installers are removed after install; plugins are present.
-- `scripts/assert_rpm_integrity.sh` checks `rpm -V` against the allow lists.
+The pipeline does not run these images; product start-up, ports, users and
+`rpm -V` integrity are verified by the consuming environment (`docs/scope.md`).
+Call out changes to ports, users, UIDs, or install paths in the change
+description so that environment can adjust its tests.
 
 ## Vulnerabilities in bundled libraries
 

@@ -35,7 +35,10 @@ class ToolchainDownloadTests(unittest.TestCase):
             amd["aquasecurity/trivy"],
             f"trivy_{by_project['https://github.com/aquasecurity/trivy']}_Linux-64bit.tar.gz",
         )
-        self.assertTrue(amd["Cisco-Talos/clamav"].endswith(".linux.x86_64.rpm"))
+        # Out-of-scope tools (docs/scope.md) must not return to the runner images.
+        self.assertFalse(
+            {"Cisco-Talos/clamav", "ComplianceAsCode/content", "opencontainers/umoci"} & set(amd)
+        )
 
     def test_checksum_failure_preserves_existing_binary_and_cache_is_verified(self):
         with TemporaryDirectory() as directory:

@@ -22,9 +22,9 @@ PipelineRuns) and is selected by NetworkPolicy through the
 
 | Class | Tasks | Secrets | Egress |
 |---|---|---|---|
-| offline | checkout, validate, sbom, scan, assessment, compliance, gate | none | git host (checkout only) |
+| offline | checkout, validate, sbom, scan, assessment, gate | none | git host (checkout only) |
 | internal-read | prepare, release resolve, evidence context | Artifactory read, intake public key | Artifactory |
-| buildkit / test | build / test | Artifactory read (build only) | Artifactory |
+| buildkit | build | Artifactory read | Artifactory |
 | import | quarantine | quarantine write | Artifactory |
 | signing | attest | env Cosign key + referrer write | Artifactory |
 | promotion | promote | release write, pointer write | Artifactory |
@@ -45,12 +45,18 @@ PipelineRuns) and is selected by NetworkPolicy through the
 5. **Verify, run, seal.** Stage tasks verify input seals and the source tree,
    run with `onError: continue` so evidence is kept, then seal and fail unless
    `allow-failure` is set. Prepare emits a second seal, `security-data`, that
-   scan and compliance list as an input.
+   scan lists as an input.
 6. **Results for identity.** `IMAGE_URL`/`IMAGE_DIGEST` results let Tekton Chains
    sign and attest; never pass digests through files alone.
 7. Pin images by digest; keep `securityContext` restricted except the single
-   rootless BuildKit/Podman run step (which keeps `SETUID`/`SETGID` in its
-   bounding set for the setuid mapping helpers and nothing else).
+   rootless BuildKit run step (which keeps `SETUID`/`SETGID` in its bounding
+   set for the file-capability mapping helpers and nothing else).
+9. **Kubernetes 1.28 is the floor.** No `hostUsers: false`, no `procMount`, no
+   `securityContext.appArmorProfile` (1.30+); the build step's AppArmor profile
+   comes from the `container.apparmor.security.beta.kubernetes.io/step-run`
+   annotation the renderer puts on the build TaskRun. The admission policy is
+   `admissionregistration.k8s.io/v1beta1`. No stage may run the candidate
+   image or a container engine (`docs/scope.md`).
 8. **Tasks never use `$(context.pipelineRun.*)`.** Tekton substitutes those
    only inside a Pipeline; in a Task they stay literal. Every Task takes a
    `pipelinerun` param and every Pipeline passes `$(context.pipelineRun.name)`;
