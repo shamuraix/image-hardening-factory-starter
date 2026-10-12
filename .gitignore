@@ -16,3 +16,5 @@ resource-lock.json
 *.oci.tar
 *.egg-info/
 image-hardening-factory.tar.gz
+.ruff_cache/
+.local-factory/
