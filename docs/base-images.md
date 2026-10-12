@@ -7,7 +7,7 @@
 | Base | Track | Dependents | Role |
 |---|---|---|---|
 | `ubi10-minimal` (Iron Bank `redhat/ubi/10.x/ubi10-minimal`, 10.2) | release | `jira-lts`, `confluence-lts`, `bitbucket-lts` | Production base for the Atlassian LTS images |
-| `ubi9-minimal` (Iron Bank `redhat/ubi/9.x/ubi9-minimal`, 9.8) | release | none | Previous base, still built, scanned, and releasable as a rollback |
+| `ubi9-minimal` (Iron Bank `redhat/ubi/9.x/ubi9-minimal`, 9.8) | release | none in the catalog | Previous base, still built, scanned, and releasable as a rollback. It is also the `BASE_REF` of the runner images (`toolchain/Containerfile.factory-runner`), so retiring it means moving the runner to UBI 10 first |
 
 The apps take their base from `build.base.image` in their catalog entries. The
 overlays keep both majors working (`ARG BASE_MAJOR`, passed by

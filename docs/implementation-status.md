@@ -42,7 +42,7 @@ has not yet run in a cluster.
 | Tekton Chains provenance | Configured (`slsa/v2alpha3`, SLSA v1.0) | Chains signing key (KMS); optional internal Rekor |
 | Claude Code agents (6 personas) | Implemented; loading, commands, write policy, and hook tested | Approved LLM gateway; agent image build; evaluate before widening |
 | UBI 10 base for the Atlassian images | Implemented; overlays apply and context-check passes against the pinned Iron Bank sources | First builds on UBI 10; commercial release of `ubi10-minimal` to publish its pointer; confirm node CPU baseline |
-| UBI 9 rollback base | Releasable, no dependents | Decide how long to keep building it |
+| UBI 9 rollback base | Releasable, no catalog dependents; still the runner images' base | Decide how long to keep it; move the runner to UBI 10 before retiring it |
 | Static checks (context-check, image-check) | Implemented and unit-tested; context-check run against the pinned Iron Bank sources | First image-check against real UBI 10 builds; review advisory parity findings |
 
 ## Known gaps and follow-ups

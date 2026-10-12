@@ -1,13 +1,17 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
+  "extends": [
+    "config:recommended"
+  ],
   "customManagers": [
     {
       "customType": "regex",
       "description": "Update GitHub-backed tool versions in tools/versions.lock.yaml",
-      "fileMatch": ["^tools/versions\\.lock\\.yaml$"],
+      "fileMatch": [
+        "^tools/versions\\.lock\\.yaml$"
+      ],
       "matchStrings": [
-        "  [a-z0-9._-]+:\\n    project: https://github\\.com/(?<depName>[^/]+/[^\\n/]+)\\n    license: [^\\n]+\\n    version: (?<currentValue>[^\\s#]+)"
+        "  [a-z0-9._-]+:\\n    project: https://github\\.com/(?<depName>[^/]+/[^\\n/]+)\\n    license: [^\\n]+\\n(?:    #[^\\n]*\\n)*    version: (?<currentValue>[^\\s#]+)"
       ],
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver-coerced"
@@ -16,8 +20,30 @@
   "packageRules": [
     {
       "description": "Tool pin updates require human review",
-      "matchManagers": ["custom.regex"],
+      "matchManagers": [
+        "custom.regex"
+      ],
       "automerge": false
+    },
+    {
+      "description": "skopeo comes from the UBI AppStream RPM snapshot, not GitHub releases; bump tools/versions.lock.yaml when the snapshot moves (the runner build asserts it)",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "containers/skopeo"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Jinja2 tracks the base image's python3-jinja2 (UBI 10: 3.1.6) so context-check renders templates as the image will; change it only with the base (factory/context_check.py BASE_JINJA2)",
+      "matchPackageNames": [
+        "Jinja2",
+        "jinja2",
+        "MarkupSafe",
+        "markupsafe"
+      ],
+      "enabled": false
     }
   ]
 }

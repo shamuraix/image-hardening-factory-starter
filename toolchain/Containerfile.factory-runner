@@ -8,6 +8,7 @@
 #   dist/tools/         pinned static binaries (tools/versions.lock.yaml)
 #   dist/src/           the shadow source archive (newuidmap/newgidmap, below)
 #   dist/factory-wheel/ this repository and its Python dependencies
+#   dist/rpm-versions.txt  RPM-installed tools and their pinned versions
 #   dist/ca-trust/      optional extra CA certificates (*.crt, PEM) to trust,
 #                       such as a TLS-inspecting proxy's root; see
 #                       FACTORY_CA_BUNDLE in toolchain/build-dist.sh
@@ -57,6 +58,7 @@ ARG FACTORY_UID=10001
 ARG FACTORY_GID=10001
 COPY dist/tools/ /usr/local/bin/
 COPY dist/factory-wheel/ /tmp/wheels/
+COPY dist/rpm-versions.txt /tmp/rpm-versions.txt
 COPY dist/ca-trust/ /tmp/ca-trust/
 
 # Extra CA certificates must be trusted before the first network access below.
@@ -83,7 +85,13 @@ RUN if ! curl -fsS -o /dev/null https://cdn-ubi.redhat.com/content/public/ubi/di
 RUN microdnf install -y --setopt=install_weak_deps=0 \
       python3.12 python3.12-pip git-core jq tar gzip \
       skopeo shadow-utils libcap \
-    && microdnf clean all && rm -rf /var/cache/dnf
+    && microdnf clean all && rm -rf /var/cache/dnf \
+    && while read -r name pinned; do \
+         installed=$(rpm -q --qf '%{VERSION}' "${name}"); \
+         [ "${installed%.*}" = "${pinned%.*}" ] \
+           || { echo "${name} ${installed} does not match tools/versions.lock.yaml ${pinned}" >&2; exit 1; }; \
+       done </tmp/rpm-versions.txt \
+    && rm /tmp/rpm-versions.txt
 # The libcap-aware mapping helpers from stage 1 replace the shadow-utils copies.
 COPY --from=idmap-build /out/newuidmap /out/newgidmap /usr/bin/
 
