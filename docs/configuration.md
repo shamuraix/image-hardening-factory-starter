@@ -168,7 +168,7 @@ neutral placeholder names. The prefixes below are the dev layout.
 | `FACTORY_BASE_QUARANTINE_REPOSITORY` | `<docker repository>/quarantine/bases` | gated base candidates and their evidence referrers | `factory-artifactory-quarantine` write |
 | `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | `<docker repository>/quarantine/apps` | gated application candidates | same |
 | `FACTORY_RELEASE_REPOSITORY` | `<docker repository>/release` | promoted images, cosign signatures and attestations | `factory-artifactory-release` write; `-sign` for signatures |
-| `FACTORY_CANARY_REPOSITORY` | `<docker repository>/canary` | UBI 10 canary | release |
+| `FACTORY_CANARY_REPOSITORY` | `<docker repository>/canary` | canary-track images (none today) | release |
 | `FACTORY_SOURCE_REPOSITORY` (*env*) | `<generic repository>/factory` | `locks/` (signed resource locks), intake resources, `releases/<image>/current.json` (pointers), `security-data/` (signed scanner bundle) | `-intake` writes locks, resources, and the bundle; `-pointer` writes pointers; `-read` reads |
 | `FACTORY_UBI_MIRROR_URL` (*env*) | `https://<host>/artifactory/<UBI remote repository>/content/public/ubi/dist` | remote repository in front of the UBI CDN, same layout | `factory-rpm-mirror` (bot account + token) read |
 

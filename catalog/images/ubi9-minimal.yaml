@@ -3,7 +3,7 @@ kind: HardenedImage
 metadata:
   name: ubi9-minimal
   track: release
-  description: Hardened internal UBI 9 base for Atlassian images.
+  description: Hardened internal UBI 9 base; the previous Atlassian base, kept releasable for rollback.
 source:
   upstream: https://repo1.dso.mil/dsop/redhat/ubi/9.x/ubi9-minimal.git
   mirrorPath: mirrors/repo1/redhat/ubi9-minimal

@@ -38,5 +38,6 @@ python3 -m pip wheel --quiet --no-deps --wheel-dir "${dist}/factory-wheel" .
 # and fails loudly if anything else is missing.
 python3 -m pip download --quiet --only-binary=:all: --platform "${platform}" \
   --python-version 3.12 --implementation cp --dest "${dist}/factory-wheel" \
-  'PyYAML>=6.0,<7' 'jsonschema>=4.23,<5' 'ruff>=0.6,<1' 'typing-extensions>=4.4.0'
+  'PyYAML>=6.0,<7' 'jsonschema>=4.23,<5' 'ruff>=0.6,<1' 'typing-extensions>=4.4.0' \
+  'Jinja2==3.1.6' 'MarkupSafe>=2.0'
 echo "toolchain assembled in ${dist}/ for ${arch}"

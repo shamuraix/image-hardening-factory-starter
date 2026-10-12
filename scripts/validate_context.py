@@ -36,6 +36,9 @@ def main() -> int:
         expected = str(base_catalog["product"]["version"])
         if str(manifest.get("args", {}).get("BASE_TAG")) != expected:
             fail(f"manifest BASE_TAG must match {base_name} version {expected}")
+        base_image = str(manifest.get("args", {}).get("BASE_IMAGE", ""))
+        if base_image.rsplit("/", 1)[-1] != base_name:
+            fail(f"manifest BASE_IMAGE {base_image!r} must name the catalog base {base_name}")
     return 0
 
 

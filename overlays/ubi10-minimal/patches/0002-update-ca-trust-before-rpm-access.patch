@@ -1,0 +1,14 @@
+diff --git a/Dockerfile b/Dockerfile
+index 926a6db..919e7a1 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -11,7 +11,8 @@ COPY certs/* /etc/pki/ca-trust/source/anchors/
+ # violate Red Hat license agreement when running the container on a non-RHEL licensed host.
+ # See the following link for more details:
+ # https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/building_running_and_managing_containers/index
+-RUN echo "[main]" >> /etc/dnf/dnf.conf && \
++RUN update-ca-trust && \
++    echo "[main]" >> /etc/dnf/dnf.conf && \
+     echo "exclude=filesystem-*" >> /etc/dnf/dnf.conf && \
+     echo Update packages and install DISA STIG fixes && \
+     microdnf repolist && \

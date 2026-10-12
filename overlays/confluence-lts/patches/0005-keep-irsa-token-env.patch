@@ -1,0 +1,40 @@
+diff --git a/scripts/entrypoint_helpers.py b/scripts/entrypoint_helpers.py
+index 2c1374e..6bbd73c 100644
+--- a/scripts/entrypoint_helpers.py
++++ b/scripts/entrypoint_helpers.py
+@@ -92,10 +92,32 @@ def str2bool_or(s, default):
+     else:
+         return str2bool(s)
+ 
+-def unset_secure_vars():
++# Variables that only name a file holding a secret, such as the EKS IRSA token
++# path, must reach the JVM (ported from Atlassian shared-components, CLIP-1824).
++# Allowlist entries are exact names; only Atlassian's password-cipher settings
++# are a prefix family.
++DEFAULT_ALLOWLIST = ('AWS_WEB_IDENTITY_TOKEN_FILE',)
++ALLOWLIST_PREFIXES = ('com_atlassian_db_config_password_ciphers_algorithm_javax_crypto',)
++
++
++def is_secured_var(key):
++    """True if the variable looks sensitive and is not allowlisted.
++
++    ATL_ALLOWLIST_SENSITIVE_ENV_VARS adds a comma-separated list of exact names.
++    """
+     secure_keywords = ('PASS', 'SECRET', 'TOKEN')
+-    for key in os.environ:
+-        if any(kw in key.upper() for kw in secure_keywords):
++    if not any(kw in key.upper() for kw in secure_keywords):
++        return False
++    allowlist = {v.strip().upper() for v in os.environ.get('ATL_ALLOWLIST_SENSITIVE_ENV_VARS', '').split(',') if v.strip()}
++    allowlist.update(DEFAULT_ALLOWLIST)
++    if key.upper() in allowlist:
++        return False
++    return not key.lower().startswith(ALLOWLIST_PREFIXES)
++
++
++def unset_secure_vars():
++    for key in list(os.environ):
++        if is_secured_var(key):
+             logging.warning(f"Unsetting environment var {key}")
+             del os.environ[key]
+ 

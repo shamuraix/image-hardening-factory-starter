@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from factory import agent_runtime, release, tekton
+from factory import agent_runtime, context_check, image_check, release, tekton
 from factory.agents import list_agents, load_agent, validate_staged_change
 from factory.catalog import load_catalog, load_image
 from factory.findings import normalize
@@ -18,6 +18,13 @@ def _catalog_path(value: str) -> Path:
     if not path.exists():
         raise argparse.ArgumentTypeError(f"path does not exist: {path}")
     return path
+
+
+def _print_report(report: context_check.Report) -> None:
+    for check in report.checks:
+        state = "ok  " if check.passed else ("FAIL" if check.severity == "required" else "warn")
+        print(f"{state} [{check.severity}] {check.id}: {check.detail}")
+    print(f"{report.image}: {'passed' if report.passed else 'failed'}")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +56,18 @@ def build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--database-status", required=True)
     gate.add_argument("--assessment-status", required=True)
     gate.add_argument("--output", required=True)
+
+    ctx_check = commands.add_parser("context-check", help="static checks on a prepared context")
+    ctx_check.add_argument("--catalog", type=_catalog_path, required=True)
+    ctx_check.add_argument("--context", type=_catalog_path, required=True)
+    ctx_check.add_argument("--output", required=True)
+
+    img_check = commands.add_parser("image-check", help="static checks on a built OCI archive")
+    img_check.add_argument("--catalog", type=_catalog_path, required=True)
+    img_check.add_argument("--image", type=_catalog_path, required=True)
+    img_check.add_argument("--sbom")
+    img_check.add_argument("--context-result")
+    img_check.add_argument("--output", required=True)
 
     findings = commands.add_parser("normalize-findings")
     findings.add_argument("--grype", required=True)
@@ -136,6 +155,21 @@ def main() -> int:
         )
         write_gate_input(data, args.output)
         return 0
+    if args.command == "context-check":
+        report = context_check.check_context(args.catalog, args.context)
+        context_check.write_report(report, Path(args.output))
+        _print_report(report)
+        return 0 if report.passed else 1
+    if args.command == "image-check":
+        report = image_check.check_image(
+            args.catalog,
+            args.image,
+            Path(args.sbom) if args.sbom else None,
+            Path(args.context_result) if args.context_result else None,
+        )
+        context_check.write_report(report, Path(args.output))
+        _print_report(report)
+        return 0 if report.passed else 1
     if args.command == "normalize-findings":
         data = normalize(
             Path(args.grype),

@@ -92,6 +92,28 @@ spec:
         - *change
       workspaces: [*ws]
 
+    - name: context-check
+      taskRef: {name: factory-stage}
+      params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
+        - {name: stage, value: context-check}
+        - name: command
+          value: >-
+            python3 -m factory.cli context-check --catalog "${FACTORY_CATALOG_FILE}"
+            --context "${FACTORY_WORK_DIR}/context"
+            --output "${FACTORY_WORK_DIR}/evidence/context-check"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/context-check/**"]
+        - name: inputs
+          value: ["prepare=$(tasks.prepare.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
     - name: build
       taskRef: {name: factory-rootless-build}
       params:
@@ -117,6 +139,33 @@ spec:
           value: ["work/$(params.image)/evidence/sbom.*"]
         - name: inputs
           value: ["build=$(tasks.build.results.seal)"]
+        - *image
+        - *runner
+        - *commit
+        - *source
+        - *branch
+        - *change
+      workspaces: [*ws]
+
+    - name: image-check
+      taskRef: {name: factory-stage}
+      params:
+        - {name: pipelinerun, value: $(context.pipelineRun.name)}
+        - {name: stage, value: image-check}
+        - name: command
+          value: >-
+            python3 -m factory.cli image-check --catalog "${FACTORY_CATALOG_FILE}"
+            --image "${FACTORY_WORK_DIR}/image.oci.tar"
+            --sbom "${FACTORY_WORK_DIR}/evidence/sbom.cdx.json"
+            --context-result "${FACTORY_WORK_DIR}/evidence/context-check/result.json"
+            --output "${FACTORY_WORK_DIR}/evidence/image-check"
+        - name: outputs
+          value: ["work/$(params.image)/evidence/image-check/**"]
+        - name: inputs
+          value:
+            - "build=$(tasks.build.results.seal)"
+            - "sbom=$(tasks.sbom.results.seal)"
+            - "context-check=$(tasks.context-check.results.seal)"
         - *image
         - *runner
         - *commit
@@ -194,6 +243,8 @@ spec:
             - "sbom=$(tasks.sbom.results.seal)"
             - "scan=$(tasks.scan.results.seal)"
             - "assessment=$(tasks.assessment.results.seal)"
+            - "context-check=$(tasks.context-check.results.seal)"
+            - "image-check=$(tasks.image-check.results.seal)"
         - *image
         - *runner
         - *commit
@@ -215,6 +266,8 @@ spec:
             - "sbom=$(tasks.sbom.results.seal)"
             - "scan=$(tasks.scan.results.seal)"
             - "assessment=$(tasks.assessment.results.seal)"
+            - "context-check=$(tasks.context-check.results.seal)"
+            - "image-check=$(tasks.image-check.results.seal)"
             - "gate=$(tasks.gate.results.seal)"
         - *image
         - *runner
@@ -262,8 +315,10 @@ spec:
           value:
             - "validate=$(tasks.validate.status)"
             - "prepare=$(tasks.prepare.status)"
+            - "context-check=$(tasks.context-check.status)"
             - "build=$(tasks.build.status)"
             - "sbom=$(tasks.sbom.status)"
+            - "image-check=$(tasks.image-check.status)"
             - "scan=$(tasks.scan.status)"
             - "assessment=$(tasks.assessment.status)"
             - "gate=$(tasks.gate.status)"
