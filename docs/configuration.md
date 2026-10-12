@@ -294,6 +294,15 @@ Then:
 
 Because every tool is in the runner, no stage downloads anything at run time.
 
+Every tool is pinned in `tools/versions.lock.yaml`. Downloaded tools are
+checksum-verified by `download-tools.py`; tools installed from UBI RPMs
+(`skopeo`) are checked by the runner build against the lock's major.minor
+(`dist/rpm-versions.txt`, written by `build-dist.sh`), so a snapshot that moves
+them fails the build instead of drifting silently. Renovate tracks every GitHub
+pin in the lock but leaves `skopeo` and Jinja2/MarkupSafe alone: those follow
+the UBI snapshot and the release base's `python3-jinja2`
+(`tests/unit/test_pin_consistency.py` enforces all of this).
+
 Behind a TLS-inspecting proxy (Zscaler and similar), export the proxy root as
 PEM and set `FACTORY_CA_BUNDLE` before `make toolchain`, for example on macOS:
 
