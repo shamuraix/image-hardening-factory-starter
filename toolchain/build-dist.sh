@@ -51,4 +51,7 @@ with open(sys.argv[1], "w") as out:
     for name in ("skopeo",):
         out.write(f"{name} {str(tools[name]['version']).lstrip('v')}\n")
 PYTHON
+# The runner build compares this with the architecture it builds for, so a
+# dist/ assembled for amd64 cannot end up in an arm64 image (or the reverse).
+echo "${arch}" >"${dist}/arch"
 echo "toolchain assembled in ${dist}/ for ${arch}"
