@@ -1,0 +1,19 @@
+diff --git a/config/dbconfig.xml.j2 b/config/dbconfig.xml.j2
+index c000052..8c8ffb9 100644
+--- a/config/dbconfig.xml.j2
++++ b/config/dbconfig.xml.j2
+@@ -14,12 +14,12 @@
+   <schema-name>{{ atl_db_schema_name | default(schema_names.get(atl_db_type, '')) }}</schema-name>
+   <database-type>{{ atl_db_type }}</database-type>
+   <jdbc-datasource>
+-    <url>{{ atl_jdbc_url }}</url>
++    <url>{% if "&amp;" in (atl_jdbc_url | default('')) %}{{ atl_jdbc_url }}{% else %}{{ atl_jdbc_url | default('') | replace("&", "&amp;") }}{% endif %}</url>
+     <username>{{ atl_jdbc_user }}</username>
+      {% if atl_jdbc_secret_class is defined and atl_jdbc_secret_class != "" %}
+         <atlassian-password-cipher-provider>{{ atl_jdbc_secret_class }}</atlassian-password-cipher-provider>
+         {% endif -%}
+-    <password>{{ atl_jdbc_password }}</password>
++    <password>{% if "&amp;" in (atl_jdbc_password | default('')) %}{{ atl_jdbc_password }}{% else %}{{ atl_jdbc_password | default('') | replace("&", "&amp;") }}{% endif %}</password>
+     <driver-class>{{ atl_db_driver }}</driver-class>
+     {% if atl_db_type == 'postgres72' %}
+       <connection-properties>tcpKeepAlive={{ atl_db_keepalive | default('true') }};socketTimeout={{ atl_db_sockettimeout | default('240') }}</connection-properties>

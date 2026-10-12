@@ -20,6 +20,7 @@ adding it back as a fix.
 | Rootless image build with controlled RPM sources | `build` | BuildKit + RootlessKit |
 | SBOMs (CycloneDX, SPDX) | `sbom` | syft |
 | Vulnerability scanning and normalized findings | `scan`, `assessment` | grype, trivy, osv-scanner |
+| Static checks: product templates and helpers on the build context, image config and filesystem metadata on the OCI archive ([base-images.md](base-images.md)) | `context-check`, `image-check` | python3, Jinja2 |
 | Release gate | `gate` | opa |
 | Quarantine import, signing, attestations, digest-preserving promotion | `quarantine`, `attest`, `promote` | skopeo, cosign, oras |
 | Provenance | `attest`, Tekton Chains | Chains, cosign |

@@ -10,6 +10,9 @@ requires-python = ">=3.11"
 dependencies = [
   "PyYAML>=6.0,<7",
   "jsonschema>=4.23,<5",
+  # context-check renders the products' Jinja templates with the same
+  # major.minor the image ships (UBI 10 python3-jinja2 3.1.6).
+  "Jinja2==3.1.6",
 ]
 
 [project.optional-dependencies]

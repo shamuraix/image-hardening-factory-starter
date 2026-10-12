@@ -2,8 +2,8 @@ apiVersion: image-hardening-factory/v1alpha1
 kind: HardenedImage
 metadata:
   name: ubi10-minimal
-  track: canary
-  description: UBI 10 compatibility canary; not an Atlassian production base.
+  track: release
+  description: Hardened UBI 10 minimal; the production base for the Atlassian LTS images.
 source:
   upstream: https://repo1.dso.mil/dsop/redhat/ubi/10.x/ubi10-minimal.git
   mirrorPath: mirrors/repo1/redhat/ubi10-minimal
@@ -33,5 +33,5 @@ policy:
     newHigh: true
 publication:
   quarantineRepository: ${FACTORY_BASE_QUARANTINE_REPOSITORY}
-  releaseRepository: ${FACTORY_CANARY_REPOSITORY}
+  releaseRepository: ${FACTORY_RELEASE_REPOSITORY}
   imagePath: bases/ubi10-minimal

@@ -243,6 +243,106 @@
           "type": "string"
         }
       }
+    },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Static expectations checked by the context-check and image-check stages; nothing runs the image.",
+      "required": [
+        "profile",
+        "sources",
+        "runUser",
+        "runUid",
+        "ports",
+        "entrypoint",
+        "cmd",
+        "homeEnv",
+        "installDirEnv"
+      ],
+      "properties": {
+        "profile": {
+          "enum": [
+            "jira",
+            "confluence",
+            "bitbucket"
+          ]
+        },
+        "sources": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "entrypoint",
+            "helpers"
+          ],
+          "properties": {
+            "entrypoint": {
+              "type": "string"
+            },
+            "helpers": {
+              "type": "string"
+            },
+            "templates": {
+              "type": "string"
+            }
+          }
+        },
+        "runUser": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_-]*$"
+        },
+        "runUid": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        },
+        "entrypoint": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "cmd": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "homeEnv": {
+          "type": "string"
+        },
+        "installDirEnv": {
+          "type": "string"
+        },
+        "requiredPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          }
+        },
+        "forbiddenPaths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^/"
+          }
+        },
+        "envPaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "ENV variables whose value must resolve to a path in the image"
+        }
+      }
     }
   }
 }

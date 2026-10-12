@@ -101,17 +101,19 @@ Done when:
 - The scan stage reads only data whose signature and manifest verified
 - A stale or tampered bundle makes the gate deny rather than pass silently
 
-### Milestone 7 — UBI canary evolution
+### Milestone 7 — UBI 10 base
 
 Deliver:
 
-- UBI canary path for compatibility qualification
-- Controlled promotion separation for canary vs release
+- `ubi10-minimal` promoted from canary to the release base for all three apps,
+  with `ubi9-minimal` kept releasable as a rollback base
+- Static context and image checks ported from Atlassian's test suites where
+  they do not need a running product ([docs/base-images.md](docs/base-images.md))
 
 Done when:
 
-- Canary cannot be promoted to release by configuration mistake
-- Migration requires explicit catalog/policy/operator approval
+- All three apps build, pass context-check and image-check, and release on UBI 10
+- A release image still cannot depend on a canary base (catalog validation)
 
 ### Milestone 8 — Tekton, Pipelines-as-Code, and Claude Code agents
 

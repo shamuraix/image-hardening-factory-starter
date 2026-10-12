@@ -7,8 +7,8 @@ CI agent run (bare mode loads it explicitly). Keep it short and factual.
 
 A build-and-evidence factory that rebuilds Iron Bank (Repo One) sources for
 **Bitbucket, Jira, and Confluence Data Center LTS** on an internal hardened
-**UBI 9 minimal** base, then produces OCI archives, SBOMs, vulnerability scan
-evidence, an OPA release decision, and signed, digest-preserving releases. It is
+**UBI 10 minimal** base (UBI 9 kept as a rollback base), then produces OCI
+archives, SBOMs, vulnerability scan and static-check evidence, an OPA release decision, and signed, digest-preserving releases. It is
 not a deployment platform.
 
 Scope (`docs/scope.md`): every stage is a Kubernetes pod running daemonless
@@ -80,10 +80,20 @@ Tekton Task, in a cluster.
   equals catalog `product.version`; each `build.buildArgs` entry appears as
   `ARG KEY=value`; the Containerfile uses `FROM ${BASE_REF}`; no Registry1 or
   public Red Hat registry references; for catalog-based images the manifest
-  `args.BASE_TAG` equals the base catalog `product.version`.
+  `args.BASE_TAG` equals the base catalog `product.version` and `args.BASE_IMAGE`
+  names the catalog base.
 - `source.revision` in the catalog and the matching `vendir/config.yml` ref must
   always move together.
 - Atlassian-bundled JAR findings are fixed only by upgrading the whole product.
+
+## Static checks (summary — see `docs/base-images.md`)
+
+- `context-check` (after prepare) renders the product templates with the
+  product's own helper; `image-check` (after sbom) reads the OCI archive. Only
+  `required` checks fail a run; `advisory` ones are Atlassian-parity evidence.
+- Expectations are in the catalog `verify` block (human-owned). Fix a failing
+  required check in the overlay or catalog that causes it, never by weakening
+  the check.
 
 ## Scanner data (summary — see `security-data/README.md`)
 

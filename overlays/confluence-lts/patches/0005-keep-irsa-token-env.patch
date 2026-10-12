@@ -1,0 +1,43 @@
+diff --git a/scripts/entrypoint_helpers.py b/scripts/entrypoint_helpers.py
+index 2c1374e..ea33c26 100644
+--- a/scripts/entrypoint_helpers.py
++++ b/scripts/entrypoint_helpers.py
+@@ -3,6 +3,7 @@ import os
+ import pwd
+ import shutil
+ import logging
++import re
+ import jinja2 as j2
+ import uuid
+ import base64
+@@ -92,10 +93,27 @@ def str2bool_or(s, default):
+     else:
+         return str2bool(s)
+ 
+-def unset_secure_vars():
++def is_secured_var(key):
++    """True if the variable looks sensitive and is not allowlisted.
++
++    Ported from Atlassian's shared-components (CLIP-1824): variables that only
++    name a file holding a secret, such as the EKS IRSA token path, must reach
++    the JVM. ATL_ALLOWLIST_SENSITIVE_ENV_VARS adds a comma-separated list.
++    """
+     secure_keywords = ('PASS', 'SECRET', 'TOKEN')
+-    for key in os.environ:
+-        if any(kw in key.upper() for kw in secure_keywords):
++    if not any(kw in key.upper() for kw in secure_keywords):
++        return False
++    allowlist = [v.strip() for v in os.environ.get('ATL_ALLOWLIST_SENSITIVE_ENV_VARS', '').split(',') if v.strip()]
++    patterns = [
++        r'com_atlassian_db_config_password_ciphers_algorithm_javax_crypto',
++        r'AWS_WEB_IDENTITY_TOKEN_FILE',
++    ] + [re.escape(var) for var in allowlist]
++    return not re.match(r'^(?:' + '|'.join(patterns) + ')', key, re.IGNORECASE)
++
++
++def unset_secure_vars():
++    for key in list(os.environ):
++        if is_secured_var(key):
+             logging.warning(f"Unsetting environment var {key}")
+             del os.environ[key]
+ 

@@ -27,6 +27,7 @@
       "enum": [
         "policy-deny",
         "vulnerability",
+        "verification",
         "build",
         "prepare",
         "intake",

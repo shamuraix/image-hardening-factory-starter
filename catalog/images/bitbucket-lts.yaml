@@ -21,7 +21,7 @@ build:
   network: internal-only
   base:
     kind: catalog
-    image: ubi9-minimal
+    image: ubi10-minimal
   rpm:
     source: private-mirror
   buildArgs:
@@ -33,6 +33,21 @@ policy:
     critical: true
     fixableHigh: true
     newHigh: true
+verify:
+  profile: bitbucket
+  sources:
+    entrypoint: scripts/entrypoint.py
+    helpers: scripts/shared-components/image/entrypoint_helpers.py
+  runUser: bitbucket
+  runUid: 2003
+  ports: [7990, 7999]
+  entrypoint: [/usr/bin/tini, --]
+  cmd: [/entrypoint.py]
+  homeEnv: BITBUCKET_HOME
+  installDirEnv: BITBUCKET_INSTALL_DIR
+  requiredPaths: [/usr/bin/tini, /entrypoint.py, /entrypoint_helpers.py, /usr/bin/git]
+  forbiddenPaths: ["/opt/atlassian-bitbucket-*.tar.gz", "/tmp/git-*"]
+  envPaths: [JRE_HOME, JAVA_BINARY]
 publication:
   quarantineRepository: ${FACTORY_APPLICATION_QUARANTINE_REPOSITORY}
   releaseRepository: ${FACTORY_RELEASE_REPOSITORY}

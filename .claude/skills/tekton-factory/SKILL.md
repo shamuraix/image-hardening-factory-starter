@@ -22,7 +22,7 @@ PipelineRuns) and is selected by NetworkPolicy through the
 
 | Class | Tasks | Secrets | Egress |
 |---|---|---|---|
-| offline | checkout, validate, sbom, scan, assessment, gate | none | git host (checkout only) |
+| offline | checkout, validate, context-check, sbom, image-check, scan, assessment, gate | none | git host (checkout only) |
 | internal-read | prepare, release resolve, evidence context | Artifactory read, intake public key | Artifactory |
 | buildkit | build | Artifactory read | Artifactory |
 | import | quarantine | quarantine write | Artifactory |

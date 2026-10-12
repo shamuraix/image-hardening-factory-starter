@@ -31,7 +31,10 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
 7. Open a trivial PR (for example, a comment change in
    `catalog/images/jira-lts.yaml`) to run the PR pipeline end to end. Inspect the
    evidence in the TaskRun logs and workspace.
-8. Merge it; review the quarantine import and the release request PR.
+8. Merge it; review the quarantine import and the release request PR. Release
+   the base (`ubi10-minimal`) to commercial first: its promotion publishes the
+   release pointer every application build reads
+   ([base-images.md](base-images.md#bootstrapping-the-ubi-10-base)).
 9. Merge a **commercial** release request first. Enable gov1/gov2 only after the
    approver flow and environment keys are verified.
 

@@ -21,7 +21,7 @@ build:
   network: internal-only
   base:
     kind: catalog
-    image: ubi9-minimal
+    image: ubi10-minimal
   rpm:
     source: private-mirror
   buildArgs:
@@ -34,6 +34,21 @@ policy:
     critical: true
     fixableHigh: true
     newHigh: true
+verify:
+  profile: jira
+  sources:
+    entrypoint: scripts/entrypoint.py
+    helpers: scripts/entrypoint_helpers.py
+    templates: config
+  runUser: jira
+  runUid: 2001
+  ports: [8080, 40001]
+  entrypoint: [/usr/bin/tini, --]
+  cmd: [/entrypoint.py]
+  homeEnv: JIRA_HOME
+  installDirEnv: JIRA_INSTALL_DIR
+  requiredPaths: [/usr/bin/tini, /entrypoint.py, /entrypoint_helpers.py, /etc/container_id, /opt/atlassian/etc/server.xml.j2]
+  forbiddenPaths: ["/opt/*.obr", /opt/jsm, "/opt/atlassian-jira-software-*.tar.gz"]
 publication:
   quarantineRepository: ${FACTORY_APPLICATION_QUARANTINE_REPOSITORY}
   releaseRepository: ${FACTORY_RELEASE_REPOSITORY}
