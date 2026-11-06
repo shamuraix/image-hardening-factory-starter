@@ -7,16 +7,19 @@ CI agent run (bare mode loads it explicitly). Keep it short and factual.
 
 A build-and-evidence factory that rebuilds Iron Bank (Repo One) sources for
 **Bitbucket, Jira, and Confluence Data Center LTS** on an internal hardened
-**UBI 9 minimal** base, then produces OCI archives, SBOMs, vulnerability scan
-evidence, an OPA release decision, and signed, digest-preserving releases. It is
+**UBI 10 minimal** base (UBI 9 kept as a rollback base), then produces OCI
+archives, SBOMs, vulnerability scan and static-check evidence, an OPA release decision, and signed, digest-preserving releases. It is
 not a deployment platform.
 
 Scope (`docs/scope.md`): every stage is a Kubernetes pod running daemonless
 tools on **Kubernetes 1.28+** (containerd 1.7). No container engine, no running
 the candidate image, no pod user namespaces, `procMount`, or `appArmorProfile`
-field. Compliance scanning (OpenSCAP), malware scanning (ClamAV), runtime
-product tests, and a local kind harness are out of scope: never add them back
-or propose them as a fix.
+field. Compliance scanning (OpenSCAP), malware scanning (ClamAV), and runtime
+product tests are out of scope: never add them back or propose them as a fix.
+The local harness (`tests/integration/local`, `docs/local-harness.md`) is a
+developer tool that runs the production Tasks on a 1.28+ cluster; it must
+never gain settings production does not have (pod user namespaces, a test
+stage, its own runtime class).
 
 Pipelines are **Tekton** triggered by **Pipelines-as-Code** (PaC). Operational
 upkeep is assisted by **Claude Code agents** that can only propose changes.
@@ -71,8 +74,9 @@ make agents         # list agent personas, their modes and purpose
 make toolchain      # download pinned tools + build the wheel into dist/ (needs network)
 ```
 
-There is no host-side build and no local harness: images are built only by the
-Tekton Task, in a cluster.
+There is no host-side build: images are built only by the Tekton Task, in a
+cluster. `make harness-up` / `make harness-run IMAGE=<catalog image>` run the
+production Tasks on a local 1.28+ cluster (`docs/local-harness.md`).
 
 ## Iron Bank overlay rules (summary — see `.claude/skills/ironbank-overlays`)
 
@@ -80,10 +84,20 @@ Tekton Task, in a cluster.
   equals catalog `product.version`; each `build.buildArgs` entry appears as
   `ARG KEY=value`; the Containerfile uses `FROM ${BASE_REF}`; no Registry1 or
   public Red Hat registry references; for catalog-based images the manifest
-  `args.BASE_TAG` equals the base catalog `product.version`.
+  `args.BASE_TAG` equals the base catalog `product.version` and `args.BASE_IMAGE`
+  names the catalog base.
 - `source.revision` in the catalog and the matching `vendir/config.yml` ref must
   always move together.
 - Atlassian-bundled JAR findings are fixed only by upgrading the whole product.
+
+## Static checks (summary — see `docs/base-images.md`)
+
+- `context-check` (after prepare) renders the product templates with the
+  product's own helper; `image-check` (after sbom) reads the OCI archive. Only
+  `required` checks fail a run; `advisory` ones are Atlassian-parity evidence.
+- Expectations are in the catalog `verify` block (human-owned). Fix a failing
+  required check in the overlay or catalog that causes it, never by weakening
+  the check.
 
 ## Scanner data (summary — see `security-data/README.md`)
 

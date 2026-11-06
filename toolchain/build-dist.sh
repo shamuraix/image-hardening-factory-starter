@@ -38,5 +38,20 @@ python3 -m pip wheel --quiet --no-deps --wheel-dir "${dist}/factory-wheel" .
 # and fails loudly if anything else is missing.
 python3 -m pip download --quiet --only-binary=:all: --platform "${platform}" \
   --python-version 3.12 --implementation cp --dest "${dist}/factory-wheel" \
-  'PyYAML>=6.0,<7' 'jsonschema>=4.23,<5' 'ruff>=0.6,<1' 'typing-extensions>=4.4.0'
+  'PyYAML>=6.0,<7' 'jsonschema>=4.23,<5' 'ruff>=0.6,<1' 'typing-extensions>=4.4.0' \
+  'Jinja2==3.1.6' 'MarkupSafe==2.1.5'
+
+# Tools installed from UBI RPMs rather than downloaded: the runner build checks
+# each against the major.minor pinned in tools/versions.lock.yaml.
+python3 - "${dist}/rpm-versions.txt" <<'PYTHON'
+import sys
+import yaml
+tools = yaml.safe_load(open("tools/versions.lock.yaml"))["tools"]
+with open(sys.argv[1], "w") as out:
+    for name in ("skopeo",):
+        out.write(f"{name} {str(tools[name]['version']).lstrip('v')}\n")
+PYTHON
+# The runner build compares this with the architecture it builds for, so a
+# dist/ assembled for amd64 cannot end up in an arm64 image (or the reverse).
+echo "${arch}" >"${dist}/arch"
 echo "toolchain assembled in ${dist}/ for ${arch}"

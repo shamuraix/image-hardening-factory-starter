@@ -21,7 +21,7 @@ build:
   network: internal-only
   base:
     kind: catalog
-    image: ubi9-minimal
+    image: ubi10-minimal
   rpm:
     source: private-mirror
   buildArgs:
@@ -33,6 +33,21 @@ policy:
     critical: true
     fixableHigh: true
     newHigh: true
+verify:
+  profile: confluence
+  sources:
+    entrypoint: scripts/entrypoint.py
+    helpers: scripts/entrypoint_helpers.py
+    templates: scripts/config
+  runUser: confluence
+  runUid: 2002
+  ports: [8090, 8091]
+  entrypoint: [/usr/bin/tini, --]
+  cmd: [/entrypoint.py]
+  homeEnv: CONFLUENCE_HOME
+  installDirEnv: CONFLUENCE_INSTALL_DIR
+  requiredPaths: [/usr/bin/tini, /entrypoint.py, /entrypoint_helpers.py, /opt/atlassian/etc/confluence.cfg.xml.j2]
+  forbiddenPaths: ["/opt/atlassian-confluence-*.tar.gz"]
 publication:
   quarantineRepository: ${FACTORY_APPLICATION_QUARANTINE_REPOSITORY}
   releaseRepository: ${FACTORY_RELEASE_REPOSITORY}

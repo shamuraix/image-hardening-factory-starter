@@ -20,6 +20,7 @@ adding it back as a fix.
 | Rootless image build with controlled RPM sources | `build` | BuildKit + RootlessKit |
 | SBOMs (CycloneDX, SPDX) | `sbom` | syft |
 | Vulnerability scanning and normalized findings | `scan`, `assessment` | grype, trivy, osv-scanner |
+| Static checks: product templates and helpers on the build context, image config and filesystem metadata on the OCI archive ([base-images.md](base-images.md)) | `context-check`, `image-check` | python3, Jinja2 |
 | Release gate | `gate` | opa |
 | Quarantine import, signing, attestations, digest-preserving promotion | `quarantine`, `attest`, `promote` | skopeo, cosign, oras |
 | Provenance | `attest`, Tekton Chains | Chains, cosign |
@@ -36,7 +37,7 @@ release from it. The consuming environment owns them.
 | RPM integrity (`rpm -V` against allow lists) | part of the `test` stage | Ran inside the candidate with Podman. |
 | Compliance scanning (OpenSCAP / SCAP Security Guide, STIG profiles) | `compliance` stage on FIPS nodes, release gate `compliancePassed` | Ran `oscap-chroot` under `podman unshare` and needed dedicated FIPS nodes. |
 | Malware scanning (ClamAV) of image filesystems and mirrored resources | `scan` and `intake` stages | Needed `podman unshare` to unpack the rootfs and a signature feed. Intake still enforces upstream checksums. |
-| Local kind / Rancher Desktop harness | `tests/integration/kind`, `make harness-*` | A second, laptop-specific runtime that tested a different configuration from production. Use a real cluster with an environment that includes `deploy/components/local-cluster`. |
+| Local kind harness with its own runtime configuration | `tests/integration/kind` (kind clusters, pod user namespaces, crun RuntimeClass) | A second, laptop-specific runtime that tested a different configuration from production. Replaced by the local harness ([local-harness.md](local-harness.md)), which runs the production Tasks and pod settings on an existing Kubernetes 1.28+ cluster and needs nothing this page excludes. |
 
 The release attestations no longer include `compliance:v1` or `test:v1`
 predicates, and `scripts/verify_release_evidence.sh` no longer requires them.

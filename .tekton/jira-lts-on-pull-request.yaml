@@ -69,12 +69,16 @@ spec:
     serviceAccountName: factory-offline
   - pipelineTaskName: prepare
     serviceAccountName: factory-reader
+  - pipelineTaskName: context-check
+    serviceAccountName: factory-offline
   - pipelineTaskName: build
     serviceAccountName: factory-buildkit
     metadata:
       annotations:
         container.apparmor.security.beta.kubernetes.io/step-run: unconfined
   - pipelineTaskName: sbom
+    serviceAccountName: factory-offline
+  - pipelineTaskName: image-check
     serviceAccountName: factory-offline
   - pipelineTaskName: scan
     serviceAccountName: factory-offline

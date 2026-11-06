@@ -11,7 +11,8 @@ description: Facts about the Bitbucket, Jira (with JSM), and Confluence Data Cen
 | `jira-lts` | `dsop/atlassian/jira-data-center/jira-lts` | `JIRA_VERSION`, `JSM_VERSION` (kept equal) |
 | `confluence-lts` | `dsop/atlassian/confluence-data-center/confluence-lts` | `CONFLUENCE_VERSION` |
 
-All three build on the catalog base `ubi9-minimal` (`build.base.kind: catalog`),
+All three build on the catalog base `ubi10-minimal` (`build.base.kind: catalog`;
+`ubi9-minimal` is a rollback base),
 publish under `atlassian/<image>`.
 
 ## Version changes

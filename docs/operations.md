@@ -31,7 +31,10 @@ SHA-256 hashes a stage writes for its outputs so later stages can detect changes
 7. Open a trivial PR (for example, a comment change in
    `catalog/images/jira-lts.yaml`) to run the PR pipeline end to end. Inspect the
    evidence in the TaskRun logs and workspace.
-8. Merge it; review the quarantine import and the release request PR.
+8. Merge it; review the quarantine import and the release request PR. Release
+   the base (`ubi10-minimal`) to commercial first: its promotion publishes the
+   release pointer every application build reads
+   ([base-images.md](base-images.md#bootstrapping-the-ubi-10-base)).
 9. Merge a **commercial** release request first. Enable gov1/gov2 only after the
    approver flow and environment keys are verified.
 
@@ -41,7 +44,9 @@ A local or single-node cluster can run the whole factory against the real
 GitLab instance and Artifactory; only the cluster is local. It needs what
 production needs ([configuration.md](configuration.md#quick-setup-checklist)):
 Kubernetes 1.28 or later, ValidatingAdmissionPolicy enabled, and a node that
-allows unprivileged user namespaces. Then:
+allows unprivileged user namespaces. For Rancher Desktop specifics (k3s
+apiserver flags, Zscaler, reaching the controller from GitLab), see
+[local-rancher-desktop.md](local-rancher-desktop.md). Then:
 
 1. Build, sign, and push the three runner images to Artifactory (`make
    toolchain`, the Containerfiles in `toolchain/`) and put their digests in
@@ -165,9 +170,12 @@ history). Re-check policy with current data before redeploying.
 
 ## Local development
 
-There is no host-side build and no laptop harness. Images are built only by the
-Tekton Task. To iterate on an overlay, open a merge request: the PR PipelineRun
-builds, scans, and gates the candidate without publishing it, or run the
-pipeline on a development cluster with `deploy/environments/dev`. `make ci`
+There is no host-side build. Images are built only by the Tekton Task. To
+iterate on an overlay or a product upgrade, build it with the local harness
+([local-harness.md](local-harness.md): validate, prepare, context-check, build,
+SBOM, image-check on your own 1.28+ cluster), then open a merge request: the
+PR PipelineRun builds, scans, and gates the candidate without publishing it.
+To run the whole pipeline, use a development cluster with
+`deploy/environments/dev`. `make ci`
 covers everything that does not need a cluster. Runtime testing of a candidate
 happens outside the pipeline ([scope.md](scope.md)).

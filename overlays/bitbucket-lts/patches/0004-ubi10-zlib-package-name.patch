@@ -1,0 +1,25 @@
+diff --git a/Dockerfile b/Dockerfile
+index efd157e..2f747df 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -50,7 +50,10 @@ RUN microdnf -y update && microdnf -y upgrade \
+     && chmod 0750 ${BITBUCKET_HOME} \
+     && rm -rf /opt/atlassian-bitbucket-${BITBUCKET_VERSION}.tar.gz \
+     # As a temporary fix, installing git 2.49.1 from source as bitbucket does not support git 2.52 \
+-    && microdnf -y install gcc make diffutils gettext libcurl-devel openssl-devel zlib-devel expat-devel \
++    # UBI 10 replaces zlib with zlib-ng-compat; name the real package so the
++    # matching remove below does not depend on Provides resolution.
++    && zlib_devel=zlib-devel && { [ "${BASE_MAJOR}" -lt 10 ] || zlib_devel=zlib-ng-compat-devel; } \
++    && microdnf -y install gcc make diffutils gettext libcurl-devel openssl-devel "${zlib_devel}" expat-devel \
+     && cd /tmp \
+     && tar xzf git-2.49.1.tar.gz \
+     && cd git-2.49.1 \
+@@ -59,7 +62,7 @@ RUN microdnf -y update && microdnf -y upgrade \
+     && make install \
+     && cd /tmp \
+     && rm -rf git-2.49.1 git-2.49.1.tar.gz \
+-    && microdnf -y remove gcc make diffutils gettext libcurl-devel openssl-devel zlib-devel expat-devel \
++    && microdnf -y remove gcc make diffutils gettext libcurl-devel openssl-devel "${zlib_devel}" expat-devel \
+     && microdnf clean all \
+     && microdnf -y remove tar \
+     # Keep runtime libraries required by the installed RPMs.

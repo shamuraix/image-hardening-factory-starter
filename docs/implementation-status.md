@@ -41,12 +41,16 @@ has not yet run in a cluster.
 | Promotion, release pointer, and rebuild of dependent images | Implemented | Destination registry verification SLO |
 | Tekton Chains provenance | Configured (`slsa/v2alpha3`, SLSA v1.0) | Chains signing key (KMS); optional internal Rekor |
 | Claude Code agents (6 personas) | Implemented; loading, commands, write policy, and hook tested | Approved LLM gateway; agent image build; evaluate before widening |
-| UBI 10 canary | Implemented | Vendor compatibility acceptance |
+| UBI 10 base for the Atlassian images | Implemented; overlays apply and context-check passes against the pinned Iron Bank sources | First builds on UBI 10; commercial release of `ubi10-minimal` to publish its pointer; confirm node CPU baseline |
+| UBI 9 rollback base | Releasable, no catalog dependents; still the runner images' base | Decide how long to keep it; move the runner to UBI 10 before retiring it |
+| Static checks (context-check, image-check) | Implemented and unit-tested; context-check run against the pinned Iron Bank sources | First image-check against real UBI 10 builds; review advisory parity findings |
 
 ## Known gaps and follow-ups
 
-- There is no local harness. Validating pipeline changes needs a development
-  cluster (for example `deploy/environments/dev`).
+- The local harness (`docs/local-harness.md`) builds base and application
+  images with the production Tasks on a 1.28+ cluster, but not scan, gate, or
+  release; those still need a development cluster (`deploy/environments/dev`).
+  Its first run is also the first run of the 1.28 build path.
 - Without pod user namespaces, build pods use real host UIDs (10001 and the
   `100000:65536` subordinate range). Keep build pods on a dedicated node pool.
 - The Pipelines-as-Code v0.51 and Tekton Chains v0.28 minimum Kubernetes

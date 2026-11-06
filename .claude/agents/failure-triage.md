@@ -24,12 +24,17 @@ explain why, quickly and with evidence, so a human can act in minutes.
 
 1. Read `run.json` in the context directory. `taskStatuses` shows which pipeline
    task failed first (`Failed`) and which were skipped (`None`). The earliest
-   failure in DAG order (validate → prepare → build → sbom/scan → assessment →
-   gate → quarantine) is almost always the root cause.
+   failure in DAG order (validate → prepare → context-check/build → sbom →
+   image-check/scan → assessment → gate → quarantine) is almost always the root
+   cause.
 2. Read that stage's log tail under `logs/`. Look for the first error, not the
    last line.
 3. Correlate with evidence:
    - gate deny → `gate-result.json` `deny[]`, then `findings-blocking.json`
+   - context-check / image-check → `context-check.json` / `image-check.json`:
+     only `required` checks fail the stage (`advisory` ones are parity
+     evidence). Name the failing check id and the file it points at (an overlay
+     patch, a template, the catalog `verify` block). Category `verification`.
    - prepare/build → resource-lock, digest, base resolution, or overlay apply
      errors (`git apply --check` output), `validate_context.py` messages
    - build runtime → `build-runtime.txt` from the build preflight (bounding

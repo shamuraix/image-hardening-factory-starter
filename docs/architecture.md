@@ -1,6 +1,6 @@
 # Architecture
 
-[Project overview](../README.md) · [Scope](scope.md) · [Agents](agents.md) · [Configuration](configuration.md) · [Operations](operations.md) · [Evidence model](evidence-model.md)
+[Project overview](../README.md) · [Scope](scope.md) · [Base images](base-images.md) · [Agents](agents.md) · [Configuration](configuration.md) · [Operations](operations.md) · [Evidence model](evidence-model.md)
 
 ## What this system does
 
@@ -63,8 +63,13 @@ for the times.
 ```mermaid
 flowchart TD
     checkout --> validate --> prepare --> build
+    prepare --> context-check
     build --> sbom --> scan --> assessment
+    sbom --> image-check
+    context-check --> image-check
     assessment --> gate
+    context-check --> gate
+    image-check --> gate
     gate -->|publish=true| quarantine --> release-request
     gate -. deny, default branch .-> remediation[remediation agent<br/>finally]
     any[any failure] -.-> triage[triage agent<br/>finally]
@@ -74,8 +79,10 @@ flowchart TD
 |---|---|
 | validate | checks the catalog and the image definition |
 | prepare | applies overlay patches to the Iron Bank source, checks the signed resource lock, and downloads and verifies the [security-data bundle](#offline-security-data) |
+| context-check | renders the product's templates with its own helper and checks the result, helper behaviour, and Bitbucket's git version, statically ([base-images.md](base-images.md#context-check-after-prepare)) |
 | build | rootless BuildKit build of the OCI archive |
 | sbom | Syft CycloneDX and SPDX SBOMs, plus `sbom.identity.json` (the digest they describe and their hashes) |
+| image-check | reads the OCI archive (config and layer metadata) and checks user, entrypoint, ports, volume, files, and runtimes without running it ([base-images.md](base-images.md#image-check-after-sbom)) |
 | scan | Grype, Trivy, and OSV-Scanner; writes normalized findings and the assessment status (see [evidence-model.md](evidence-model.md#how-the-scan-stage-works)) |
 | assessment | fails unless the scan stage wrote an assessment status file |
 | gate | builds the gate input and evaluates the OPA release policy |
@@ -236,10 +243,10 @@ The prepare stage writes two seals: `prepare` (build context and lock) and
 
 ```mermaid
 flowchart TD
-    U9[ubi9-minimal] --> B[bitbucket-lts]
-    U9 --> C[confluence-lts]
-    U9 --> J[jira-lts]
-    U10[ubi10-minimal canary] --> Canary[canary repository]
+    U10[ubi10-minimal] --> B[bitbucket-lts]
+    U10 --> C[confluence-lts]
+    U10 --> J[jira-lts]
+    U9[ubi9-minimal<br/>rollback base, no dependents]
 ```
 
 Application builds use the base recorded in the release pointer

@@ -54,6 +54,8 @@ evidence_summary() {
   copy_if "${e}/scans/delegated/status.json" assessment-status.json
   copy_if "${e}/database-status.json"
   copy_if "${e}/runtime/runtime.txt" build-runtime.txt
+  copy_if "${e}/context-check/result.json" context-check.json
+  copy_if "${e}/image-check/result.json" image-check.json
   if [[ -f ${e}/findings.json ]]; then
     # Keep only what the gate can block on; full scanner output stays on disk.
     jq '{generatedAt, findings: [.findings[] | select(.severity == "CRITICAL" or .severity == "HIGH"

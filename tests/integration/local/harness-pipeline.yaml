@@ -1,0 +1,336 @@
+# Harness-only Tekton objects. The harness has no access to the factory's git
+# mirrors or Artifactory, so harness-source unpacks the reviewed source snapshot
+# from a ConfigMap and commits it (standing in for factory-checkout), and a
+# factory-stage run of harness-prepare.sh stands in for the prepare stage.
+# Every other task is the production Task with the production command, in the
+# same seal chain as .tekton/pipelines/image-build.yaml: validate, prepare,
+# context-check, build, sbom, image-check. Scan, gate, quarantine, signing, and
+# promotion need the signed security-data bundle and credentials and are not run.
+#
+# harness-build      a base image (build.base.kind: upstream)
+# harness-build-app  an application image: builds its catalog base first in the
+#                    same workspace, then the application on that archive
+#
+# One List document, so the application pipeline can reuse the base
+# pipeline's YAML anchors (anchors do not cross document boundaries).
+apiVersion: v1
+kind: List
+items:
+  - apiVersion: tekton.dev/v1
+    kind: Task
+    metadata:
+      name: harness-source
+    spec:
+      params:
+        - name: runner-image
+      workspaces:
+        - name: shared
+      results:
+        - name: commit
+        - name: url
+      volumes:
+        - name: source
+          configMap: {name: factory-source}
+      steps:
+        - name: unpack
+          image: $(params.runner-image)
+          volumeMounts:
+            - {name: source, mountPath: /harness-source, readOnly: true}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            capabilities: {drop: [ALL]}
+            seccompProfile: {type: RuntimeDefault}
+          script: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            destination="$(workspaces.shared.path)/source"
+            rm -rf "${destination}"
+            mkdir -p "${destination}"
+            tar -xzf /harness-source/source.tar.gz -C "${destination}"
+            cd "${destination}"
+            git init --quiet
+            git add -A
+            GIT_AUTHOR_DATE=2000-01-01T00:00:00Z GIT_COMMITTER_DATE=2000-01-01T00:00:00Z \
+              git -c user.name=harness -c user.email=harness@invalid commit --quiet -m snapshot
+            mkdir -p work
+            git rev-parse HEAD | tr -d '\n' >"$(results.commit.path)"
+            printf 'harness://factory-source' >"$(results.url.path)"
+  - apiVersion: tekton.dev/v1
+    kind: Pipeline
+    metadata:
+      name: harness-build
+    spec:
+      params:
+        - name: runner-image
+        - name: image
+          description: A catalog base image (build.base.kind upstream).
+      workspaces:
+        - name: shared
+      tasks:
+        - name: checkout
+          taskRef: {name: harness-source}
+          params:
+            - {name: runner-image, value: $(params.runner-image)}
+          workspaces:
+            - {name: shared, workspace: shared}
+
+        - name: validate
+          taskRef: {name: factory-stage}
+          params: &validate-params
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: validate}
+            - name: command
+              value: >-
+                python3 -m factory.cli validate --catalog "${FACTORY_CATALOG_DIR}" &&
+                scripts/validate_image.sh "${FACTORY_CATALOG_FILE}"
+            - name: outputs
+              value: ["work/$(params.image)/validation.json"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: &ws
+            - {name: shared, workspace: shared}
+
+        - name: prepare
+          taskRef: {name: factory-stage}
+          params:
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: prepare}
+            - {name: command, value: tests/integration/local/harness-prepare.sh}
+            - name: outputs
+              value: &prepare-outputs
+                - "work/$(params.image)/context/**"
+                - "work/$(params.image)/resource-lock.json"
+                - "work/$(params.image)/build.env"
+                - "work/$(params.image)/base.oci.tar"
+            - name: inputs
+              value: ["validate=$(tasks.validate.results.seal)"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: context-check
+          taskRef: {name: factory-stage}
+          params: &context-check-params
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: context-check}
+            - name: command
+              value: >-
+                python3 -m factory.cli context-check --catalog "${FACTORY_CATALOG_FILE}"
+                --context "${FACTORY_WORK_DIR}/context"
+                --output "${FACTORY_WORK_DIR}/evidence/context-check"
+            - name: outputs
+              value: ["work/$(params.image)/evidence/context-check/**"]
+            - name: inputs
+              value: ["prepare=$(tasks.prepare.results.seal)"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: build
+          taskRef: {name: factory-rootless-build}
+          params: &build-params
+            - name: inputs
+              value: ["prepare=$(tasks.prepare.results.seal)"]
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: sbom
+          taskRef: {name: factory-stage}
+          params: &sbom-params
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: sbom}
+            - name: command
+              value: scripts/generate_sbom.sh "${FACTORY_WORK_DIR}/image.oci.tar" "${FACTORY_WORK_DIR}/evidence"
+            - name: outputs
+              value: ["work/$(params.image)/evidence/sbom.*"]
+            - name: inputs
+              value: ["build=$(tasks.build.results.seal)"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: image-check
+          taskRef: {name: factory-stage}
+          params: &image-check-params
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: image-check}
+            - name: command
+              value: >-
+                python3 -m factory.cli image-check --catalog "${FACTORY_CATALOG_FILE}"
+                --image "${FACTORY_WORK_DIR}/image.oci.tar"
+                --sbom "${FACTORY_WORK_DIR}/evidence/sbom.cdx.json"
+                --context-result "${FACTORY_WORK_DIR}/evidence/context-check/result.json"
+                --output "${FACTORY_WORK_DIR}/evidence/image-check"
+            - name: outputs
+              value: ["work/$(params.image)/evidence/image-check/**"]
+            - name: inputs
+              value:
+                - "build=$(tasks.build.results.seal)"
+                - "sbom=$(tasks.sbom.results.seal)"
+                - "context-check=$(tasks.context-check.results.seal)"
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: consume
+          taskRef: {name: factory-stage}
+          params: &consume-params
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: consume}
+            - name: command
+              value: jq -e '.valid == true' "${FACTORY_WORK_DIR}/validation.json"
+            - name: outputs
+              value: []
+            - name: inputs
+              value: ["validate=$(tasks.validate.results.seal)"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+          workspaces: *ws
+
+      # Proves sealing works in-cluster: the verify step must reject a deliberately
+      # wrong digest, so this task is expected to fail; tekton.py asserts that its
+      # verify step is what failed. It runs in finally because a failed task under
+      # tasks stops Tekton from scheduling the rest.
+      finally:
+        - name: tamper-detected
+          taskRef: {name: factory-stage}
+          params: &tamper-params
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: tamper}
+            - {name: command, value: "true"}
+            - name: outputs
+              value: []
+            - name: inputs
+              value: ["validate=0000000000000000000000000000000000000000000000000000000000000000"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+          workspaces: *ws
+  - apiVersion: tekton.dev/v1
+    kind: Pipeline
+    metadata:
+      name: harness-build-app
+    spec:
+      params:
+        - name: runner-image
+        - name: image
+          description: A catalog application image (build.base.kind catalog).
+        - name: base-image
+          description: The application's catalog base (build.base.image).
+      workspaces:
+        - name: shared
+      tasks:
+        - name: checkout
+          taskRef: {name: harness-source}
+          params:
+            - {name: runner-image, value: $(params.runner-image)}
+          workspaces:
+            - {name: shared, workspace: shared}
+
+        - name: validate
+          taskRef: {name: factory-stage}
+          params: *validate-params
+          workspaces: *ws
+
+        # The base, built exactly as harness-build builds it, under its own
+        # work/<base>/ directory and seals.
+        - name: base-prepare
+          runAfter: [validate]
+          taskRef: {name: factory-stage}
+          params:
+            - {name: image, value: $(params.base-image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: prepare}
+            - {name: command, value: tests/integration/local/harness-prepare.sh}
+            - name: outputs
+              value:
+                - "work/$(params.base-image)/context/**"
+                - "work/$(params.base-image)/resource-lock.json"
+                - "work/$(params.base-image)/build.env"
+                - "work/$(params.base-image)/base.oci.tar"
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: base-build
+          taskRef: {name: factory-rootless-build}
+          params:
+            - name: inputs
+              value: ["prepare=$(tasks.base-prepare.results.seal)"]
+            - {name: image, value: $(params.base-image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        # The application's prepare verifies the base build's seal itself
+        # (harness-prepare.sh), because seals live under each image's own work
+        # directory and the verify step only reads the application's.
+        - name: prepare
+          taskRef: {name: factory-stage}
+          params:
+            - {name: image, value: $(params.image)}
+            - {name: pipelinerun, value: $(context.pipelineRun.name)}
+            - {name: stage, value: prepare}
+            - name: command
+              value: >-
+                HARNESS_BASE_SEAL=$(tasks.base-build.results.seal)
+                tests/integration/local/harness-prepare.sh
+            - name: outputs
+              value: *prepare-outputs
+            - name: inputs
+              value: ["validate=$(tasks.validate.results.seal)"]
+            - {name: runner-image, value: $(params.runner-image)}
+            - {name: commit, value: $(tasks.checkout.results.commit)}
+            - {name: source-url, value: $(tasks.checkout.results.url)}
+          workspaces: *ws
+
+        - name: context-check
+          taskRef: {name: factory-stage}
+          params: *context-check-params
+          workspaces: *ws
+
+        - name: build
+          taskRef: {name: factory-rootless-build}
+          params: *build-params
+          workspaces: *ws
+
+        - name: sbom
+          taskRef: {name: factory-stage}
+          params: *sbom-params
+          workspaces: *ws
+
+        - name: image-check
+          taskRef: {name: factory-stage}
+          params: *image-check-params
+          workspaces: *ws
+
+        - name: consume
+          taskRef: {name: factory-stage}
+          params: *consume-params
+          workspaces: *ws
+
+      finally:
+        - name: tamper-detected
+          taskRef: {name: factory-stage}
+          params: *tamper-params
+          workspaces: *ws

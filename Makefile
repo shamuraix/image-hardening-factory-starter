@@ -1,5 +1,5 @@
 .PHONY: validate test lint plan ci tekton-render tekton-check release-requests agents \
-	update-pins package policy-test toolchain
+	update-pins package policy-test toolchain harness-up harness-run harness-status harness-down
 
 PY := PYTHONPATH=. python3
 
@@ -45,3 +45,22 @@ package:
 
 policy-test:
 	opa test policies/rego -v
+
+# Local harness (docs/local-harness.md): the production Tasks on an existing
+# Kubernetes 1.28+ cluster such as Rancher Desktop. Not part of make ci.
+HARNESS_STATE ?= .local-factory/harness
+
+harness-up:
+	FACTORY_HARNESS_STATE="$(HARNESS_STATE)" tests/integration/local/up.sh
+
+# Redeploys the source snapshot, Tasks, and Pipelines first, so a run always
+# executes the scripts in your checkout.
+harness-run:
+	FACTORY_HARNESS_STATE="$(HARNESS_STATE)" tests/integration/local/deploy.sh
+	$(PY) tests/integration/local/tekton.py --state "$(HARNESS_STATE)" run --image "$${IMAGE:-ubi10-minimal}"
+
+harness-status:
+	$(PY) tests/integration/local/tekton.py --state "$(HARNESS_STATE)" status
+
+harness-down:
+	FACTORY_HARNESS_STATE="$(HARNESS_STATE)" tests/integration/local/down.sh

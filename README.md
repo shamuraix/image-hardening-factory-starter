@@ -2,11 +2,13 @@
 
 Image Hardening Factory rebuilds the Iron Bank **Bitbucket, Jira, and Confluence
 Data Center LTS** images (`bitbucket-lts`, `jira-lts`, `confluence-lts`) on an
-internal hardened UBI 9 base and produces, for every candidate:
+internal hardened UBI 10 minimal base and produces, for every candidate:
 
 - a digest-pinned OCI image built rootless from signed, locked inputs
 - CycloneDX and SPDX SBOMs
 - vulnerability scan evidence (Grype, Trivy, OSV-Scanner) with CISA KEV flags
+- static configuration and image checks (rendered product templates, image
+  user/ports/entrypoint/files) without running the image
 - an OPA release decision bound to the candidate digest
 - Cosign signatures and in-toto attestations, plus Tekton Chains SLSA provenance
 
@@ -38,8 +40,9 @@ flowchart LR
 
 Day-one needs Python 3.11+, git, and the GNU `sha256sum` and `sort` the seal
 scripts use (`brew install coreutils` on macOS). That is all: there is no
-host-side build toolchain, container runtime, or local cluster harness. Images
-are built only by the Tekton Task, in a cluster.
+host-side build toolchain or container runtime. Images are built only by the
+Tekton Task, in a cluster; to build one on a local Kubernetes 1.28+ cluster
+(Rancher Desktop), see [docs/local-harness.md](docs/local-harness.md).
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
@@ -64,7 +67,7 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 1. **Merge request** (GitLab; PaC calls the event `pull_request`) — PaC runs
    `factory-checks` and, for each image whose inputs changed,
    `<image>-on-pull-request`: validate → prepare → rootless build → SBOM →
-   scan/assessment → gate. Nothing is published.
+   context-check → image-check → scan/assessment → gate. Nothing is published.
    Failures get a triage comment from the `failure-triage` agent.
 2. **Merge to `main`** — `<image>-on-push` repeats the build, imports the passing
    candidate into quarantine, attaches its evidence bundle as an OCI referrer, and
@@ -98,6 +101,7 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 ## Documentation
 
 - [Scope](docs/scope.md) — what the pipeline does, what it leaves to others, platform floor
+- [Base images](docs/base-images.md) — UBI 10 base, rollback base, static verification stages
 - [Architecture](docs/architecture.md) — triggers, pipelines, trust classes, sealing, release flow
 - [AI agents](docs/agents.md) — personas, isolation model, guardrails, operations
 - [Configuration](docs/configuration.md) — cluster install, settings, secrets, Repository CR

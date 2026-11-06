@@ -11,6 +11,9 @@
 - a signed resource lock (the exact upstream inputs)
 - SBOMs (software bills of materials) in CycloneDX and SPDX format
 - a scanner assessment and normalized vulnerability findings
+- passing static checks: `evidence/context-check/result.json` and
+  `evidence/image-check/result.json` (required checks pass; advisory results
+  are kept as evidence, see [base-images.md](base-images.md))
 - a gate result (the release policy decision)
 - build provenance
 - an approval (the merge of the release request)

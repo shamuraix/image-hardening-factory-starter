@@ -19,19 +19,19 @@ class PipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.images = load_catalog(ROOT / "catalog/images")
 
-    def test_ubi9_plan_contains_parallel_application_wave(self) -> None:
-        plan = render_plan(self.images, {"ubi9-minimal"})
-        self.assertEqual(plan["waves"][0], ["ubi9-minimal"])
+    def test_ubi10_plan_contains_parallel_application_wave(self) -> None:
+        plan = render_plan(self.images, {"ubi10-minimal"})
+        self.assertEqual(plan["waves"][0], ["ubi10-minimal"])
         self.assertEqual(
             plan["waves"][1],
             ["bitbucket-lts", "confluence-lts", "jira-lts"],
         )
-        self.assertNotIn("ubi10-minimal", {image["name"] for image in plan["images"]})
+        self.assertNotIn("ubi9-minimal", {image["name"] for image in plan["images"]})
 
     def test_application_records_selected_base_dependency(self) -> None:
-        plan = render_plan(self.images, {"ubi9-minimal"})
+        plan = render_plan(self.images, {"ubi10-minimal"})
         jira = next(image for image in plan["images"] if image["name"] == "jira-lts")
-        self.assertEqual(jira["dependsOn"], ["ubi9-minimal"])
+        self.assertEqual(jira["dependsOn"], ["ubi10-minimal"])
 
     def test_single_application_does_not_force_unchanged_base_build(self) -> None:
         plan = render_plan(self.images, {"jira-lts"})
@@ -45,7 +45,7 @@ class PipelineTests(unittest.TestCase):
     def test_gate_requires_build_evidence_and_selects_assessment(self) -> None:
         self.assertEqual(
             seal_inputs("factory-image-build", "gate"),
-            {"build", "sbom", "scan", "assessment"},
+            {"build", "sbom", "scan", "assessment", "context-check", "image-check"},
         )
         self.assertEqual(seal_inputs("factory-image-build", "assessment"), {"scan"})
 
@@ -96,7 +96,16 @@ class PipelineTests(unittest.TestCase):
     def test_quarantine_verifies_every_signed_evidence_seal(self) -> None:
         self.assertEqual(
             seal_inputs("factory-image-build", "quarantine"),
-            {"prepare", "build", "sbom", "scan", "assessment", "gate"},
+            {
+                "prepare",
+                "build",
+                "sbom",
+                "scan",
+                "assessment",
+                "context-check",
+                "image-check",
+                "gate",
+            },
         )
         guard = pipeline_task("factory-image-build", "quarantine")["when"][0]
         self.assertEqual(guard["input"], "$(params.publish)")

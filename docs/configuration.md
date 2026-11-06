@@ -168,7 +168,7 @@ neutral placeholder names. The prefixes below are the dev layout.
 | `FACTORY_BASE_QUARANTINE_REPOSITORY` | `<docker repository>/quarantine/bases` | gated base candidates and their evidence referrers | `factory-artifactory-quarantine` write |
 | `FACTORY_APPLICATION_QUARANTINE_REPOSITORY` | `<docker repository>/quarantine/apps` | gated application candidates | same |
 | `FACTORY_RELEASE_REPOSITORY` | `<docker repository>/release` | promoted images, cosign signatures and attestations | `factory-artifactory-release` write; `-sign` for signatures |
-| `FACTORY_CANARY_REPOSITORY` | `<docker repository>/canary` | UBI 10 canary | release |
+| `FACTORY_CANARY_REPOSITORY` | `<docker repository>/canary` | canary-track images (none today) | release |
 | `FACTORY_SOURCE_REPOSITORY` (*env*) | `<generic repository>/factory` | `locks/` (signed resource locks), intake resources, `releases/<image>/current.json` (pointers), `security-data/` (signed scanner bundle) | `-intake` writes locks, resources, and the bundle; `-pointer` writes pointers; `-read` reads |
 | `FACTORY_UBI_MIRROR_URL` (*env*) | `https://<host>/artifactory/<UBI remote repository>/content/public/ubi/dist` | remote repository in front of the UBI CDN, same layout | `factory-rpm-mirror` (bot account + token) read |
 
@@ -293,6 +293,15 @@ Then:
 | `agent_image` | `Containerfile.factory-agent` | the runner image | the pinned Claude Code binary |
 
 Because every tool is in the runner, no stage downloads anything at run time.
+
+Every tool is pinned in `tools/versions.lock.yaml`. Downloaded tools are
+checksum-verified by `download-tools.py`; tools installed from UBI RPMs
+(`skopeo`) are checked by the runner build against the lock's major.minor
+(`dist/rpm-versions.txt`, written by `build-dist.sh`), so a snapshot that moves
+them fails the build instead of drifting silently. Renovate tracks every GitHub
+pin in the lock but leaves `skopeo` and Jinja2/MarkupSafe alone: those follow
+the UBI snapshot and the release base's `python3-jinja2`
+(`tests/unit/test_pin_consistency.py` enforces all of this).
 
 Behind a TLS-inspecting proxy (Zscaler and similar), export the proxy root as
 PEM and set `FACTORY_CA_BUNDLE` before `make toolchain`, for example on macOS:

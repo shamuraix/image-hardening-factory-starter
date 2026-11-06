@@ -82,20 +82,25 @@ class ReleaseRequestTests(unittest.TestCase):
                 release.load_request(bad, ROOT / "catalog/images")
 
     def test_canary_images_release_only_to_commercial(self) -> None:
+        # No catalog image is canary today; mark the dependent-free UBI 9 base
+        # canary in a copy of the catalog to keep the rule covered.
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            request = release.build_request(
-                _work_dir(root), ROOT / "catalog/images/jira-lts.yaml", "gov1"
-            )
-            request["metadata"]["image"] = "ubi10-minimal"
+            catalog = root / "catalog"
+            shutil.copytree(ROOT / "catalog/images", catalog)
+            ubi9 = yaml.safe_load((catalog / "ubi9-minimal.yaml").read_text())
+            ubi9["metadata"]["track"] = "canary"
+            (catalog / "ubi9-minimal.yaml").write_text(yaml.safe_dump(ubi9))
+            request = release.build_request(_work_dir(root), catalog / "jira-lts.yaml", "gov1")
+            request["metadata"]["image"] = "ubi9-minimal"
             request["candidate"]["repository"] = (
-                "registry.example/base-quarantine/bases/ubi10-minimal"
+                "registry.example/base-quarantine/bases/ubi9-minimal"
             )
-            path = root / "releases/gov1/ubi10-minimal.yaml"
+            path = root / "releases/gov1/ubi9-minimal.yaml"
             path.parent.mkdir(parents=True)
             path.write_text(yaml.safe_dump(request))
             with self.assertRaisesRegex(release.ReleaseRequestError, "canary"):
-                release.load_request(path, ROOT / "catalog/images")
+                release.load_request(path, catalog)
 
     def test_release_merge_must_change_exactly_one_request(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -35,7 +35,10 @@ tools:
   skopeo:
     project: https://github.com/containers/skopeo
     license: Apache-2.0
-    version: 1.20.0
+    # Installed from the UBI AppStream RPM snapshot, not a GitHub release (the
+    # same 1.22.2 ships in UBI 9 and UBI 10). Containerfile.factory-runner fails
+    # if the installed major.minor differs; Renovate does not bump this entry.
+    version: 1.22.2
   oras:
     project: https://github.com/oras-project/oras
     license: Apache-2.0

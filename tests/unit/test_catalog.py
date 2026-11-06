@@ -15,12 +15,16 @@ class CatalogTests(unittest.TestCase):
             {"ubi9-minimal", "ubi10-minimal", "bitbucket-lts", "confluence-lts", "jira-lts"},
         )
 
-    def test_ubi9_selects_all_atlassian_descendants_but_not_ubi10(self) -> None:
+    def test_ubi10_selects_all_atlassian_descendants_but_not_ubi9(self) -> None:
         images = load_catalog(ROOT / "catalog/images")
         self.assertEqual(
-            descendants(images, {"ubi9-minimal"}),
-            {"ubi9-minimal", "bitbucket-lts", "confluence-lts", "jira-lts"},
+            descendants(images, {"ubi10-minimal"}),
+            {"ubi10-minimal", "bitbucket-lts", "confluence-lts", "jira-lts"},
         )
+        # UBI 9 stays releasable as a rollback base but has no dependents.
+        self.assertEqual(descendants(images, {"ubi9-minimal"}), {"ubi9-minimal"})
+        self.assertEqual(images["ubi9-minimal"].track, "release")
+        self.assertEqual(images["ubi10-minimal"].track, "release")
 
     def test_revisions_are_full_commit_ids(self) -> None:
         images = load_catalog(ROOT / "catalog/images")
