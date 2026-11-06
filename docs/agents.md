@@ -142,6 +142,9 @@ CI will validate them again.
 1. Add `.claude/agents/<name>.md` with `name`, `description`, `tools`, `model`,
    `maxTurns`, `skills`, and `x-factory` (`schema`, `budgetUsd`, `modes`, and for
    writers `writablePaths`, optional `allowDeletes`, `bashAllow`).
+   Set `model` to an explicit alias (`sonnet` or `opus`). Do not use `inherit`:
+   CI passes the value to `--model` unchanged, and the loader's default is
+   `sonnet`. Keep the frontmatter as written; the loader reads it as YAML.
 2. Add `agents/schemas/<name>.schema.json` (strict: `additionalProperties: false`).
 3. Add a context recipe in `scripts/agents/collect_context.sh`.
 4. Add a trigger in `factory/tekton.py` (and a pipeline task if it needs new
