@@ -62,7 +62,12 @@ class EnvironmentManifestTests(unittest.TestCase):
     def test_environment_values_appear_only_in_their_manifest(self) -> None:
         # Hosts, URLs, repository paths, and image references (anything with a
         # dot or slash) unique to one environment must not leak into code.
-        shared = set(_manifest("example").values())
+        # Public endpoints (the GitHub and Red Hat UBI hosts) are not environment
+        # specific and are legitimately named in comments and defaults.
+        shared = set(_manifest("example").values()) | {
+            "https://github.com",
+            "https://cdn-ubi.redhat.com/content/public/ubi/dist",
+        }
         tracked = subprocess.run(
             ["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True, text=True
         ).stdout.split("\0")

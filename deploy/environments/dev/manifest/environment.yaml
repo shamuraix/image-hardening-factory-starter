@@ -25,6 +25,10 @@ data:
   GIT_REPOSITORY_URL: https://gitlab.cicd.dc/techops-cicd/cicd-federal/govcloud-image-hardening-factory
   FACTORY_GITLAB_API_URL: https://gitlab.cicd.dc/api/v4
   INTERNAL_GIT_BASE_URL: https://gitlab.cicd.dc/techops-cicd/cicd-federal/mirrors
+  # Where intake and prepare read the pinned Iron Bank sources: "mirror" (the
+  # group above, filled by intake) or "upstream" (source.upstream in the catalog,
+  # no mirror). Checkouts are verified against the catalog's full commit SHA.
+  FACTORY_SOURCE_MODE: mirror
   SCM_BOT_AUTHOR_NAME: image-factory-bot
   SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
 

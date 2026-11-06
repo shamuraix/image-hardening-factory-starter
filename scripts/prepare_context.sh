@@ -5,20 +5,19 @@ catalog=${1:?catalog file is required}
 work_dir=${2:?work directory is required}
 context="${work_dir}/context"
 image=$(yq -r '.metadata.name' "${catalog}")
-mirror_path=$(yq -r '.source.mirrorPath' "${catalog}")
 revision=$(yq -r '.source.revision' "${catalog}")
 overlay=$(yq -r '.source.overlay // ""' "${catalog}")
 source_repository=${FACTORY_SOURCE_REPOSITORY:?FACTORY_SOURCE_REPOSITORY is required}
 local_image_namespace=${LOCAL_IMAGE_NAMESPACE:-localhost/factory}
 factory_workspace=${FACTORY_WORKSPACE:-${PWD}}
 
-: "${INTERNAL_GIT_BASE_URL:?INTERNAL_GIT_BASE_URL is required}"
+source scripts/lib/source_url.sh
 : "${ARTIFACTORY_URL:?ARTIFACTORY_URL is required}"
 : "${ARTIFACTORY_READ_TOKEN:?ARTIFACTORY_READ_TOKEN is required}"
 : "${COSIGN_INTAKE_PUBLIC_KEY:?COSIGN_INTAKE_PUBLIC_KEY is required}"
 
 rm -rf "${context}"
-git clone --filter=blob:none --no-checkout "${INTERNAL_GIT_BASE_URL%/}/${mirror_path}.git" "${context}"
+git clone --filter=blob:none --no-checkout "$(factory_source_url "${catalog}")" "${context}"
 git -C "${context}" checkout --detach "${revision}"
 [[ $(git -C "${context}" rev-parse HEAD) == "${revision}" ]]
 

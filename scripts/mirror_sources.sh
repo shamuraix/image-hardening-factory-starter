@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ ${FACTORY_SOURCE_MODE:-mirror} == upstream ]]; then
+  echo "FACTORY_SOURCE_MODE=upstream: sources are read from source.upstream; nothing to mirror"
+  exit 0
+fi
 : "${INTERNAL_GIT_BASE_URL:?}"
 : "${SCM_MIRROR_USERNAME:?}"
 : "${SCM_MIRROR_TOKEN:?}"

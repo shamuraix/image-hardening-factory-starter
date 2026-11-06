@@ -29,6 +29,10 @@ data:
   # Group or namespace that holds the source mirrors intake pushes (one project
   # per mirrored upstream repository).
   INTERNAL_GIT_BASE_URL: https://git.internal.example/mirrors
+  # Where intake and prepare read the pinned Iron Bank sources: "mirror" (the
+  # group above, filled by intake) or "upstream" (source.upstream in the catalog,
+  # no mirror). Checkouts are verified against the catalog's full commit SHA.
+  FACTORY_SOURCE_MODE: mirror
   # Commit identity for agent proposals and release requests.
   SCM_BOT_AUTHOR_NAME: image-factory-bot
   SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example

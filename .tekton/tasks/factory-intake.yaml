@@ -81,14 +81,14 @@ spec:
         set -euo pipefail
         mkdir -p "${HOME}"
         export PYTHONPATH="${PWD}"
+        source scripts/lib/source_url.sh
         catalog_dir=${FACTORY_CATALOG_DIR:-catalog/images}
         for image in $(jq -r '.images[].name' work/intake-plan.json); do
           catalog="${catalog_dir}/${image}.yaml"
-          mirror=$(yq -r '.source.mirrorPath' "${catalog}")
           revision=$(yq -r '.source.revision' "${catalog}")
           rm -rf "work/${image}/source"
           mkdir -p "work/${image}"
-          git clone --quiet --no-checkout "${INTERNAL_GIT_BASE_URL%/}/${mirror}.git" "work/${image}/source"
+          git clone --quiet --no-checkout "$(factory_source_url "${catalog}")" "work/${image}/source"
           git -C "work/${image}/source" checkout --quiet --detach "${revision}"
           python3 -m factory.cli intake --image "${catalog}" \
             --source-dir "work/${image}/source" --cache-dir "work/${image}/cache" \

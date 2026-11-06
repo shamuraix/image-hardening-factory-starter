@@ -1,0 +1,67 @@
+# Environment manifest for local: a single-node kind cluster (local-cluster
+# component: no NetworkPolicies, agents off) with no Artifactory and no GitLab.
+#   - Git provider: GitHub (Pipelines-as-Code "github" provider).
+#   - OCI registry: a TLS registry (registry:2) at factory-registry:5443.
+#   - Generic files (locks, security-data, release pointers): a stand-in for
+#     Artifactory's /artifactory/<repo>/<path> REST API at factory-files:8443.
+#   - Sources: read from Iron Bank (repo1.dso.mil) directly, no mirror.
+#   - RPMs: the public Red Hat UBI CDN.
+# Both local servers use a private CA, which is baked into the runner images
+# (FACTORY_CA_BUNDLE for `make toolchain`) and configured on the kind node's
+# containerd. Keys are documented in deploy/environments/example/manifest/.
+#
+# Still required by hand: the runner image digests, and the Secrets from
+# deploy/secrets.example.yaml (the factory-gitlab-webhook Secret holds the
+# GitHub token and webhook secret under the same key names).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: factory-environment
+  annotations:
+    config.kubernetes.io/local-config: "true"
+data:
+  GIT_PROVIDER: github
+  GIT_PROVIDER_URL: https://github.com
+  GIT_REPOSITORY_URL: https://github.com/shamuraix/image-hardening-factory-starter
+  # Unused with the github provider (agents read FACTORY_GITHUB_API_URL).
+  FACTORY_GITLAB_API_URL: https://gitlab.invalid/api/v4
+  # Unused with FACTORY_SOURCE_MODE=upstream.
+  INTERNAL_GIT_BASE_URL: https://github.com/shamuraix/unused-mirrors
+  FACTORY_SOURCE_MODE: upstream
+  SCM_BOT_AUTHOR_NAME: image-factory-bot
+  SCM_BOT_AUTHOR_EMAIL: image-factory-bot@users.noreply.example
+
+  # In-cluster address of the PaC controller (incoming webhook for schedules).
+  FACTORY_PAC_CONTROLLER_URL: http://pipelines-as-code-controller.pipelines-as-code.svc:8080
+
+  ARTIFACTORY_URL: https://factory-files:8443
+  ARTIFACTORY_REGISTRY: factory-registry:5443
+  ARTIFACTORY_USERNAME: local
+  FACTORY_SOURCE_REPOSITORY: factory-source
+  UPSTREAM_OCI_REPOSITORY: lfactory/upstream
+  FACTORY_BASE_QUARANTINE_REPOSITORY: lfactory/quarantine/bases
+  FACTORY_APPLICATION_QUARANTINE_REPOSITORY: lfactory/quarantine/apps
+  FACTORY_RELEASE_REPOSITORY: lfactory/release
+  FACTORY_CANARY_REPOSITORY: lfactory/canary
+  FACTORY_UBI_MIRROR_URL: https://cdn-ubi.redhat.com/content/public/ubi/dist
+
+  RUNNER_IMAGE: factory-registry:5443/lfactory/factory/factory-runner@sha256:c2dd6be3067f0f3ed21d8a6a30fdd2bdd02604f02a2b7ae98ca6e55736af00cf
+  INTAKE_RUNNER_IMAGE: factory-registry:5443/lfactory/factory/factory-intake-runner@sha256:cde549dac61ed259246e7b716c9489db951031783660f7030653b16e4c170e64
+  # Agents are off: the runner image stands in until an agent image is built.
+  AGENT_IMAGE: factory-registry:5443/lfactory/factory/factory-runner@sha256:c2dd6be3067f0f3ed21d8a6a30fdd2bdd02604f02a2b7ae98ca6e55736af00cf
+
+  CISA_KEV_URL: https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+
+  # Agents are off on this environment.
+  ANTHROPIC_BASE_URL: https://llm-gateway.invalid
+
+  FACTORY_GOV_APPROVER_PATTERN: "^(shamuraix)$"
+
+  # Unused while the local-cluster component removes the NetworkPolicies.
+  GIT_HOST_CIDR: 198.51.100.10/32
+  ARTIFACTORY_CIDR: 198.51.100.20/32
+  GIT_MIRRORS_CIDR: 198.51.100.30/32
+  UPSTREAM_EGRESS_CIDR: 203.0.113.0/24
+  LLM_GATEWAY_CIDR: 198.51.100.40/32
+
+  CHAINS_BUILDER_ID: https://image-factory.local/tekton-chains

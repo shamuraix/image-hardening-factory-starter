@@ -1,0 +1,6 @@
+# The local environment manifest as a kustomize package, read by
+# deploy/environments/local (factory objects) and deploy/environments/local/chains.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - environment.yaml

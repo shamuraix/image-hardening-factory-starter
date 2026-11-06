@@ -97,6 +97,11 @@ replacements:
       - select: {kind: ConfigMap, name: factory-settings}
         fieldPaths: [data.ANTHROPIC_BASE_URL]
         options: {create: true}
+  - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_SOURCE_MODE}
+    targets:
+      - select: {kind: ConfigMap, name: factory-settings}
+        fieldPaths: [data.FACTORY_SOURCE_MODE]
+        options: {create: true}
   - source: {kind: ConfigMap, name: factory-environment, fieldPath: data.FACTORY_GOV_APPROVER_PATTERN}
     targets:
       - select: {kind: ConfigMap, name: factory-settings}
