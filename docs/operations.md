@@ -80,6 +80,32 @@ apiserver flags, Zscaler, reaching the controller from GitLab), see
 7. Run the bootstrap sequence above from step 5 (security-data, intake, a
    trivial merge request, a merge, a release request).
 
+### Fully local variant (`deploy/environments/local`)
+
+Use this to try the pipeline with no GitLab, Artifactory or mirror. It needs a
+GitHub repository, a fine-grained token (Contents, Pull requests, Metadata and
+Webhooks) and these local parts:
+
+```mermaid
+flowchart LR
+    GH[GitHub<br/>repo + token] -->|incoming webhook| PaC[PaC in cluster]
+    PaC --> T[Tekton run]
+    T -->|files, locks, bundle| Shim[file shim<br/>Artifactory-style PUT/GET]
+    T -->|images| Reg[local TLS registry]
+    T -->|clone, FACTORY_SOURCE_MODE=upstream| IB[Iron Bank repo1]
+    T -->|RPMs| CDN[public UBI CDN]
+```
+
+- Trust a private CA in the runner image (`FACTORY_CA_BUNDLE`, `dist/ca-trust/`)
+  and in the cluster's container runtime.
+- Start runs with `scripts/tekton/trigger_incoming.sh <pipelinerun>`; PaC reads
+  Tasks from `main`, so merge changes first.
+- **The build stage needs a cluster that can nest user namespaces.** kind on
+  rootless Podman cannot: the node has only IDs 0-65536, so the runner's
+  `100000:65536` map fails with `newuidmap: write to uid_map failed`. Security
+  data and intake do run there. Use Rancher Desktop or another VM-backed or
+  rootful cluster for builds ([local-harness.md](local-harness.md)).
+
 What a local run proves: the trust boundaries (per-task ServiceAccounts,
 per-step secrets, the admission policy, sealing), digest continuity through
 quarantine, signing, and promotion, and the release-request flow. What it does

@@ -44,7 +44,9 @@ a harness candidate can never be imported, signed, or promoted.
   StorageClass, whose node allows unprivileged user namespaces (the build's
   RootlessKit creates one). Rancher Desktop set up as in
   [local-rancher-desktop.md](local-rancher-desktop.md), steps 1 and 3, is the
-  documented one; `up.sh` checks the version and runtime.
+  documented one; `up.sh` checks the version and runtime. kind on rootless
+  Podman does **not** qualify: its node has too few user IDs for the runner's
+  `100000:65536` map, and the build fails at `newuidmap`.
 - `kubectl`, `git`, `python3` with this repository installed
   (`pip install -e '.[dev]'`), and `nerdctl` (Rancher Desktop ships it) to
   build the runner into the node's containerd.

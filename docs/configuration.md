@@ -79,6 +79,7 @@ deploy/
       kustomization.yaml          factory objects: kubectl apply -k deploy/environments/example
       chains/                     Chains config:   kubectl apply -k deploy/environments/example/chains
     dev/                        dev GitLab and Artifactory on a single-node cluster
+    local/                      GitHub, local registry and file shim, upstream Iron Bank (no mirror)
 ```
 
 The manifest is a ConfigMap named `factory-environment` marked
@@ -88,11 +89,23 @@ Kustomize `replacements`:
 
 | Manifest keys | Filled into |
 |---|---|
-| settings keys (`ARTIFACTORY_*`, `FACTORY_*_REPOSITORY`, `INTERNAL_GIT_BASE_URL`, `FACTORY_UBI_MIRROR_URL`, `FACTORY_PAC_CONTROLLER_URL`, `FACTORY_GITLAB_API_URL`, `SCM_BOT_AUTHOR_*`, `ANTHROPIC_BASE_URL`, `CISA_KEV_URL`, `FACTORY_GOV_APPROVER_PATTERN`) | ConfigMap `factory-settings`, under the same name |
+| settings keys (`ARTIFACTORY_*`, `FACTORY_*_REPOSITORY`, `INTERNAL_GIT_BASE_URL`, `FACTORY_SOURCE_MODE`, `FACTORY_UBI_MIRROR_URL`, `FACTORY_PAC_CONTROLLER_URL`, `FACTORY_GITLAB_API_URL`, `SCM_BOT_AUTHOR_*`, `ANTHROPIC_BASE_URL`, `CISA_KEV_URL`, `FACTORY_GOV_APPROVER_PATTERN`) | ConfigMap `factory-settings`, under the same name |
 | `GIT_PROVIDER`, `GIT_PROVIDER_URL`, `GIT_REPOSITORY_URL` | Repository CR `spec.git_provider.type`, `.url`, `spec.url`, and the `git_provider` param |
 | `RUNNER_IMAGE`, `INTAKE_RUNNER_IMAGE`, `AGENT_IMAGE` | Repository CR image params; `RUNNER_IMAGE` also runs the schedule CronJobs |
 | `*_CIDR` | the egress NetworkPolicies |
 | `CHAINS_BUILDER_ID` | `chains-config` `builder.id` |
+
+### Source mode
+
+`FACTORY_SOURCE_MODE` chooses where intake and prepare clone Iron Bank from:
+
+| Value | Clone from | Use |
+|---|---|---|
+| `mirror` (default) | `INTERNAL_GIT_BASE_URL` + the catalog `source.mirrorPath` | production, `dev` |
+| `upstream` | the catalog `source.upstream` directly | `local`; `mirror_sources.sh` does nothing |
+
+Either way the checkout must match the pinned SHA, so the mode changes the
+route, not the trust.
 
 To add an environment, copy `deploy/environments/example` and edit only its
 manifest; add `../../components/local-cluster` to its `components` for a

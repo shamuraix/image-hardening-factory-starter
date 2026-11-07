@@ -13,7 +13,7 @@ internal hardened UBI 10 minimal base and produces, for every candidate:
 - Cosign signatures and in-toto attestations, plus Tekton Chains SLSA provenance
 
 Pipelines run on **Tekton**, triggered by **Pipelines-as-Code** (PaC) from an
-internal **GitLab** instance, with **Artifactory** holding every artifact. Day-to-day
+internal **GitLab** instance (GitHub also works), with **Artifactory** holding every artifact. Day-to-day
 upkeep — failure triage, CVE remediation, Iron Bank upstream tracking, release
 briefings, exception hygiene, and pipeline reviews — is assisted by **Claude Code
 agents** that can only *propose* changes for human review.
@@ -96,7 +96,7 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 | `factory/` | Python: catalog, planning, findings, gate input, Tekton rendering, agents, release requests |
 | `scripts/` | Stage scripts; `scripts/tekton/` runtime helpers; `scripts/agents/` agent plumbing |
 | `policies/` | OPA release policy and approved exceptions |
-| `tests/` | Unit tests |
+| `tests/` | Unit tests; `tests/integration/local` is the local build harness |
 
 ## Documentation
 
@@ -108,6 +108,8 @@ upstream-sync agent to explain what changed upstream for jira-lts"*.
 - [Operations](docs/operations.md) — bootstrap, release process, day-2 cadence, runbooks
 - [Evidence model](docs/evidence-model.md) — what is produced, signed, and verified
 - [Migration from Jenkins](docs/migration-from-jenkins.md) — concept mapping
+- [Local harness](docs/local-harness.md) and [Rancher Desktop](docs/local-rancher-desktop.md) — build one image on a local cluster
+- [Review checklist](docs/review-checklist.md) — what reviewers check on pipeline changes
 - [Implementation status](docs/implementation-status.md)
 
 ## Notes and expectations
