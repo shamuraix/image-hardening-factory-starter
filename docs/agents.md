@@ -49,7 +49,7 @@ sequenceDiagram
     participant V as validate (no secrets)
     participant P as publish (SCM bot token)
     participant R as report (PaC provider token)
-    C->>C: verify checkout == commit; private clone; gather inputs
+    C->>C: verify checkout == commit, private clone, gather inputs
     C->>A: agent/context, agent/repo
     A->>A: claude --bare -p ... (dontAsk, caps, JSON schema)
     A->>A: scrub own token from outputs
