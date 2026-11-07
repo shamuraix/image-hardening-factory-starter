@@ -17,6 +17,14 @@ connected pipeline refreshes once a day.
 
 ## How it flows
 
+```mermaid
+flowchart LR
+    B[Build + sign<br/>daily, intake key] --> P[Publish<br/>archive, signature, then pointer]
+    P --> F[Fetch + verify<br/>each build's prepare]
+    F --> S[Seal as security-data]
+    S --> C[scan verifies seal]
+```
+
 1. **Build and sign** (daily, CronJob `daily-security-data` →
    PipelineRun `security-data-on-schedule` → Task `factory-security-data`).
    `scripts/build_security_bundle.sh` downloads everything, writes the manifest,

@@ -3,27 +3,37 @@
 [Project overview](../README.md) · [Operations](operations.md) · [Configuration](configuration.md) · [Scope](scope.md)
 
 This applies [Running the full pipeline on a local cluster](operations.md#running-the-full-pipeline-on-a-local-cluster)
-to Rancher Desktop on a work laptop. Only the cluster is local: the runs use the
-dev GitLab project and dev Artifactory repositories
-(`deploy/environments/dev`), with the `local-cluster` component (no
-NetworkPolicies, agents off). Nothing here changes what production runs. To
-build a single image without GitLab, Artifactory, or credentials, use the
+to Rancher Desktop on a work laptop. Only the cluster is local. Runs use the dev
+GitLab project and dev Artifactory (`deploy/environments/dev`) with the
+`local-cluster` component (no NetworkPolicies, agents off). Nothing here changes
+what production runs.
+
+To build one image with no GitLab, Artifactory, or credentials, use the
 [local harness](local-harness.md) on the same cluster after steps 1 and 3.
 
-The Rancher Desktop settings below come from its documentation and have not
-been run as a whole by this change. Steps marked **Check** confirm each one
-before you go on.
+```mermaid
+flowchart LR
+    S1[1 Configure<br/>Rancher Desktop] --> S2[2 Runner images]
+    S2 --> S3[3 Tekton, PaC, Chains]
+    S3 --> S4[4 Controller URL]
+    S4 --> S5[5 Secrets + apply]
+    S5 --> S6[6 GitLab webhook]
+    S6 --> S7[7 Run the sequence]
+    S1 -.->|harness only| H[local harness]
+    S3 -.-> H
+```
+
+The Rancher Desktop settings come from its documentation and have not been run
+as a whole. Each **Check** confirms a step before you go on.
 
 ## 0. Before you start
 
-- VPN access to the GitLab and Artifactory hosts in the dev manifest, from both the
-  laptop and the Rancher Desktop VM.
-- The Zscaler root CA exported as a PEM file (for example `~/zscaler-root.pem`).
-- An **amd64** laptop if you can. The catalog builds `linux/amd64` only, and on
-  Apple Silicon the VM and its node are arm64. BuildKit there either fails or
-  emulates, so build results don't stand for production.
-- Production nodes run containerd 1.7.27 on Kubernetes 1.28. Match the
-  Kubernetes minor version locally.
+| Need | Why |
+|---|---|
+| VPN access to the dev GitLab and Artifactory hosts, from the laptop **and** the VM | the runs use them |
+| Zscaler root CA exported as PEM (for example `~/zscaler-root.pem`) | baked into the runner images |
+| An **amd64** laptop if possible | the catalog builds `linux/amd64` only; on Apple Silicon the node is arm64 and BuildKit fails or emulates, so results don't stand for production |
+| Kubernetes 1.28 locally | production nodes run containerd 1.7.27 on 1.28 |
 
 ## 1. Configure Rancher Desktop
 
@@ -198,11 +208,11 @@ kubectl get cronjob -n image-factory -o name |
 
 ## What a pass shows
 
-A local run proves the trust boundaries (per-task ServiceAccounts, per-step
-secrets, the admission policy, sealing), digest continuity through quarantine,
-signing, and promotion, and the release-request flow. It does not prove network
-isolation (the NetworkPolicies are removed), production scale, or amd64
-behaviour on an arm64 laptop.
+| Proves | Does not prove |
+|---|---|
+| trust boundaries: per-task ServiceAccounts, per-step secrets, admission policy, sealing | network isolation (the NetworkPolicies are removed) |
+| digest continuity through quarantine, signing, and promotion | production scale |
+| the release-request flow | amd64 behaviour on an arm64 laptop |
 
 ## Cleanup
 

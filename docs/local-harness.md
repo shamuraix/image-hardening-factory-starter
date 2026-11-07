@@ -4,19 +4,33 @@
 
 The harness builds one catalog image on a cluster you already run, with the
 production Tasks and pod settings, and no GitLab, Artifactory, or credentials.
-Use it to check an overlay, a product upgrade, or a change to the build
-scripts before opening a merge request. It is not part of `make ci`.
+Use it to check an overlay, a product upgrade, or a build-script change before
+opening a merge request. It is not part of `make ci`.
 
-It runs the same configuration as production, on purpose: an existing
-Kubernetes **1.28+** cluster with containerd, the production `factory-stage`
-and `factory-rootless-build` Tasks with their production commands and seal
-chain, and the build pod's AppArmor annotation exactly as `factory/tekton.py`
-renders it. Nothing excluded by [scope.md](scope.md) is used: no pod user
-namespaces, `procMount`, container engine in a pod, or test stage. The earlier
-kind harness was removed because it tested a different configuration; this one
-does not have a configuration of its own.
+It has no configuration of its own, on purpose:
+
+- an existing Kubernetes **1.28+** cluster with containerd;
+- the production `factory-stage` and `factory-rootless-build` Tasks, commands,
+  and seal chain;
+- the build pod's AppArmor annotation exactly as `factory/tekton.py` renders it;
+- nothing [scope.md](scope.md) excludes (no pod user namespaces, `procMount`,
+  container engine in a pod, or test stage).
+
+The earlier kind harness was removed because it tested a different
+configuration.
 
 ## What it runs
+
+```mermaid
+flowchart LR
+    checkout --> validate --> prepare
+    validate -.->|app images| BP[base-prepare] --> BB[base-build] --> prepare
+    prepare --> context-check --> build --> sbom --> image-check
+    sbom --> consume
+    sbom --> T[tamper-detected<br/>must fail]
+```
+
+Production Tasks everywhere except `checkout` and the `prepare` script.
 
 | Task | Production Task? | What it does |
 |---|---|---|
@@ -31,12 +45,14 @@ does not have a configuration of its own.
 | `consume` | yes | a later task verifies an earlier seal before reading |
 | `tamper-detected` | yes | a wrong seal digest is rejected (this task must **fail**, in its verify step) |
 
-Not run: `scan`, `assessment`, `gate`, `quarantine`, signing, promotion, intake,
-Pipelines-as-Code, Chains, agents. They need the signed security-data bundle,
-Artifactory, and credentials; use [local-rancher-desktop.md](local-rancher-desktop.md)
-for those. The resource lock `prepare` writes is unsigned and marked
-`localDevelopment`, which `import_image.sh` and `sign_and_attest.sh` refuse, so
-a harness candidate can never be imported, signed, or promoted.
+**Not run:** `scan`, `assessment`, `gate`, `quarantine`, signing, promotion,
+intake, Pipelines-as-Code, Chains, agents. They need the signed security-data
+bundle, Artifactory, and credentials; use
+[local-rancher-desktop.md](local-rancher-desktop.md) for those.
+
+The resource lock `prepare` writes is unsigned and marked `localDevelopment`.
+`import_image.sh` and `sign_and_attest.sh` refuse it, so a harness candidate can
+never be imported, signed, or promoted.
 
 ## Requirements
 

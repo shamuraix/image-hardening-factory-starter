@@ -12,11 +12,11 @@ environment-specific cluster, repository, credential, network, and gateway work,
 and on a first end-to-end run in a real cluster.
 
 The scope was narrowed to cloud-native stages on Kubernetes 1.28
-([scope.md](scope.md)): the Podman test stage, the OpenSCAP compliance stage,
-ClamAV, and the kind harness were removed. The earlier in-cluster proof of the
-build stage used pod user namespaces on Kubernetes 1.33; the 1.28 build path
-(no pod user namespace, file-capability mapping helpers, AppArmor annotation)
-has not yet run in a cluster.
+([scope.md](scope.md)): the Podman test stage, OpenSCAP compliance stage, ClamAV,
+and the old kind harness were removed. The earlier in-cluster proof of the build
+stage used pod user namespaces on Kubernetes 1.33. The 1.28 build path (no pod
+user namespace, file-capability mapping helpers, AppArmor annotation) has not
+yet run in a cluster.
 
 ## Status matrix
 
@@ -47,25 +47,14 @@ has not yet run in a cluster.
 
 ## Known gaps and follow-ups
 
-- The local harness (`docs/local-harness.md`) builds base and application
-  images with the production Tasks on a 1.28+ cluster, but not scan, gate, or
-  release; those still need a development cluster (`deploy/environments/dev`).
-  Its first run is also the first run of the 1.28 build path.
-- A fully local run (`deploy/environments/local`: GitHub, local registry and
-  file shim, upstream Iron Bank) completed security-data and intake and reached
-  the build step of `ubi10-minimal`, where it failed because kind on rootless
-  Podman cannot nest the runner's user-ID map. The 1.28 build path still has not
-  run in a cluster that allows it; see [operations.md](operations.md#fully-local-variant-deployenvironmentslocal).
-- Without pod user namespaces, build pods use real host UIDs (10001 and the
-  `100000:65536` subordinate range). Keep build pods on a dedicated node pool.
-- The Pipelines-as-Code v0.51 and Tekton Chains v0.28 minimum Kubernetes
-  versions have not been checked against 1.28.
-- The KEV freshness check uses the date CISA last changed the catalog. A gap of
-  more than 72 hours in CISA updates makes every scan fail; a human needs to
-  decide whether to accept that risk or change the rule.
-- PaC's built-in LLM analysis supports only OpenAI and Gemini
-  ([PaC docs](https://pipelinesascode.com/docs/guides/llm-analysis/)). The
-  factory uses its own Claude Code Tasks instead and does not configure it.
+| Gap | Detail |
+|---|---|
+| 1.28 build path never run in a cluster | The local harness ([local-harness.md](local-harness.md)) builds base and application images with the production Tasks on a 1.28+ cluster, but not scan, gate, or release; those need a development cluster (`deploy/environments/dev`). Its first run is also the first run of the 1.28 build path. |
+| Fully local run stopped at build | `deploy/environments/local` (GitHub, local registry and file shim, upstream Iron Bank) completed security-data and intake and reached the build step of `ubi10-minimal`. Build failed because kind on rootless Podman cannot nest the runner's user-ID map; see [operations.md](operations.md#fully-local-variant-deployenvironmentslocal). |
+| Real host UIDs in build pods | Without pod user namespaces, build pods use UID 10001 and the `100000:65536` range. Keep them on a dedicated node pool. |
+| Minimum versions unchecked | PaC v0.51 and Tekton Chains v0.28 minimum Kubernetes versions have not been checked against 1.28. |
+| KEV freshness rule | The check uses the date CISA last changed the catalog. A gap over 72 hours in CISA updates fails every scan; a human must decide whether to accept the risk or change the rule. |
+| PaC LLM analysis | Supports only OpenAI and Gemini ([PaC docs](https://pipelinesascode.com/docs/guides/llm-analysis/)). The factory uses its own Claude Code Tasks and does not configure it. |
 
 ## Activation guidance
 

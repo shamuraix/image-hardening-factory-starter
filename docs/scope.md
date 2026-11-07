@@ -2,14 +2,29 @@
 
 [Project overview](../README.md) · [Architecture](architecture.md) · [Configuration](configuration.md) · [Operations](operations.md)
 
-The factory is a cloud-native build-and-evidence pipeline. Every stage runs as
-an ordinary Kubernetes pod with daemonless command-line tools. No stage runs a
-container engine, runs the candidate image, or needs node-level features beyond
-what Kubernetes 1.28 with containerd 1.7 provides.
+The factory is a cloud-native build-and-evidence pipeline. Every stage is an
+ordinary Kubernetes pod running daemonless tools. No stage runs a container
+engine or the candidate image, or needs node features beyond Kubernetes 1.28
+with containerd 1.7.
 
-This page is the contract. When a capability is listed as out of scope, the
-pipeline neither performs it nor gates on it, and agents must not propose
-adding it back as a fix.
+This page is the contract. If a capability is out of scope, the pipeline
+neither performs it nor gates on it, and agents must not propose adding it back
+as a fix.
+
+```mermaid
+flowchart LR
+    subgraph In["In scope (the pipeline)"]
+        direction LR
+        A[intake] --> B[build] --> C[SBOM + scan] --> D[static checks] --> E[gate] --> F[quarantine, sign, promote]
+    end
+    subgraph Out["Out of scope (consuming environment)"]
+        direction TB
+        X[runtime product tests]
+        Y[OpenSCAP compliance]
+        Z[ClamAV malware scans]
+    end
+    F -. attest to same digest .-> Out
+```
 
 ## In scope
 
@@ -39,10 +54,10 @@ release from it. The consuming environment owns them.
 | Malware scanning (ClamAV) of image filesystems and mirrored resources | `scan` and `intake` stages | Needed `podman unshare` to unpack the rootfs and a signature feed. Intake still enforces upstream checksums. |
 | Local kind harness with its own runtime configuration | `tests/integration/kind` (kind clusters, pod user namespaces, crun RuntimeClass) | A second, laptop-specific runtime that tested a different configuration from production. Replaced by the local harness ([local-harness.md](local-harness.md)), which runs the production Tasks and pod settings on an existing Kubernetes 1.28+ cluster and needs nothing this page excludes. |
 
-The release attestations no longer include `compliance:v1` or `test:v1`
-predicates, and `scripts/verify_release_evidence.sh` no longer requires them.
-If a consuming environment produces its own compliance or test evidence, it
-should attest that evidence to the same image digest with its own key.
+Release attestations no longer include `compliance:v1` or `test:v1`, and
+`scripts/verify_release_evidence.sh` does not require them. A consuming
+environment that produces its own compliance or test evidence should attest it
+to the same digest with its own key.
 
 ## Platform floor
 
@@ -59,9 +74,11 @@ should attest that evidence to the same image digest with its own key.
 
 ## Security trade-off accepted with this scope
 
-Without pod user namespaces, the build pod's UID 10001 and its subordinate
-range `100000:65536` are real host UIDs shared by every build pod on a node. A
+Without pod user namespaces, the build pod's UID 10001 and its subordinate range
+`100000:65536` are real host UIDs, shared by every build pod on a node. A
 container escape lands as an unprivileged host user, not in an isolated ID
-range. Run build pods on a dedicated, tainted node pool and keep them
-single-use. The build run step remains non-root, unprivileged, and limited to
-`CAP_SETUID`/`CAP_SETGID` in its bounding set.
+range.
+
+- Run build pods on a dedicated, tainted node pool and keep them single-use.
+- The build run step stays non-root and unprivileged, with only
+  `CAP_SETUID`/`CAP_SETGID` in its bounding set.

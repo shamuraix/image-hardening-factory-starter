@@ -35,6 +35,15 @@ layer changed.
 
 ## Cut-over checklist
 
+```mermaid
+flowchart LR
+    A[1 Run in parallel] --> B[2 Secrets]
+    B --> C[3 Permissions]
+    C --> D[4 Security data + intake]
+    D --> E[5 Disable old jobs]
+    E --> F[6 Release requests<br/>for current digests]
+```
+
 1. Run the Tekton factory in parallel (a fork, or a second PaC Repository) until
    pull-request results match the old system for all five catalog images.
 2. Create the Secrets in `deploy/secrets.example.yaml` from the existing
