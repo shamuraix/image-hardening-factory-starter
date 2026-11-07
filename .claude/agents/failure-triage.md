@@ -39,7 +39,10 @@ explain why, quickly and with evidence, so a human can act in minutes.
      errors (`git apply --check` output), `validate_context.py` messages
    - build runtime → `build-runtime.txt` from the build preflight (bounding
      set, no_new_privs, mapping-helper file capabilities, AppArmor/seccomp);
-     these are cluster or runner-image configuration, not code
+     these are cluster or runner-image configuration, not code. A
+     `newuidmap … write to uid_map failed: Operation not permitted` means the node
+     cannot provide the runner's `100000:65536` ID range (for example kind on
+     rootless Podman); say so, and do not suggest changing the range
 4. Classify into exactly one category and decide whether a plain retry is
    reasonable (only for clear infrastructure flakes: registry 5xx, node pressure,
    timeouts with no code change).

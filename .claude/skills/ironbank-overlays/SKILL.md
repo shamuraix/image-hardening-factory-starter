@@ -17,14 +17,18 @@ Each image repository has at its root:
   resources use `docker://...@sha256:` URLs).
 - Product scripts (entrypoints, config templates).
 
+Where the clone comes from depends on `FACTORY_SOURCE_MODE`
+(`scripts/lib/source_url.sh`): `mirror` (default) uses the internal mirror;
+`upstream` (the `local` environment) uses `source.upstream` directly. The
+checkout must match the pinned SHA either way, so overlays behave the same.
+
 The factory never builds from Registry1. Intake (`factory/intake.py`) resolves
 every manifest resource, verifies its checksum, uploads it to the internal
 repository, and signs a **resource lock**; builds consume only locked inputs.
 
 ## How overlays apply
 
-`scripts/prepare_context.sh` clones the internal mirror at `source.revision`,
-then applies every `*.patch` under `source.overlay` in **sorted filename order**
+`scripts/prepare_context.sh` clones the source at `source.revision`, then applies every `*.patch` under `source.overlay` in **sorted filename order**
 with `git apply --check` followed by `git apply`. Then
 `scripts/validate_context.py` enforces:
 
@@ -47,6 +51,9 @@ patch cannot sneak in network fetches.
 - `0003-preserve-runtime-dependencies.patch` — keep packages the product needs at
   runtime that upstream cleanup removes.
 - Confluence `0004-preserve-system-directory-owner.patch`.
+- Jira `0004`/`0005` and Confluence `0005`/`0006`: IRSA token environment and JDBC
+  escaping fixes (below).
+- Bitbucket `0004-ubi10-zlib-package-name.patch`.
 
 ## Rebasing onto a new upstream revision
 
@@ -93,6 +100,13 @@ patch cannot sneak in network fetches.
   Bitbucket restores `/usr/bin` to its RPM mode after installing Git from
   source; Confluence restores the RPM-owned `/opt` to `root:root` after
   setting application file ownership.
+
+## Static checks that guard the overlays
+
+`context-check` renders the product templates after overlays apply, and
+`image-check` reads the built OCI archive. A failing `required` check names the
+overlay, template, or catalog `verify` entry at fault; fix that, never the check
+(`docs/base-images.md`).
 
 ## RPM integrity
 

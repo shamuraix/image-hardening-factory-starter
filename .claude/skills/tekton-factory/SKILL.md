@@ -12,7 +12,13 @@ description: Conventions for the factory's Tekton Tasks, Pipelines, and Pipeline
 - `.tekton/*-on-*.yaml` — **generated** by `factory/tekton.py`
   (`make tekton-render`); a unit test fails on drift. Never edit by hand.
 - `deploy/` — cluster objects (Repository CR, ServiceAccounts, NetworkPolicies,
-  Chains config, schedules, admission policy).
+  Chains config, schedules, admission policy). `deploy/base` and the Tasks hold no
+  environment values: those live only in
+  `deploy/environments/<env>/manifest/environment.yaml` (`docs/configuration.md`),
+  and a unit test fails if one leaks. `deploy/components/local-cluster` is the
+  only profile that removes NetworkPolicies and turns agents off.
+- Scripts a step runs must be committed executable (mode 755). A script with a
+  shebang committed 644 fails at run time with `Permission denied` (exit 126).
 
 ## Trust classes
 
@@ -51,13 +57,13 @@ PipelineRuns) and is selected by NetworkPolicy through the
 7. Pin images by digest; keep `securityContext` restricted except the single
    rootless BuildKit run step (which keeps `SETUID`/`SETGID` in its bounding
    set for the file-capability mapping helpers and nothing else).
+8. **Tasks never use `$(context.pipelineRun.*)`.** Tekton substitutes those
+   only inside a Pipeline; in a Task they stay literal. Every Task takes a
+   `pipelinerun` param and every Pipeline passes `$(context.pipelineRun.name)`;
+   namespace comes from `$(context.taskRun.namespace)`. A unit test enforces it.
 9. **Kubernetes 1.28 is the floor.** No `hostUsers: false`, no `procMount`, no
    `securityContext.appArmorProfile` (1.30+); the build step's AppArmor profile
    comes from the `container.apparmor.security.beta.kubernetes.io/step-run`
    annotation the renderer puts on the build TaskRun. The admission policy is
    `admissionregistration.k8s.io/v1beta1`. No stage may run the candidate
    image or a container engine (`docs/scope.md`).
-8. **Tasks never use `$(context.pipelineRun.*)`.** Tekton substitutes those
-   only inside a Pipeline; in a Task they stay literal. Every Task takes a
-   `pipelinerun` param and every Pipeline passes `$(context.pipelineRun.name)`;
-   namespace comes from `$(context.taskRun.namespace)`. A unit test enforces it.

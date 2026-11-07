@@ -17,6 +17,8 @@ All evidence for an image is under `work/<image>/` on the PipelineRun workspace.
 | `evidence/findings.json` | `factory.findings` | normalized, de-duplicated findings |
 | `evidence/scans/delegated/status.json` | scan stage | `assessmentPassed`, `digest`, `scanner` |
 | `evidence/database-status.json` | scan stage | `generatedAt` (earlier of bundle time and Grype DB build time), scanner versions |
+| `evidence/context-check/result.json`, `evidence/image-check/result.json` | context-check, image-check | top-level `passed`; `checks[]` with `id`, `severity` (`required` fails the stage, `advisory` is parity evidence), `passed`, `detail` |
+| `evidence/runtime/runtime.txt` | build preflight | user-namespace facts: bounding set, `no_new_privs`, mapping-helper file capabilities, AppArmor and seccomp |
 | `evidence/gate-input.json` / `gate-result.json` | OPA | `allow`, `deny[]`, `warn[]` |
 | `import-result.json`, `evidence-bundle.json` | quarantine | quarantine ref/digest, evidence referrer digest |
 
@@ -44,10 +46,18 @@ suppresses a blocking finding only when `id`, `component`, and
 `installedVersion` all match **and** a fix exists. Exceptions never bypass
 evidence identity, freshness, or signatures.
 
-The pipeline produces no compliance (OpenSCAP), malware, or runtime test
+Static checks sit outside the gate's deny list: only their `required` failures
+stop the PipelineRun, before the gate runs. The pipeline produces no compliance (OpenSCAP), malware, or runtime test
 evidence and the gate does not consider them; those checks belong to the
 consuming environment (`docs/scope.md`). Never propose adding them back as a
 remediation.
+
+## Scanner data
+
+Scan reads only the signed security-data bundle that prepare fetched, verified,
+and sealed as `security-data` (`security-data/README.md`). Stale or future-dated
+data denies. Without a signed baseline every finding is new. Never fix either
+with a scanner ignore.
 
 ## Scan-stage order
 

@@ -37,7 +37,12 @@ PR revision in your working directory.
 4. **Policy weakening** — Rego, exceptions, gate inputs, schema loosening.
 5. **Agent guardrails** — wider `writablePaths`, removed `--bare`/`dontAsk`,
    new tools (WebFetch, Write on report-only agents), broker running workspace code.
-6. Correctness and maintainability issues worth a human's attention.
+6. **Environment and permissions hygiene** — environment values (hosts, URLs,
+   digests) outside `deploy/environments/<env>/manifest/`; production
+   settings gaining a local-only setting (`FACTORY_SOURCE_MODE=upstream`,
+   placeholder Secrets, relaxed NetworkPolicies); a new stage script with a
+   shebang committed non-executable (mode 644).
+7. Correctness and maintainability issues worth a human's attention.
 
 ## Output
 

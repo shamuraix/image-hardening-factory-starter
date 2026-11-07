@@ -12,8 +12,7 @@ description: Facts about the Bitbucket, Jira (with JSM), and Confluence Data Cen
 | `confluence-lts` | `dsop/atlassian/confluence-data-center/confluence-lts` | `CONFLUENCE_VERSION` |
 
 All three build on the catalog base `ubi10-minimal` (`build.base.kind: catalog`;
-`ubi9-minimal` is a rollback base),
-publish under `atlassian/<image>`.
+`ubi9-minimal` is the rollback base) and publish under `atlassian/<image>`.
 
 ## Version changes
 
@@ -29,10 +28,13 @@ Never downgrade.
 
 ## Runtime behaviour
 
-The pipeline does not run these images; product start-up, ports, users and
-`rpm -V` integrity are verified by the consuming environment (`docs/scope.md`).
-Call out changes to ports, users, UIDs, or install paths in the change
-description so that environment can adjust its tests.
+The pipeline never runs these images. `context-check` and `image-check` verify
+templates and image metadata statically (`docs/base-images.md`), and the catalog
+`verify` block holds the expected user, ports, and paths. Product start-up and
+`rpm -V` integrity belong to the consuming environment (`docs/scope.md`). Call
+out changes to ports, users, UIDs, or install paths in the change description so
+that environment can adjust its tests, and so the `verify` block is updated by a
+human.
 
 ## Vulnerabilities in bundled libraries
 
@@ -47,5 +49,5 @@ exists, the finding is blocked pending the vendor; humans decide on exceptions.
 The SBOM covers every layer, including packages replaced in later layers. For
 runtime triage, a Syft SBOM with `--scope squashed` scanned separately shows
 only what is in the final filesystem; keep both and record the digest and
-database date. A passing test stage or `assessmentPassed: true` says nothing
-about vulnerability thresholds — only the gate result does.
+database date. `assessmentPassed: true` only says the scan ran with valid data;
+it says nothing about vulnerability thresholds. Only the gate result does.
