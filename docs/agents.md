@@ -2,12 +2,19 @@
 
 [Project overview](../README.md) · [Architecture](architecture.md) · [Operations](operations.md)
 
-The factory uses **Claude Code** agents for the recurring operational work that
-keeps three Iron Bank Atlassian images releasable: explaining failures, fixing
-vulnerabilities, following upstream, briefing approvers, pruning exceptions,
-and reviewing risky pipeline changes. Agents **propose**; humans and the
-pipeline **decide**. No agent can merge, sign, publish, approve, or add a
-vulnerability exception.
+**Claude Code** agents do the recurring work that keeps the three Iron Bank
+Atlassian images releasable: explaining failures, fixing vulnerabilities,
+following upstream, briefing approvers, pruning exceptions, and reviewing risky
+pipeline changes. Agents **propose**; humans and the pipeline **decide**. No
+agent can merge, sign, publish, approve, or add a vulnerability exception.
+
+```mermaid
+flowchart LR
+    T[Trigger<br/>failure, deny, schedule, PR] --> A[Agent persona<br/>read-only context]
+    A -->|data only| V[Validate<br/>fresh clone, write policy]
+    V --> D[Draft PR or comment]
+    D --> H[Human review<br/>CODEOWNERS + full pipeline]
+```
 
 ## Personas
 
@@ -17,16 +24,16 @@ Each persona is a Claude Code
 `x-factory` frontmatter block (ignored by Claude Code) declares the CI contract:
 output schema, budget, modes, and the exact paths it may write.
 
-| Persona | When it runs | Reads | Produces | May write |
+| Persona | Runs | Reads | Produces | May write |
 |---|---|---|---|---|
 | `failure-triage` | `finally` of any failed build or release run | stage log tails, evidence summaries, task statuses | PR/commit comment: category, root cause, next steps | nothing |
-| `cve-remediation` | gate deny on `main`, nightly rescan, or base-release rebuild | blocking findings, SBOM components, catalog, exceptions | draft PR + plan | `overlays/`, `catalog/images/` (revision, version, build args only) |
-| `upstream-sync` | weekday schedule | per-image upstream reconnaissance: new Repo One head, key-file diffs, manifest tags/args, overlay trial-apply results | draft PR with rebased patches and moved pins | `overlays/` (incl. deletes), `catalog/images/`, `vendir/config.yml` |
+| `cve-remediation` | gate deny on `main`, nightly rescan, base-release rebuild | blocking findings, SBOM components, catalog, exceptions | draft PR + plan | `overlays/`, `catalog/images/` (revision, version, build args only) |
+| `upstream-sync` | weekday schedule | per-image upstream recon: new Repo One head, key-file diffs, manifest tags/args, overlay trial-apply results | draft PR with rebased patches and moved pins | `overlays/` (incl. deletes), `catalog/images/`, `vendir/config.yml` |
 | `release-readiness` | after quarantine import on `main` | gate result and warnings, exceptions in scope, previous release request | body of the release-request PR | nothing |
-| `exception-steward` | weekly schedule | approved exceptions, evidence of each image's current release | draft PR removing stale exceptions + review list | `policies/exceptions/approved.json` — **removals only** |
+| `exception-steward` | weekly schedule | approved exceptions, evidence of each image's current release | draft PR removing stale exceptions + review list | `policies/exceptions/approved.json`, **removals only** |
 | `pipeline-reviewer` | PRs touching `.tekton/`, `deploy/`, `scripts/`, `policies/`, `factory/`, `.claude/`, `agents/`; or `/review` | PR diff, checklist, repository at the PR revision | PR comment with verdict and findings | nothing |
 
-Skills in `.claude/skills/` hold reusable domain procedures that personas preload:
+Skills in `.claude/skills/` hold domain procedures that personas preload:
 `ironbank-overlays`, `atlassian-lts`, `evidence-model`, `tekton-factory`.
 
 ## How a CI agent run works
@@ -54,7 +61,7 @@ sequenceDiagram
     R->>R: inline curl comment (no workspace code)
 ```
 
-The CLI invocation is built by `factory.agents.build_command` and unit tested:
+`factory.agents.build_command` builds the CLI call, and unit tests cover it:
 
 ```text
 claude --bare -p "<task prompt>"
@@ -68,48 +75,50 @@ claude --bare -p "<task prompt>"
   --add-dir <context> --no-session-persistence
 ```
 
-Why `--bare`: without it, `claude -p` loads hooks, MCP servers, and settings from
-the working directory with no trust prompt. Bare mode loads only what the
-command line passes
-([headless docs](https://code.claude.com/docs/en/headless#start-faster-with-bare-mode)),
-so a malicious change cannot smuggle a hook or MCP server into an agent run.
+**Why `--bare`:** without it, `claude -p` loads hooks, MCP servers, and settings
+from the working directory with no trust prompt. Bare mode
+([headless docs](https://code.claude.com/docs/en/headless#start-faster-with-bare-mode))
+loads only what the command line passes, so a malicious change cannot smuggle a
+hook or MCP server into a run.
 
 ## Guardrails, outermost first
 
-1. **Trigger scope** — agent PipelineRuns come from the default branch; PR runs
-   never bind the SCM bot (`scm-secret` defaults to a non-existent Secret) and the
-   admission policy enforces that at pod creation.
-2. **Network** — agent pods reach only the LLM gateway and the git host
-   (`deploy/base/network-policies.yaml`). No internet, registry, or cluster API.
-3. **Authoritative re-validation** — the publish step fetches the pinned commit
-   afresh (objects hash-verified on transfer) and runs *that* code's
-   `factory.cli agent-check`: path allowlist, protected prefixes, no symlinks,
-   deletions only where allowed, frozen catalog policy fields, revision/vendir
-   consistency, exceptions remove-only. The agent's output is only data.
-4. **Human review** — every proposal is a draft change request; branch
-   protection, CODEOWNERS, and the full factory pipeline decide.
-5. **In-session controls** (defence in depth) — `dontAsk` mode with narrow allow
-   rules, deny rules in `agents/ci/settings.json`, the
-   `.claude/hooks/guard-paths.sh` PreToolUse hook, turn/budget/time caps, and
-   strict JSON Schemas.
-6. **Output hygiene** — the agent step redacts its own gateway token from every
-   output and discards proposals containing it; reports neutralise `@`-mentions.
+```mermaid
+flowchart TD
+    G1[1 Trigger scope<br/>default-branch runs, no SCM bot on PRs] --> G2[2 Network<br/>gateway + git host only]
+    G2 --> G3[3 Authoritative re-validation<br/>fresh clone, agent-check]
+    G3 --> G4[4 Human review<br/>draft PR, CODEOWNERS, pipeline]
+    G5[5 In-session controls<br/>dontAsk, deny rules, hook, caps, schemas] -.-> G3
+    G6[6 Output hygiene<br/>token redaction, @-mentions neutralised] -.-> G4
+```
 
-What remains: the gateway token is readable by the agent process, so scope it to
+| # | Layer | What it enforces |
+|---|---|---|
+| 1 | Trigger scope | Agent PipelineRuns come from the default branch. PR runs never bind the SCM bot (`scm-secret` defaults to a Secret that does not exist), and the admission policy enforces that at pod creation. |
+| 2 | Network | Agent pods reach only the LLM gateway and the git host (`deploy/base/network-policies.yaml`): no internet, registry, or cluster API. |
+| 3 | Re-validation | Publish fetches the pinned commit afresh (objects hash-verified) and runs *that* code's `factory.cli agent-check`: path allowlist, protected prefixes, no symlinks, deletions only where allowed, frozen catalog policy fields, revision/vendir consistency, exceptions remove-only. Agent output is only data. |
+| 4 | Human review | Every proposal is a draft change request; branch protection, CODEOWNERS, and the full factory pipeline decide. |
+| 5 | In-session controls (defence in depth) | `dontAsk` mode with narrow allow rules, deny rules in `agents/ci/settings.json`, the `.claude/hooks/guard-paths.sh` PreToolUse hook, turn/budget/time caps, strict JSON Schemas. |
+| 6 | Output hygiene | The agent step redacts its gateway token from every output and discards proposals containing it. Reports neutralise `@`-mentions. |
+
+**Residual risk:** the agent process can read the gateway token. Scope it to
 model access, rate-limit it, and rotate it. Agent text in comments is untrusted
-and labelled as advisory.
+and labelled advisory.
 
-## Model access
+## Model access and limits
 
-Point `ANTHROPIC_BASE_URL` (ConfigMap `factory-settings`) at your organization's
-Anthropic-format LLM gateway and store its token in Secret `factory-ai-gateway`.
-Personas use the `sonnet` and `opus` aliases; if the gateway exposes its own model
-names, set `ANTHROPIC_DEFAULT_SONNET_MODEL` / `ANTHROPIC_DEFAULT_OPUS_MODEL`, or
-override per persona with `FACTORY_AGENT_MODEL_<PERSONA>` (for example
-`FACTORY_AGENT_MODEL_UPSTREAM_SYNC`). The agent image pins the Claude Code CLI
-version (`tools/versions.lock.yaml`, `toolchain/Containerfile.factory-agent`).
+Set `ANTHROPIC_BASE_URL` (ConfigMap `factory-settings`) to your Anthropic-format
+LLM gateway and store its token in Secret `factory-ai-gateway`.
 
-## Cost and runtime controls
+| Setting | Effect |
+|---|---|
+| `sonnet`, `opus` aliases | what personas use |
+| `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL` | map the aliases to the gateway's model names |
+| `FACTORY_AGENT_MODEL_<PERSONA>` | per-persona override, for example `FACTORY_AGENT_MODEL_UPSTREAM_SYNC` |
+| `FACTORY_AGENT_TIMEOUT` | wall-clock limit per run (default 1500 s) |
+
+The agent image pins the Claude Code CLI (`tools/versions.lock.yaml`,
+`toolchain/Containerfile.factory-agent`).
 
 | Persona | Model | Max turns | Budget (USD) |
 |---|---|---|---|
@@ -120,49 +129,48 @@ version (`tools/versions.lock.yaml`, `toolchain/Containerfile.factory-agent`).
 | cve-remediation | opus | 40 | 8 |
 | upstream-sync | opus | 60 | 12 |
 
-Every run is also bounded by `FACTORY_AGENT_TIMEOUT` (default 1500s). The
-`claude` JSON result records `total_cost_usd` and `num_turns`; the agent step
-prints both so they appear in TaskRun logs.
+The `claude` JSON result records `total_cost_usd` and `num_turns`; the agent step
+prints both to the TaskRun log.
 
 ## Using the agents interactively
 
-In a Claude Code session at the repository root, the personas are available as
-subagents and the same guard hook asks before edits to trust-boundary files and
-blocks edits to generated PipelineRuns:
+In a Claude Code session at the repository root, the personas are subagents, and
+the guard hook asks before edits to trust-boundary files and blocks edits to
+generated PipelineRuns. Examples:
 
 - "Have failure-triage look at `work/jira-lts` from my local build."
 - "Use upstream-sync to rebase the confluence-lts overlays onto the new Repo One head."
 - "Ask pipeline-reviewer to review my change to `.tekton/tasks/factory-quarantine.yaml`."
 
-Locally there is no fresh-clone broker, so review diffs yourself before pushing;
-CI will validate them again.
+Locally there is no fresh-clone broker. Review diffs yourself before pushing;
+CI validates them again.
 
 ## Adding or changing a persona
 
 1. Add `.claude/agents/<name>.md` with `name`, `description`, `tools`, `model`,
-   `maxTurns`, `skills`, and `x-factory` (`schema`, `budgetUsd`, `modes`, and for
-   writers `writablePaths`, optional `allowDeletes`, `bashAllow`).
-   Set `model` to an explicit alias (`sonnet` or `opus`). Do not use `inherit`:
-   CI passes the value to `--model` unchanged, and the loader's default is
-   `sonnet`. Keep the frontmatter as written; the loader reads it as YAML.
+   `maxTurns`, `skills`, and `x-factory` (`schema`, `budgetUsd`, `modes`; for
+   writers also `writablePaths`, optional `allowDeletes`, `bashAllow`).
+   Set `model` to an explicit alias (`sonnet` or `opus`), never `inherit`: CI
+   passes it to `--model` unchanged and the loader's default is `sonnet`. Keep
+   the frontmatter as written; the loader reads it as YAML.
 2. Add `agents/schemas/<name>.schema.json` (strict: `additionalProperties: false`).
 3. Add a context recipe in `scripts/agents/collect_context.sh`.
 4. Add a trigger in `factory/tekton.py` (and a pipeline task if it needs new
    context), then `make tekton-render`.
-5. `make ci` — `tests/unit/test_agents.py` loads every persona, validates its
-   schema, and checks the generated command for the required safety flags.
+5. `make ci`. `tests/unit/test_agents.py` loads every persona, validates its
+   schema, and checks the command for the required safety flags.
 
-`factory.agents.load_agent` refuses definitions that request `WebFetch`/`WebSearch`,
-give report-only personas `Edit`/`Write`, or make protected paths writable.
+`factory.agents.load_agent` refuses definitions that request `WebFetch` or
+`WebSearch`, give report-only personas `Edit`/`Write`, or make protected paths
+writable.
 
 ## Evaluating agents before trusting them more
 
-Keep agents at "propose" and measure before widening anything:
+Keep agents at "propose" and measure before widening anything.
 
-- **Triage accuracy** — sample triage comments weekly; track whether `category`
-  and `rootCause` matched what humans found.
-- **Proposal acceptance** — share of `agent-proposed` PRs merged unchanged,
-  merged with edits, or closed; and how many passed the factory pipeline first time.
-- **Rejections** — `change-rejected` outcomes mean an agent tried to step outside
-  its contract; investigate each one.
-- **Cost** — `total_cost_usd` per persona per week against the budgets above.
+| Measure | How |
+|---|---|
+| Triage accuracy | sample triage comments weekly; did `category` and `rootCause` match what humans found? |
+| Proposal acceptance | share of `agent-proposed` PRs merged unchanged, merged with edits, or closed; how many passed the factory pipeline first time |
+| Rejections | each `change-rejected` outcome means an agent tried to leave its contract; investigate every one |
+| Cost | `total_cost_usd` per persona per week against the budgets above |
